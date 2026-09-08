@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.RegisterMapper">
+
+
+    <insert id="register">
+    insert into users(user_id,password,nickname,created_at)
+    values(#{userId},#{password},#{nickname},#{created_at})
+    </insert>
+
+
+    <insert id="registerByPhone">
+        insert into users(user_id, phone_number, password, nickname, created_at)
+        values(#{userId}, #{phone_number}, #{password}, #{nickname}, #{created_at})
+    </insert>
+
+
+    <select id="existsByPhone" resultType="int">
+    select count(*) from users where phone_number = #{phone}
+    </select>
+
+    <select id="existsByUserId" resultType="int">
+    select count(*) from users where user_id = #{userId}
+    </select>
+</mapper>

@@ -1,0 +1,14 @@
+# Maven 构建产物
+target/
+
+# IDE 配置
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# 本地备份（修复前原文件）
+backup_pre_fix_20260908/
+
+# 日志
+*.log

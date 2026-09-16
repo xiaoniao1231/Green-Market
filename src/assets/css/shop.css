@@ -1,0 +1,90 @@
+/* =========================================================
+   青集市 · assets/css/shop.css —— 店铺页 / 详情页店铺区 / 店铺信息弹窗
+   样式与买家端视觉体系保持一致（品牌色、卡片、圆角、投影）
+   —— 2026-09 视觉升级：店铺封面层次、指标区排版、弹窗数据格。
+   ========================================================= */
+
+/* ---------- 店铺头像（通用） ---------- */
+.shop-avatar {
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 24px; font-weight: 700;
+  flex: none;
+  /* emoji 图形自带颜色，加一点阴影保证在任意店铺底色上都清晰 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+}
+.shop-avatar.lg { width: 72px; height: 72px; font-size: 34px; border-radius: 20px; }
+.shop-avatar.ring { box-shadow: 0 0 0 3px rgba(255, 255, 255, .35), 0 6px 18px rgba(0, 0, 0, .18); cursor: pointer; transition: transform var(--dur) var(--ease); }
+.shop-avatar.ring:hover { transform: scale(1.05); }
+
+/* ---------- 店铺页：店铺封面 ---------- */
+.shop-cover {
+  display: flex; align-items: flex-start; gap: 20px;
+  padding: 28px 30px; border-radius: var(--radius-lg);
+  color: #fff; background-size: cover;
+  position: relative; overflow: hidden;
+}
+.shop-cover::after {
+  content: ""; position: absolute; right: -70px; top: -90px; width: 300px; height: 300px;
+  border-radius: 50%; background: rgba(255, 255, 255, .12);
+}
+.shop-cover .shop-avatar.lg { background: rgba(255, 255, 255, .24); position: relative; z-index: 1; }
+.shop-cover-main { flex: 1; min-width: 0; position: relative; z-index: 1; }
+.shop-cover-main h1 { font-size: 24px; margin-bottom: 6px; letter-spacing: .3px; }
+.shop-owner { font-size: 13px; opacity: .95; }
+.shop-intro { font-size: 12.5px; opacity: .9; margin-top: 8px; line-height: 1.7; max-width: 720px; }
+.shop-metrics { display: flex; gap: 28px; margin-top: 16px; flex-wrap: wrap; }
+.shop-metrics span { font-size: 12px; opacity: .92; text-align: center; }
+.shop-metrics b { display: block; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.shop-cover-actions { margin-left: auto; display: flex; flex-direction: column; gap: 10px; align-items: stretch; position: relative; z-index: 1; }
+.shop-cover-actions .btn { background: #fff; color: var(--brand-ink); padding: 9px 22px; }
+.shop-cover-actions .btn:hover { background: #fff5ef; transform: translateY(-1px); }
+.shop-cover-actions .btn.btn-plain { background: rgba(255, 255, 255, .18); color: #fff; border-color: rgba(255, 255, 255, .5); }
+.shop-cover-actions .btn.btn-plain:hover { background: rgba(255, 255, 255, .3); color: #fff; }
+.shop-cover-actions .btn.fav-on { background: #fff; color: #d81b60; }
+
+/* ---------- 店铺页：商品区 ---------- */
+.shop-goods { margin-top: 18px; }
+.shop-goods-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 14px; flex-wrap: wrap; }
+.shop-goods-head h3 { font-size: 17px; font-weight: 600; position: relative; padding-left: 13px; }
+.shop-goods-head h3::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 4px; height: 17px; border-radius: 3px; background: var(--brand-grad); }
+.shop-goods-head h3 small { color: var(--text-3); font-weight: 400; font-size: 13px; }
+.shop-sorts { display: flex; gap: 8px; flex-wrap: wrap; }
+.shop-sorts button {
+  padding: 6px 15px; border-radius: var(--radius-pill); font-size: 13px; color: var(--text-2);
+  background: #fff; border: 1px solid var(--border-strong); cursor: pointer; transition: all var(--dur) var(--ease);
+}
+.shop-sorts button:hover { color: var(--brand-ink); border-color: var(--brand); background: var(--brand-softer); }
+.shop-sorts button.active { background: #d13f00; border-color: #d13f00; color: #fff; box-shadow: var(--shadow-brand); }
+
+/* ---------- 详情页：店铺侧栏美化 ---------- */
+.shop-mini {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%; padding: 10px 4px 14px; margin-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
+}
+.shop-mini .shop-avatar { width: 44px; height: 44px; font-size: 22px; border-radius: 13px; }
+.shop-mini-meta {
+  min-width: 0; text-align: left; cursor: pointer;
+  background: none; border: none; padding: 0; flex: 1;
+}
+.shop-mini-meta b { display: block; font-size: 14px; color: var(--text); }
+.shop-mini-meta small { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.shop-mini-meta:hover b { color: var(--brand-ink); }
+.detail-shop .btn.faved { color: #d81b60; border-color: #f6b8cf; background: #fff5f8; }
+.detail-shop .btn.faved:hover { color: #d81b60; border-color: #d81b60; }
+
+/* ---------- 店铺信息弹窗 ---------- */
+.shop-info-intro { font-size: 13px; color: var(--text-2); line-height: 1.75; margin-bottom: 14px; padding: 13px 15px; background: var(--fill); border-radius: var(--radius); }
+.shop-info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.shop-info-grid div { text-align: center; padding: 14px 6px; background: var(--fill); border-radius: var(--radius); }
+.shop-info-grid b { display: block; font-size: 17px; color: var(--brand-ink); font-variant-numeric: tabular-nums; }
+.shop-info-grid span { font-size: 12px; color: var(--text-3); }
+
+@media (max-width: 760px) {
+  .shop-cover { flex-direction: column; }
+  .shop-cover-actions { margin-left: 0; flex-direction: row; }
+  .shop-metrics { gap: 16px; }
+  .shop-info-grid { grid-template-columns: repeat(2, 1fr); }
+}

@@ -221,9 +221,11 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
     /* ---------- 购物车 ---------- */
     cart: {
       list() {
+        /* product 优先取本地 mock 商品库；后端已落地时条目自带服务端下发的商品快照
+           （api.js 写入 state.cart[].product），mock 没有该商品时回退快照，保证可渲染 */
         return QM_STORE.state.cart.map(item => {
-          const p = QM_MOCK.byId(item.productId);
-          return Object.assign({}, item, { product: p || null });
+          const p = QM_MOCK.byId(item.productId) || item.product || null;
+          return Object.assign({}, item, { product: p });
         }).filter(item => item.product);
       },
       add(productId, sku, qty) {

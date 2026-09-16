@@ -68,8 +68,9 @@ let currentLoginModal = null;
     wrap.innerHTML = `<div class="modal ${(opts && opts.wide) ? 'wide' : ''}">${html}</div>`;
     root.append(wrap);
     const close = () => wrap.remove();
-    /* closeOnBackdrop 默认为 true；传入 false 时仅允许通过 × 按钮(data-close)关闭 */
-    if (!opts || opts.closeOnBackdrop !== false) {
+    /* 默认只有点击「退出类按钮」(data-close) 才会关闭弹窗，避免误点遮罩丢内容；
+       需要「点击遮罩即关闭」的弹窗才显式传 closeOnBackdrop: true */
+    if (opts && opts.closeOnBackdrop === true) {
       wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
     }
     wrap.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', close));
@@ -131,8 +132,6 @@ let currentLoginModal = null;
     if (currentLoginModal) { try { currentLoginModal(); } catch (e) { /* 忽略 */ } currentLoginModal = null; }
     const m = modal(`
       <div style="position:relative">
-        <button class="modal-close" data-close>×</button>
-
         <!-- ===================== 登录窗口 ===================== -->
         <div id="loginWindow">
           <h3 id="loginTitle">账号登录</h3>
@@ -189,6 +188,7 @@ let currentLoginModal = null;
           </div>
           <a class="btn btn-plain" data-win-switch="login" style="width:100%;margin-top:14px">已有账号？立即登录</a>
         </div>
+        <button class="btn btn-plain" data-close style="width:100%;margin-top:14px">取消</button>
       </div>`, { closeOnBackdrop: false });
     const root = m.root;
 
@@ -237,13 +237,18 @@ let currentLoginModal = null;
         nickname: data.name || data.username || '用户'
       };
       if (!user.userId) throw new Error('登录失败：响应缺少账号字段(username)，请检查后端登录接口');
-      /* 账号若已开店则附带店铺绑定 shopId（演示映射见 mock.shopOwners，后端接入后由服务端返回） */
+      /* 登录响应若带回资料字段（后端接入后返回 avatar / gender / signature / shopId）则直接采用，
+         让数据库里的头像地址 / 性别 / 签名在重新登录后依然生效 */
+      if (data.avatar !== undefined) user.avatar = data.avatar;
+      if (data.gender !== undefined) user.gender = data.gender;
+      if (data.signature !== undefined) user.signature = data.signature;
+      if (data.shopId !== undefined) user.shopId = data.shopId;
+      /* 账号若已开店则附带店铺绑定 shopId（演示映射见 mock.shopOwners；后端已返回时不再覆盖） */
       const owner = QM_MOCK.shopOf(user.userId);
       if (owner) {
         const svc = QM_MOCK.serviceById(owner.shopId);
-        user.shopId = owner.shopId;
-        user.avatar = (svc && svc.avatar) || '';
-        user.avatarColor = (svc && svc.color) || '#ff6a2b';
+        if (!user.shopId) user.shopId = owner.shopId;
+        if (!user.avatar) user.avatar = (svc && svc.avatar) || '';
       }
       /* 密令与用户信息一并保存进同一个登录态对象 */
       QM_STORE.user.set(user, data.token);

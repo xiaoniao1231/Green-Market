@@ -88,9 +88,16 @@ async function ensureChatSocket() {
   if (!QM_STORE.state.user || !QM_STORE.state.user.token) return;
   await QM_CHAT_SOCKET.ensure();
 }
+
+/* 登录后从后端拉取商城数据（购物车 / 收藏 / 订单「全部」）同步本地 store 与角标；
+   后端未实现时 api.js 自动回退本地演示数据，无副作用、不阻塞登录流程 */
+async function refreshServerData() {
+  if (!QM_STORE.state.user || !QM_STORE.state.user.token) return;
+  await Promise.allSettled([QM_API.cart.list(), QM_API.favorites.list(), QM_API.orders.list('')]);
+}
 function onUserChange(u) {
   renderUserArea();
-  if (u && u.token) ensureChatSocket();
+  if (u && u.token) { ensureChatSocket(); refreshServerData(); }
   else QM_CHAT_SOCKET.close();
 }
 function onBackendChange(online) {
@@ -132,13 +139,13 @@ async function onGlobalClick(e) {
     case 'open-product': router.push('/detail/' + encodeURIComponent(t.dataset.id)); break;
     case 'quick-add-cart':
       if (!requireLogin()) return;
-      QM_STORE.cart.add(t.dataset.id, '默认', 1);
+      await QM_API.cart.add(t.dataset.id, '默认', 1);
       toast('已加入购物车 🛒', 'success');
       break;
     case 'toggle-fav': {
       if (!requireLogin()) return;
-      const faved = QM_STORE.fav.toggle(t.dataset.id);
-      toast(faved ? '已收藏 ♥' : '已取消收藏', faved ? 'success' : '');
+      const res = await QM_API.favorites.toggle(t.dataset.id);
+      toast(res && res.favorited ? '已收藏 ♥' : '已取消收藏', res && res.favorited ? 'success' : '');
       break;
     }
     case 'goto-category': router.push('/category/' + encodeURIComponent(t.dataset.id)); break;
@@ -233,6 +240,8 @@ onMounted(() => {
     /* 刷新页面恢复登录态（sessionStorage）后立即上线，无需先进消息中心 */
     if (online) ensureChatSocket();
   });
+  /* 恢复登录态（刷新页面）后同步一次服务端商城数据（购物车角标 / 收藏状态等） */
+  refreshServerData();
   verifySavedSession();
   guardTimer = setInterval(sessionGuard, QM_CFG.TOKEN_CHECK_INTERVAL || 60 * 1000);
   registerViewRefresh(() => { viewKey.value++; });

@@ -9,6 +9,7 @@
 import { computed, onBeforeUnmount } from 'vue';
 import QM_UI from '../core/ui.js';
 import QM_STORE from '../core/store.js';
+import QM_API from '../core/api.js';
 import { refreshView } from '../core/viewRefresh.js';
 
 const { esc, toast, modal, confirmDialog } = QM_UI;
@@ -31,30 +32,34 @@ const offs = [
 ];
 onBeforeUnmount(() => { offs.forEach(off => { try { off(); } catch (e) { /* 忽略 */ } }); });
 
-/* ---------- 头像选择预设（emoji + 底色，存于 user.avatar / user.avatarColor） ---------- */
-const AVATARS = ['😀', '🦊', '🐱', '🐰', '🐻', '🐼', '🦁', '🐯', '🦄', '🐧', '🌸', '🍀', '🌟', '🔥', '🎧', '🍉'];
-const AVATAR_COLORS = ['#ff6a2b', '#6b6bdf', '#d971a4', '#38ad90', '#e08b5e', '#4b6cb7', '#ff416c', '#5f2c82'];
+/* ---------- 头像：上传阿里云 OSS ----------
+   user.avatar 存的是图片完整地址（旧数据可能是 emoji 字符，显示时兼容回退；
+   底色调色盘已移除，不再有 avatarColor 字段）。 */
+const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 头像图片大小上限 5MB
+/* 判断头像是否为图片地址：https 为 OSS 落库地址，blob: 为弹窗内本地预览地址 */
+const isAvatarImage = (v) => typeof v === 'string' && /^(https?:|blob:)/i.test(v.trim());
 
 /* 资料摘要文案（性别 / 签名），显示在封面副标题 */
 function userProfileText() {
-  if (!user) return '';
+  const me = user.value;
+  if (!me) return '';
   const parts = [];
-  if (user.gender === 'male') parts.push('♂ 男');
-  else if (user.gender === 'female') parts.push('♀ 女');
+  if (me.gender === 'male') parts.push('♂ 男');
+  else if (me.gender === 'female') parts.push('♀ 女');
   else parts.push('保密');
-  if (user.signature) parts.push('「' + user.signature + '」');
+  if (me.signature) parts.push('「' + me.signature + '」');
   return parts.join(' · ');
 }
 
 /* ---------- 编辑资料弹窗（昵称 / 头像 / 性别 / 个性签名） ---------- */
 function profileModal() {
-  if (!user) return toast('请先登录', 'error');
+  const me = user.value; // computed 在 script 中不会自动解包，必须取 .value
+  if (!me) return toast('请先登录', 'error');
   const m = modal(`
-    <div style="position:relative">
-      <button class="modal-close" data-close>×</button>
+    <div>
       <h3>编辑资料</h3>
-      <p class="modal-sub">修改昵称、头像、性别与个性签名；收货地址请在「我的服务 → 收货地址」中管理</p>
-      <div class="form-row"><label>昵称</label><input id="pfNickname" maxlength="20" placeholder="怎么称呼你" /></div>
+      <p class="modal-sub">修改昵称、头像、性别与个性签名</p>
+      <div class="form-row"><label>昵称</label><input id="pfNickname" maxlength="20" /></div>
       <div class="form-row"><label>性别</label>
         <div class="gender-row">
           <label class="gender-opt"><input type="radio" name="pfGender" value="male" />男</label>
@@ -63,10 +68,14 @@ function profileModal() {
         </div>
       </div>
       <div class="form-row"><label>头像</label>
-        <div id="pfAvatarList" class="avatar-pick">${AVATARS.map(a => `<button type="button" class="avatar-opt" data-avatar="${esc(a)}">${a}</button>`).join('')}</div>
-      </div>
-      <div class="form-row"><label>头像底色</label>
-        <div id="pfColorList" class="color-pick">${AVATAR_COLORS.map(c => `<button type="button" class="color-opt" data-color="${c}" style="background:${c}"></button>`).join('')}</div>
+        <div class="avatar-upload">
+          <span id="pfAvatarPreview" class="member-avatar big avatar-preview"></span>
+          <div class="avatar-upload-actions">
+            <button type="button" class="btn btn-plain" id="pfPickAvatar">选择图片</button>
+            <small>支持 jpg / png / webp / gif，不超过 5MB；图片将上传至阿里云 OSS</small>
+            <input type="file" id="pfAvatarFile" accept="image/*" class="hidden" />
+          </div>
+        </div>
       </div>
       <div class="form-row"><label>个性签名</label><input id="pfSignature" maxlength="40" placeholder="一句话介绍自己" /></div>
       <div class="modal-actions" style="margin-top:0">
@@ -75,44 +84,75 @@ function profileModal() {
       </div>
     </div>`);
 
-  let avatar = (user.avatar || '').trim();
-  let color = user.avatarColor || '#ff6a2b';
-  const avatarList = m.root.querySelector('#pfAvatarList');
-  const colorList = m.root.querySelector('#pfColorList');
-  const refreshMark = () => {
-    avatarList.querySelectorAll('.avatar-opt').forEach(b => b.classList.toggle('active', b.dataset.avatar === avatar));
-    colorList.querySelectorAll('.color-opt').forEach(b => b.classList.toggle('active', b.dataset.color === color));
+  let avatar = (me.avatar || '').trim();        // 当前头像（旧数据可能是 emoji）
+  let pickedFile = null;                        // 本次新选的头像文件（点保存时才上传）
+  let objectUrl = null;                         // 本地预览 URL（关闭 / 保存后释放）
+  const preview = m.root.querySelector('#pfAvatarPreview');
+  const fileInput = m.root.querySelector('#pfAvatarFile');
+  const renderPreview = () => {
+    preview.innerHTML = '';
+    if (isAvatarImage(avatar)) preview.innerHTML = `<img src="${esc(avatar)}" alt="头像" />`;
+    else preview.textContent = avatar || (me.nickname || '语').slice(0, 1);
   };
-  m.root.querySelector('#pfNickname').value = user.nickname || '';
-  const gender = ['male', 'female', 'secret'].includes(user.gender) ? user.gender : 'secret';
+  /* 预填注册时已有的昵称 / 性别 / 签名 / 头像 */
+  m.root.querySelector('#pfNickname').value = me.nickname || '';
+  const gender = ['male', 'female', 'secret'].includes(me.gender) ? me.gender : 'secret';
   const g = m.root.querySelector('input[name="pfGender"][value="' + gender + '"]');
   if (g) g.checked = true;
-  m.root.querySelector('#pfSignature').value = user.signature || '';
-  refreshMark();
-  avatarList.onclick = e => { const b = e.target.closest('[data-avatar]'); if (b) { avatar = b.dataset.avatar; refreshMark(); } };
-  colorList.onclick = e => { const b = e.target.closest('[data-color]'); if (b) { color = b.dataset.color; refreshMark(); } };
-  m.root.querySelector('#pfSave').onclick = () => {
+  m.root.querySelector('#pfSignature').value = me.signature || '';
+  renderPreview();
+  /* 关闭弹窗（取消 / 保存）时释放本地预览 URL，避免内存泄漏 */
+  m.root.addEventListener('click', e => {
+    if (e.target.closest('[data-close]') && objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+  });
+  m.root.querySelector('#pfPickAvatar').onclick = () => fileInput.click();
+  fileInput.onchange = () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    if (!/^image\//.test(f.type)) return toast('请选择图片文件', 'error');
+    if (f.size > AVATAR_MAX_SIZE) return toast('头像图片不能超过 5MB', 'error');
+    if (objectUrl) URL.revokeObjectURL(objectUrl); // 换图时先释放上一张预览
+    pickedFile = f;
+    objectUrl = URL.createObjectURL(f);
+    avatar = objectUrl;
+    renderPreview();
+  };
+  m.root.querySelector('#pfSave').onclick = async () => {
     const nickname = m.root.querySelector('#pfNickname').value.trim();
     if (!nickname) return toast('昵称不能为空', 'error');
     const picked = m.root.querySelector('input[name="pfGender"]:checked');
-    QM_STORE.user.update({
-      nickname,
-      gender: picked ? picked.value : 'secret',
-      avatar,
-      avatarColor: color,
-      signature: m.root.querySelector('#pfSignature').value.trim()
-    });
-    toast('资料已更新', 'success');
-    m.close();
-    refreshView(); // 重挂载本页刷新封面头像 / 昵称 / 性别 / 签名
+    const signature = m.root.querySelector('#pfSignature').value.trim();
+    const btn = m.root.querySelector('#pfSave');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      /* ① 选过新图 → 先上传到阿里云 OSS，拿到图片地址（multipart → POST /users/avatar） */
+      if (pickedFile) {
+        const data = await QM_API.user.uploadAvatar(pickedFile);
+        const url = data && (data.url || data.avatar || data.fileUrl);
+        if (!url) throw new Error('头像上传成功但未返回图片地址');
+        avatar = url;
+      }
+      /* ② 资料（含头像地址）提交后端落库（PUT /users/profile），成功后同步本地登录态 */
+      const payload = { nickname, gender: picked ? picked.value : 'secret', avatar, signature };
+      await QM_API.user.updateProfile(payload);
+      QM_STORE.user.update(payload);
+      if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+      toast('资料已更新', 'success');
+      m.close();
+      refreshView(); // 重挂载本页刷新封面头像 / 昵称 / 性别 / 签名
+    } catch (e) {
+      /* 保存失败：保留弹窗与本地预览（不释放 objectUrl），便于用户重试 */
+      toast(e.message || '保存失败', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '保存资料';
+    }
   };
 }
 
 /* ---------- 地址管理弹窗（原 addressModal，对应预留接口 /addresses） ---------- */
 function addressModal() {
   const m = modal(`
-    <div style="position:relative">
-      <button class="modal-close" data-close>×</button>
+    <div>
       <h3>收货地址</h3>
       <p class="modal-sub">新增、编辑、删除与设置默认地址（对应预留接口 /addresses）</p>
       <div id="addrList"></div>
@@ -128,6 +168,7 @@ function addressModal() {
         </div>
       </div>
       <div class="modal-actions">
+        <button class="btn btn-plain" data-close>关闭</button>
         <button class="btn btn-primary" id="addAddr">＋ 新增地址</button>
       </div>
     </div>`, { wide: true });
@@ -193,11 +234,11 @@ function addressModal() {
 /* ---------- 优惠券弹窗（原 couponModal，对应预留接口 /coupons） ---------- */
 function couponModal() {
   const m = modal(`
-    <div style="position:relative">
-      <button class="modal-close" data-close>×</button>
+    <div>
       <h3>我的优惠券</h3>
       <p class="modal-sub">领取与使用状态（对应预留接口 /coupons）</p>
       <div id="couponList"></div>
+      <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
     </div>`, { wide: true });
   const renderList = () => {
     const list = QM_STORE.coupon.list();
@@ -222,7 +263,7 @@ function couponModal() {
   <div>
     <div class="page-head"><div><div class="crumb">首页 / 个人中心</div><h1>我的青集市</h1></div></div>
     <div class="profile-cover">
-      <span class="member-avatar big" :style="{ background: user ? (user.avatarColor || '#ff6a2b') : '#ff6a2b' }">{{ user ? ((user.avatar && user.avatar.trim()) ? user.avatar : user.nickname.slice(0, 1)) : '语' }}</span>
+      <span class="member-avatar big"><img v-if="user && isAvatarImage(user.avatar)" :src="user.avatar" alt="头像" /><template v-else>{{ user ? ((user.avatar && user.avatar.trim()) ? user.avatar : user.nickname.slice(0, 1)) : '语' }}</template></span>
       <div>
         <h1>{{ user ? user.nickname : '轻语用户' }}</h1>
         <p>{{ user ? '账号 @' + user.userId + (userProfileText() ? ' · ' + userProfileText() : '') : '登录后享受完整服务 · 记录每一次心动的发现' }}</p>

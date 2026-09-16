@@ -69,13 +69,18 @@ async function commitLogin(data) {
     nickname: data.name || data.username || '用户'
   };
   if (!user.userId) throw new Error('登录失败：响应缺少账号字段(username)，请检查后端登录接口');
-  /* 账号若已开店则附带店铺绑定 shopId（演示映射见 mock.shopOwners，后端接入后由服务端返回） */
+  /* 登录响应若带回资料字段（后端接入后返回 avatar / gender / signature / shopId）则直接采用，
+     让数据库里的头像地址 / 性别 / 签名在重新登录后依然生效 */
+  if (data.avatar !== undefined) user.avatar = data.avatar;
+  if (data.gender !== undefined) user.gender = data.gender;
+  if (data.signature !== undefined) user.signature = data.signature;
+  if (data.shopId !== undefined) user.shopId = data.shopId;
+  /* 账号若已开店则附带店铺绑定 shopId（演示映射见 mock.shopOwners；后端已返回时不再覆盖） */
   const owner = QM_MOCK.shopOf(user.userId);
   if (owner) {
     const svc = QM_MOCK.serviceById(owner.shopId);
-    user.shopId = owner.shopId;
-    user.avatar = (svc && svc.avatar) || '';
-    user.avatarColor = (svc && svc.color) || '#ff6a2b';
+    if (!user.shopId) user.shopId = owner.shopId;
+    if (!user.avatar) user.avatar = (svc && svc.avatar) || '';
   }
   QM_STORE.user.set(user, data.token);
   toast(`欢迎回来，${user.nickname}` + (owner ? '（已开店）' : ''), 'success');

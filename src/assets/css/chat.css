@@ -125,6 +125,52 @@
 .file-bubble .file-dl:hover { opacity: .85; }
 .file-bubble .file-dl.disabled { background: #e8eaee; color: var(--text-3); cursor: not-allowed; }
 
+/* ---------- 媒体类文件气泡：图片缩略图 / 视频内嵌播放 / 音频播放条（免下载即可预览） ---------- */
+.file-bubble.media { display: block; padding: 10px; min-width: 220px; max-width: 320px; }
+.file-bubble.media .file-media-head { display: flex; align-items: center; gap: 10px; }
+.file-bubble.media .file-media-head .file-info { flex: 1; }
+.file-bubble .file-dl { border: none; cursor: pointer; font-family: inherit; }
+.file-thumb {
+  display: block; width: 100%; max-height: 200px; margin-top: 9px; object-fit: cover;
+  border-radius: var(--radius); background: #f2f4f7; cursor: zoom-in;
+  transition: opacity var(--dur) var(--ease);
+}
+.file-thumb:hover { opacity: .9; }
+.file-video { display: block; width: 100%; max-height: 220px; margin-top: 9px; border-radius: var(--radius); background: #000; }
+.file-audio { display: block; width: 100%; margin-top: 9px; }
+.file-thumb-fail {
+  margin-top: 9px; padding: 14px 12px; border-radius: var(--radius); font-size: 12px; line-height: 1.6;
+  background: #fff6f6; border: 1px dashed #f0c2c2; color: #b25b5b;
+}
+.file-media-foot { display: flex; gap: 8px; margin-top: 9px; }
+.file-media-foot .file-dl { flex: 1; text-align: center; }
+.file-dl.ghost { background: #f2f4f7; color: var(--text-2); }
+.file-dl.ghost:hover { background: #e8eaee; }
+
+/* ---------- 媒体预览灯箱（点缩略图 / 「大屏播放」弹出，Esc 或点空白关闭） ---------- */
+.media-lightbox {
+  position: fixed; inset: 0; z-index: 4000; background: rgba(16, 18, 24, .82);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px 24px 76px;
+}
+.media-lightbox .ml-body { display: flex; align-items: center; justify-content: center; max-width: 92vw; max-height: 78vh; }
+.media-lightbox .ml-body img { max-width: 92vw; max-height: 78vh; border-radius: 8px; box-shadow: 0 18px 50px rgba(0, 0, 0, .5); }
+.media-lightbox .ml-body video { max-width: 92vw; max-height: 78vh; border-radius: 8px; background: #000; }
+.media-lightbox .ml-body audio { width: min(560px, 88vw); }
+.media-lightbox .ml-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 10px;
+  padding: 12px 20px; background: rgba(22, 24, 30, .92); color: #fff;
+}
+.media-lightbox .ml-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.media-lightbox .ml-btn {
+  flex: none; border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: #fff;
+  border-radius: 999px; padding: 6px 14px; font-size: 12px; cursor: pointer; text-decoration: none;
+  transition: background var(--dur) var(--ease);
+}
+.media-lightbox .ml-btn:hover { background: rgba(255, 255, 255, .16); }
+.media-lightbox .ml-btn.primary { background: var(--brand); border-color: var(--brand); }
+.media-lightbox .ml-btn.primary:hover { opacity: .88; }
+
 /* 输入区 */
 .chat-compose { border-top: 1px solid var(--border); padding: 11px 16px 13px; background: #fff; }
 .compose-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 9px; }

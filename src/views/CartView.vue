@@ -51,7 +51,10 @@ function bindCheckout() {
   };
 }
 
-function renderList() {
+/* 每次渲染前先走接口同步（后端实现后为真实数据；未实现时自动回退本地演示数据），
+   随后按本地 store 渲染——服务端数据为准、本地缓存兜底 */
+async function renderList() {
+  try { await QM_API.cart.list(); } catch (e) { /* 业务失败不阻断本地渲染 */ }
   const items = QM_STORE.cart.list();
   const allChecked = items.length > 0 && items.every(i => i.checked);
   const selected = items.filter(i => i.checked);
@@ -93,8 +96,7 @@ function openCheckout(items) {
   let payMethod = '支付宝';
 
   const m = modal(`
-      <div style="position:relative">
-        <button class="modal-close" data-close>×</button>
+      <div>
         <h3>确认订单</h3>
         <p class="modal-sub">共 ${items.reduce((s, i) => s + i.qty, 0)} 件商品</p>
         <div class="form-row">
@@ -167,8 +169,9 @@ function openCheckout(items) {
     };
     try {
       const order = await QM_API.orders.create(payload);
-      QM_STORE.cart.remove(items.map(i => i.key));
-      QM_STORE.orders.pay(order.id);
+      /* 下单成功后：服务端删除已购条目 → 支付（演示自动支付）→ 跳转订单页 */
+      await QM_API.cart.remove(items.map(i => i.key));
+      await QM_API.orders.pay(order.id);
       m.close();
       toast('下单成功！演示订单已自动支付', 'success');
       router.push('/orders');   // 原 QM_ROUTER.go('/orders')
@@ -192,23 +195,23 @@ async function onCartRootClick(e) {
     QM_STORE.cart.toggleAll(!allChecked); renderList();
   } else if (action === 'cart-del') {
     if (await confirmDialog('删除商品', '确定将该商品移出购物车吗？', '删除', true)) {
-      QM_STORE.cart.remove([t.dataset.key]); renderList(); toast('已删除');
+      await QM_API.cart.remove([t.dataset.key]); renderList(); toast('已删除');
     }
   } else if (action === 'cart-clear') {
     if (await confirmDialog('清空购物车', '确定清空购物车中的所有商品吗？', '清空', true)) {
-      QM_STORE.cart.clear(); renderList(); toast('购物车已清空');
+      await QM_API.cart.clear(); renderList(); toast('购物车已清空');
     }
   } else if (action === 'cart-qty') {
     const item = QM_STORE.cart.list().find(i => i.key === t.dataset.key);
-    if (item) { QM_STORE.cart.setQty(t.dataset.key, item.qty + Number(t.dataset.dir)); renderList(); }
+    if (item) { await QM_API.cart.update(t.dataset.key, item.qty + Number(t.dataset.dir)); renderList(); }
   } else if (action === 'cart-qty-input') {
     const input = t;
-    input.onchange = () => { const v = parseInt(input.value, 10); if (v >= 1) { QM_STORE.cart.setQty(input.dataset.key, v); renderList(); } };
+    input.onchange = async () => { const v = parseInt(input.value, 10); if (v >= 1) { await QM_API.cart.update(input.dataset.key, v); renderList(); } };
   }
 }
 
-onMounted(() => {
-  renderList();
+onMounted(async () => {
+  await renderList();
   cartRootEl.value.addEventListener('click', onCartRootClick);
 
   /* 「立即购买」跳转而来 → 自动打开结算。

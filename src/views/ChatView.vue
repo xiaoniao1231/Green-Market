@@ -34,6 +34,8 @@ const state = reactive({
   emojiOpen: false,
   /* 文件上传中：上传期间禁用「📎 发送文件」按钮、显示进度提示，避免重复点击传多份 */
   uploading: false,
+  /* 媒体预览灯箱：{ kind:'image'|'video'|'audio', url, name } | null —— 点图片缩略图 / 「大屏播放」打开 */
+  preview: null,
   /* 在线状态刷新计数：QM_STORE.state 不是响应式对象，靠它驱动 peer computed 重算，
      否则收到 PRESENCE 广播后左侧绿点会更新，聊天面板头部的「● 在线」却不变 */
   presenceTick: 0
@@ -162,6 +164,68 @@ function fileMsgText(name, size) {
   return `[文件] ${name}（${fmtSize(size) || '0KB'}）`;
 }
 
+/* ---------- 文件消息：图片 / 视频 / 音频免下载直接预览 ----------
+   类型判定依据文件名扩展名（后端 content 列存的就是原始文件名）；文件名没有
+   扩展名时退化为用 OSS 地址里的扩展名判断；都不匹配则维持「文件 + 下载」。 */
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)(\?|#|$)/i;
+const VIDEO_EXT = /\.(mp4|webm|ogv|mov|m4v|mkv)(\?|#|$)/i;
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac|opus)(\?|#|$)/i;
+
+function fileKind(name, url) {
+  const hay = String(name || '') + ' ' + String(url || '');
+  if (IMAGE_EXT.test(hay)) return 'image';
+  if (VIDEO_EXT.test(hay)) return 'video';
+  if (AUDIO_EXT.test(hay)) return 'audio';
+  return 'file';
+}
+
+function kindIcon(kind) {
+  return kind === 'image' ? '🖼' : kind === 'video' ? '🎬' : kind === 'audio' ? '🎵' : '📄';
+}
+
+/* 文件气泡 HTML：媒体类内联展示（图片缩略图 / 视频内嵌播放器 / 音频播放条），
+   都带「下载」入口；非媒体文件保持原来的文件名 + 下载样式。
+   data-action="preview-media" 交给聊天区的点击委托处理，弹灯箱看大图 / 大屏播放。 */
+function fileBubbleHtml(name, size, url, kind) {
+  const meta = esc(size || '');
+  const info = `
+        <span class="file-ico">${kindIcon(kind)}</span>
+        <span class="file-info">
+          <span class="file-name" title="${esc(name)}">${esc(name)}</span>
+          <span class="file-meta">${meta}</span>
+        </span>`;
+  if (!url) {
+    return `
+      <div class="bubble file-bubble">
+        ${info}
+        <span class="file-dl disabled">无地址</span>
+      </div>`;
+  }
+  if (kind === 'file') {
+    return `
+      <div class="bubble file-bubble">
+        ${info}
+        <a class="file-dl" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>
+      </div>`;
+  }
+  const media = kind === 'image'
+    ? `<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" loading="lazy"
+            data-action="preview-media" data-kind="image" data-url="${esc(url)}" data-name="${esc(name)}" />`
+    : kind === 'video'
+      ? `<video class="file-video" src="${esc(url)}" controls preload="metadata" playsinline></video>`
+      : `<audio class="file-audio" src="${esc(url)}" controls preload="metadata"></audio>`;
+  return `
+      <div class="bubble file-bubble media">
+        <div class="file-media-head">${info}</div>
+        ${media}
+        <div class="file-media-foot">
+          <button class="file-dl" type="button" data-action="preview-media" data-kind="${kind}"
+                  data-url="${esc(url)}" data-name="${esc(name)}">${kind === 'image' ? '查看大图' : '大屏播放'}</button>
+          <a class="file-dl ghost" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>
+        </div>
+      </div>`;
+}
+
 function msgHtml(m, peerObj) {
   if (m.type === 'sys') {
     return `<div class="msg-row msg-sys"><div class="bubble">${esc(m.content)}</div></div>`;
@@ -192,21 +256,10 @@ function msgHtml(m, peerObj) {
         <span class="btn btn-primary" data-action="quick-add-cart" data-id="${esc(p.id)}">加入购物车</span></div>
       </div>` : `<div class="bubble">${esc(m.content)}</div>`;
   } else if (m.type === 'file') {
-    /* 文件消息：显示文件名 + 大小 + 打开/下载入口（地址为阿里云 OSS URL，直接可访问） */
+    /* 文件消息：图片 / 视频 / 音频免下载直接预览（缩略图、内嵌播放器），其他文件维持下载入口 */
     const name = m.name || m.content || '文件';
-    const size = fmtSize(m.size);
     const url = m.url || '';
-    bubble = `
-      <div class="bubble file-bubble">
-        <span class="file-ico">📄</span>
-        <span class="file-info">
-          <span class="file-name" title="${esc(name)}">${esc(name)}</span>
-          <span class="file-meta">${esc(size)}</span>
-        </span>
-        ${url
-          ? `<a class="file-dl" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>`
-          : '<span class="file-dl disabled">无地址</span>'}
-      </div>`;
+    bubble = fileBubbleHtml(name, fmtSize(m.size), url, fileKind(name, url));
   } else {
     bubble = `<div class="bubble">${esc(m.content)}</div>`;
   }
@@ -421,6 +474,38 @@ async function onFileInputChange(e) {
 /* ---------- 会话区事件委托（原版 mount 里 #chatPanel / #chatContacts 的 onclick） ---------- */
 /* 注：消息气泡里的 open-product / quick-add-cart 由 App.vue 全局代理处理，这里只处理
    chat-clear 这类页面特有动作，避免重复加购 / 重复跳转（见移植规范第 4 条）。 */
+/* ---------- 媒体预览灯箱（图片看大图 / 视频大屏播放 / 音频播放） ---------- */
+function openPreview(kind, url, name) {
+  if (!url) return;
+  state.preview = { kind: kind || 'image', url, name: name || '文件' };
+}
+function closePreview() {
+  state.preview = null;
+}
+/* 消息区点击委托：v-html 渲染出来的气泡用 data-action 声明意图（与页面其他委托口径一致） */
+function onMessagesClick(e) {
+  const t = e.target.closest ? e.target.closest('[data-action="preview-media"]') : null;
+  if (!t) return;
+  e.preventDefault();
+  openPreview(t.dataset.kind, t.dataset.url, t.dataset.name);
+}
+/* 图片加载失败（Bucket 私有读 / 地址失效）：把缩略图换成可读提示，而不是只留一个破图图标。
+   注意 error 事件不冒泡，必须用捕获阶段监听。 */
+function onMediaError(e) {
+  const el = e.target;
+  if (!el || el.tagName !== 'IMG' || !el.classList || !el.classList.contains('file-thumb')) return;
+  const box = el.parentElement;
+  if (!box || box.querySelector('.file-thumb-fail')) return;
+  const tip = document.createElement('div');
+  tip.className = 'file-thumb-fail';
+  tip.textContent = '图片加载失败（可能是 Bucket 非公共读或地址已失效），可点「下载」查看';
+  el.replaceWith(tip);
+}
+/* Esc 关闭预览灯箱 */
+function onPreviewKeydown(e) {
+  if (e.key === 'Escape' && state.preview) closePreview();
+}
+
 function onPanelClick(e) {
   const t = e.target.closest ? e.target.closest('[data-action]') : null;
   if (!t) return;
@@ -692,6 +777,9 @@ onMounted(() => {
   alive = true;
   docEmojiHandler = onDocEmojiClick;
   document.addEventListener('click', docEmojiHandler);
+  document.addEventListener('keydown', onPreviewKeydown);
+  /* 捕获阶段监听图片加载失败（error 事件不冒泡） */
+  document.addEventListener('error', onMediaError, true);
   offSocketMessage = QM_CHAT_SOCKET.onMessage(handleSocketFrame);
   offSocketClose = QM_CHAT_SOCKET.onClose(() => {
     if (!alive) return;
@@ -711,6 +799,8 @@ onBeforeUnmount(() => {
   if (offSocketMessage) offSocketMessage();
   if (offSocketClose) offSocketClose();
   if (docEmojiHandler) { document.removeEventListener('click', docEmojiHandler); docEmojiHandler = null; }
+  document.removeEventListener('keydown', onPreviewKeydown);
+  document.removeEventListener('error', onMediaError, true);
   /* 注意：这里不关闭全局实时通道 —— 连接在 App.vue 层随登录态存亡，
      离开消息中心页用户仍保持在线（原实现在此 closeSocket，导致一离开就下线） */
 });
@@ -757,7 +847,7 @@ onBeforeUnmount(() => {
             <b>{{ state.ws ? '已连接后端' : '未连接实时通道' }}</b>
             · {{ state.ws ? 'WebSocket 实时消息通道开启中' : '点击右上「↻ 刷新」重连（消息仍可发送并存入服务器）' }}
           </div>
-          <div class="chat-messages" id="chatMessages" v-html="messagesBoxHtml" @scroll="onMessagesScroll"></div>
+          <div class="chat-messages" id="chatMessages" v-html="messagesBoxHtml" @scroll="onMessagesScroll" @click="onMessagesClick"></div>
           <footer class="chat-compose">
             <div class="compose-tools" style="position:relative">
               <button class="icon-btn" id="emojiBtn" title="表情" @click.stop="toggleEmoji">😊</button>
@@ -777,6 +867,20 @@ onBeforeUnmount(() => {
           </footer>
         </template>
       </section>
+    </div>
+    <!-- 媒体预览灯箱：图片看大图 / 视频大屏播放 / 音频播放，点击空白或按 Esc 关闭 -->
+    <div v-if="state.preview" class="media-lightbox" @click="closePreview">
+      <div class="ml-body" @click.stop>
+        <img v-if="state.preview.kind === 'image'" :src="state.preview.url" :alt="state.preview.name" />
+        <video v-else-if="state.preview.kind === 'video'" :src="state.preview.url" controls autoplay playsinline></video>
+        <audio v-else :src="state.preview.url" controls autoplay></audio>
+      </div>
+      <div class="ml-bar" @click.stop>
+        <span class="ml-name" :title="state.preview.name">{{ state.preview.name }}</span>
+        <a class="ml-btn" :href="state.preview.url" target="_blank" rel="noopener">新标签打开</a>
+        <a class="ml-btn" :href="state.preview.url" :download="state.preview.name">下载</a>
+        <button class="ml-btn primary" @click="closePreview">关闭（Esc）</button>
+      </div>
     </div>
   </div>
 </template>

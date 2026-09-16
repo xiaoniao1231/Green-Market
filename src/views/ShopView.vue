@@ -61,8 +61,7 @@ function openShopInfo() {
   const s = shop.value;
   if (!s) return;
   modal(`
-    <div style="position:relative">
-      <button class="modal-close" data-close>×</button>
+    <div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <span class="shop-avatar lg" style="background:${s.color}">${s.avatar || '店'}</span>
         <div>
@@ -79,6 +78,7 @@ function openShopInfo() {
       </div>
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-primary" data-action="goto-chat" data-id="${esc(s.userId || s.id)}">联系卖家</button>
+        <button class="btn btn-plain" data-close>关闭</button>
       </div>
     </div>`, { wide: true });
 }

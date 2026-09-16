@@ -78,8 +78,7 @@ function openShopInfo() {
   const s = shopInfo.value;
   if (!s) return;
   QM_UI.modal(`
-    <div style="position:relative">
-      <button class="modal-close" data-close>×</button>
+    <div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <span class="shop-avatar lg" style="background:${s.color}">${s.avatar || '店'}</span>
         <div>
@@ -97,6 +96,7 @@ function openShopInfo() {
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-primary" data-action="goto-chat" data-id="${s.userId || s.id}">联系卖家</button>
         <button class="btn btn-plain" data-action="goto-shop" data-id="${s.shopName}">进店逛逛</button>
+        <button class="btn btn-plain" data-close>关闭</button>
       </div>
     </div>`, { wide: true });
 }

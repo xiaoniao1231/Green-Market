@@ -294,15 +294,13 @@
 .gender-opt:has(input:checked) { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; }
 .gender-opt input { width: auto; height: auto; margin: 0; accent-color: var(--brand); }
 
-/* ---------- 编辑资料弹窗：头像 / 底色选择 ---------- */
-.avatar-pick { display: flex; flex-wrap: wrap; gap: 6px; }
-.avatar-opt { width: 42px; height: 42px; font-size: 22px; display: inline-flex; align-items: center; justify-content: center; border: 2px solid transparent; border-radius: var(--radius); cursor: pointer; background: var(--fill); transition: all var(--dur) var(--ease); }
-.avatar-opt:hover { background: var(--brand-soft); transform: translateY(-2px); }
-.avatar-opt.active { border-color: var(--brand); background: var(--brand-soft); }
-.color-pick { display: flex; flex-wrap: wrap; gap: 8px; }
-.color-opt { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: all var(--dur) var(--ease); }
-.color-opt:hover { transform: scale(1.14); }
-.color-opt.active { border-color: var(--text); box-shadow: 0 0 0 2px #fff inset; }
+/* ---------- 编辑资料弹窗：头像上传（阿里云 OSS，底色选择已移除） ---------- */
+.avatar-upload { display: flex; align-items: center; gap: 16px; }
+.avatar-upload .avatar-preview { flex: none; }
+/* 弹窗内的头像预览用稍小尺寸（72→56），让编辑弹窗在常规视口下不用滚动 */
+#pfAvatarPreview { width: 56px; height: 56px; font-size: 24px; }
+.avatar-upload-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.avatar-upload-actions small { color: var(--text-3); font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 1080px) {
   .detail-layout { grid-template-columns: 360px 1fr; }

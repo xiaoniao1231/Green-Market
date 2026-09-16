@@ -2,12 +2,17 @@
 /* =========================================================
    青集市 · views/OrdersView.vue —— 我的订单
    移植自 mall-web/js/pages/orders.js（页面结构 / 交互逻辑不变）
+   数据来源：QM_API.orders（后端实现后为真实数据；未实现时
+   api.js 自动回退本地演示数据，页面无感切换）：
+   · 列表 GET /orders?status=&page=&size=
+   · 计数 GET /orders/counts（顶部各页签数量）
+   · 支付 / 取消 / 确认收货 / 提醒发货 / 物流均走接口
    ========================================================= */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_MOCK from '../core/mock.js';
-import QM_STORE from '../core/store.js';
+import QM_API from '../core/api.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
 const { esc, price, artStyle, artHtml, toast, modal, confirmDialog } = QM_UI;
@@ -47,8 +52,9 @@ function orderCard(o) {
       <div class="order-body">
         ${o.items.map(it => {
           const p = QM_MOCK.byId(it.productId);
+          const art = it.art || (p ? p.art : null);   // 接口条目标配 art 快照，优先使用
           return `<div class="oi-row">
-            <span class="oi-art" style="${artStyle(p ? p.art : null)}">${artHtml(p ? p.art : null)}</span>
+            <span class="oi-art" style="${artStyle(art)}">${artHtml(art)}</span>
             <div class="oi-info"><h4 class="ellipsis" data-action="open-product" data-id="${esc(it.productId)}">${esc(it.title)}</h4><small>规格：${esc(it.sku)} × ${it.qty}</small></div>
             <span class="oi-price">${price(it.price * it.qty)}</span>
           </div>`;
@@ -61,86 +67,109 @@ function orderCard(o) {
     </div>`;
 }
 
-function logisticsModal(o) {
+/* 物流追踪弹窗：轨迹优先取接口返回（GET /orders/{id}/logistics），空则回退订单内嵌轨迹 */
+function logisticsModal(o, list) {
+  const items = (list && list.length) ? list : (o.logistics || []);
   modal(`
-    <div style="position:relative">
-      <button class="modal-close" data-close>×</button>
+    <div>
       <h3>物流追踪</h3>
       <p class="modal-sub">订单号 ${esc(o.orderNo)} · 承运商：轻集快递</p>
       <div class="logistics">
-        ${o.logistics.map((l, i) => `
+        ${items.map((l, i) => `
           <div class="logi-item ${i === 0 ? 'latest' : ''}">
             <div><b>${esc(l.text)}</b><small>${new Date(l.time).toLocaleString('zh-CN')}</small></div>
-          </div>`).join('')}
+          </div>`).join('') || '<p class="hint">暂无物流信息</p>'}
       </div>
-      <p class="modal-sub" style="margin:14px 0 0">演示数据：后端物流接口（GET /orders/{id}/logistics）落地后展示真实轨迹</p>
+      <p class="modal-sub" style="margin:14px 0 0">物流轨迹来自订单接口（GET /orders/{id}/logistics）</p>
+      <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
     </div>`, { wide: true });
 }
 
 /* 当前激活页签（初始来自 route.query.status；原版点击页签仅本地切换、不改 URL） */
 const tab = ref(route.value.query.status || '');
-/* 各页签订单数（QM_STORE 非响应式，变更后手动重渲染） */
+/* 各页签订单数（GET /orders/counts） */
 const counts = ref({});
+/* 当前页签订单列表（接口返回，本地 store 结构） */
+const orders = ref([]);
 /* 当前页签订单列表 HTML */
 const listHtml = ref('');
 
-function renderCounts() {
-  const c = {};
-  TABS.forEach(t => {
-    const n = t.key ? QM_STORE.orders.list(t.key).length : QM_STORE.state.orders.length;
-    c[t.key] = n || '';
-  });
-  counts.value = c;
+/* 统一刷新：拉当前页签订单 + 各状态计数，再重渲染 */
+async function refresh() {
+  try {
+    const data = await QM_API.orders.list(tab.value);
+    orders.value = (data && data.list) || [];
+    counts.value = await QM_API.orders.counts();
+  } catch (e) {
+    orders.value = [];
+    counts.value = {};
+  }
+  renderList();
 }
 
 function renderList() {
-  const orders = QM_STORE.orders.list(tab.value);
-  listHtml.value = orders.length
-    ? orders.map(orderCard).join('')
+  listHtml.value = orders.value.length
+    ? orders.value.map(orderCard).join('')
     : `<div class="order-card"><div class="empty-state"><div class="empty-icon">🧾</div><h3>暂无相关订单</h3><p>去首页挑选好物，下单后订单会显示在这里</p><a class="btn btn-primary" href="#/home">去逛逛</a></div></div>`;
 }
 
 function switchTab(key) {
   tab.value = key;
-  renderList();
+  refresh();
 }
 
-/* 订单列表事件委托（原版 #orderList.onclick，逻辑一致） */
+/* 订单列表事件委托（原版 #orderList.onclick，逻辑一致；操作全部走接口后刷新） */
 async function onListClick(e) {
   const t = e.target.closest('[data-action]');
   if (!t) return;
   const id = t.dataset.id;
-  const o = QM_STORE.orders.get(id);
+  const o = orders.value.find(x => x.id === id);
   switch (t.dataset.action) {
     case 'order-pay':
-      QM_STORE.orders.pay(id); toast('支付成功！卖家将尽快发货', 'success'); renderCounts(); renderList(); break;
+      try { await QM_API.orders.pay(id); toast('支付成功！卖家将尽快发货', 'success'); await refresh(); }
+      catch (err) { toast(err.message, 'error'); }
+      break;
     case 'order-cancel':
-      if (await confirmDialog('取消订单', '确定取消该订单吗？', '取消订单', true)) { QM_STORE.orders.cancel(id); toast('订单已取消'); renderCounts(); renderList(); }
+      if (await confirmDialog('取消订单', '确定取消该订单吗？', '取消订单', true)) {
+        try { await QM_API.orders.cancel(id); toast('订单已取消'); await refresh(); }
+        catch (err) { toast(err.message, 'error'); }
+      }
       break;
-    case 'order-remind': toast('已提醒卖家发货～'); break;
+    case 'order-remind':
+      try { await QM_API.orders.remind(id); toast('已提醒卖家发货～'); }
+      catch (err) { toast(err.message, 'error'); }
+      break;
     case 'order-confirm':
-      if (await confirmDialog('确认收货', '请确认已收到商品，确认后订单完成。', '确认收货')) { QM_STORE.orders.confirm(id); toast('交易完成，感谢您的信任！', 'success'); renderCounts(); renderList(); }
+      if (await confirmDialog('确认收货', '请确认已收到商品，确认后订单完成。', '确认收货')) {
+        try { await QM_API.orders.confirm(id); toast('交易完成，感谢您的信任！', 'success'); await refresh(); }
+        catch (err) { toast(err.message, 'error'); }
+      }
       break;
-    case 'order-logistics': if (o) logisticsModal(o); break;
+    case 'order-logistics':
+      if (o) {
+        try {
+          const data = await QM_API.orders.logistics(id);
+          logisticsModal(o, (data && data.list) || []);
+        } catch (err) { toast(err.message, 'error'); }
+      }
+      break;
     case 'order-rebuy':
-      if (o) o.items.forEach(it => QM_STORE.cart.add(it.productId, it.sku, it.qty));
-      toast('已加入购物车'); router.push('/cart');
+      if (o) {
+        try {
+          for (const it of o.items) await QM_API.cart.add(it.productId, it.sku, it.qty);
+          toast('已加入购物车'); router.push('/cart');
+        } catch (err) { toast(err.message, 'error'); }
+      }
       break;
   }
 }
 
 /* 路由 query.status 变化（同一组件复用，如 #/orders ↔ #/orders?status=…）时复位页签并重渲染 */
-watch(() => route.value.query.status, v => { tab.value = v || ''; renderCounts(); renderList(); });
+watch(() => route.value.query.status, v => { tab.value = v || ''; refresh(); });
 
-/* 原版每次进入页面全新渲染；此处额外订阅 orders 事件，外部下单/变更时保持同步 */
-const offs = [];
-onMounted(() => {
-  renderCounts();
-  renderList();
-  offs.push(QM_STORE.on('orders', () => { renderCounts(); renderList(); }));
-});
+onMounted(() => { refresh(); });
 
-onBeforeUnmount(() => { offs.forEach(off => off()); });
+onBeforeUnmount(() => { /* 无订阅，无需清理 */ });
 </script>
 
 <template>
@@ -158,7 +187,7 @@ onBeforeUnmount(() => { offs.forEach(off => off()); });
         :class="{ active: tab === t.key }"
         :data-id="t.key"
         @click="switchTab(t.key)"
-      >{{ t.label }} <b :id="'cnt-' + (t.key || 'all')">{{ counts[t.key] || '' }}</b></button>
+      >{{ t.label }} <b :id="'cnt-' + (t.key || 'all')">{{ counts[t.key || 'all'] || '' }}</b></button>
     </div>
     <div id="orderList" v-html="listHtml" @click="onListClick"></div>
   </div>

@@ -86,16 +86,21 @@
 .pill-green { background: #e9f9f1; color: var(--green-ink); }
 .pill-gray { background: var(--fill); color: #5f6773; }
 
-/* ---------- 弹窗 ---------- */
+/* ---------- 弹窗 ----------
+   滚动策略：弹窗内容矮于视口时由 margin:auto 垂直居中；
+   高于视口时遮罩层整体滚动，弹窗内部不再出现滚动条（遮罩滚动条也隐藏，仅保留滚动手势）。 */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 1000;
   background: rgba(20, 22, 26, .55); backdrop-filter: blur(2px);
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
   animation: fadeIn .18s var(--ease); padding: 20px;
+  overflow-y: auto; scrollbar-width: none;
 }
+.modal-backdrop::-webkit-scrollbar { display: none; }
 .modal {
   position: relative;
-  width: 420px; max-width: calc(100vw - 32px); max-height: 84vh; overflow: auto;
+  width: 420px; max-width: calc(100vw - 32px);
+  margin: auto;
   background: #fff; border-radius: var(--radius-lg); padding: 26px;
   box-shadow: var(--shadow-lg); animation: popIn .22s var(--ease);
 }
@@ -103,12 +108,6 @@
 .modal h3 { font-size: 18px; margin-bottom: 6px; letter-spacing: -.2px; }
 .modal .modal-sub { font-size: 13px; color: var(--text-3); margin-bottom: 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-.modal-close {
-  position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 20px; line-height: 1; color: var(--text-3); border-radius: 50%;
-}
-.modal-close:hover { background: var(--fill); color: var(--text); }
 @keyframes fadeIn { from { opacity: 0; } }
 @keyframes popIn { from { opacity: 0; transform: translateY(14px) scale(.98); } }
 

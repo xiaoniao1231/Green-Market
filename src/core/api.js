@@ -147,6 +147,86 @@ function noteOnline(online) {
   const state = { online: null };
   const tokenOf = () => (QM_STORE.state.user && QM_STORE.state.user.token) || '';
 
+  /* =========================================================
+     商城三模块（购物车 / 订单 / 收藏）：接口结构 ↔ 本地 store 结构 互转
+     ---------------------------------------------------------
+     本地 store 结构（store.js）：
+       cart.item    { key, productId, sku, qty, checked, product? }
+       orders.order { id, orderNo, status, createTime(millis), items[{productId,sku,qty,price,title,art}],
+                      address, coupon, payMethod, remark, goodsAmount, discount, freight, total, logistics }
+       favorites    productId[]
+     接口结构（契约见 docs/商城三功能联调接口文档.md）：
+       cart.item    { itemKey, productId, sku, qty, product{id,title,price,original,art,sales,stock,tag,shop} }
+       orders.order { 同上，但 createTime/payTime/shipTime/finishTime 为 'yyyy-MM-dd HH:mm:ss' 字符串，
+                      items 额外携带 art 快照 }
+       favorites    { total, page, size, list: [商品对象] }
+     说明：真实接口成功（code=1）后同步本地 store（写穿缓存），
+     后端未实现时 call() 自动回退本地演示数据，两路径共用同一套映射，页面无感切换。
+     ========================================================= */
+  function fullTime(ts) {
+    const d = new Date(ts);
+    const pad = v => String(v).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  function parseTime(v) {
+    if (!v) return null;
+    if (typeof v === 'number') return v;                       // 兼容本地演示数据（毫秒时间戳）
+    const t = Date.parse(v);
+    return isNaN(t) ? null : t;
+  }
+  /* 本地购物车条目 → 接口条目（mock 回退路径使用；product 由 mock 商品补全） */
+  function cartItemToApi(item) {
+    const p = item.product || QM_MOCK.byId(item.productId);
+    return {
+      itemKey: item.key,
+      productId: item.productId,
+      sku: item.sku,
+      qty: item.qty,
+      product: p ? { id: p.id, title: p.title, price: p.price, original: p.original, art: p.art, sales: p.sales, stock: p.stock, tag: p.tag, shop: p.shop } : null
+    };
+  }
+  /* 接口购物车列表 → 本地 store：
+     checked 属前端态（勾选不落库）——刷新后对已存在条目保持原勾选，新条目默认勾选；
+     product 存服务端下发的商品快照，供页面渲染（不依赖 mock 商品库是否有该商品） */
+  function syncCartFromApi(apiList) {
+    const prev = {};
+    QM_STORE.state.cart.forEach(i => { prev[i.key] = i.checked; });
+    QM_STORE.state.cart = (apiList || []).map(it => ({
+      key: it.itemKey,
+      productId: it.productId,
+      sku: it.sku || '默认',
+      qty: it.qty,
+      checked: prev[it.itemKey] !== undefined ? prev[it.itemKey] : true,
+      product: it.product || null
+    }));
+    QM_STORE.saveNow();
+    QM_STORE.emit('cart');
+  }
+  /* 接口订单 → 本地 store 结构（时间字符串 → millis；条目补 art 供卡片渲染） */
+  function orderFromApi(o) {
+    if (!o) return null;
+    return Object.assign({}, o, {
+      createTime: parseTime(o.createTime),
+      payTime: o.payTime ? parseTime(o.payTime) : null,
+      shipTime: o.shipTime ? parseTime(o.shipTime) : null,
+      finishTime: o.finishTime ? parseTime(o.finishTime) : null,
+      items: (o.items || []).map(it => {
+        const p = QM_MOCK.byId(it.productId);
+        return Object.assign({}, it, { art: it.art || (p ? p.art : null) });
+      })
+    });
+  }
+  /* 本地订单 → 接口订单（mock 回退路径使用；时间 millis → 字符串） */
+  function orderToApi(o) {
+    if (!o) return null;
+    return Object.assign({}, o, {
+      createTime: fullTime(o.createTime),
+      payTime: o.payTime ? fullTime(o.payTime) : null,
+      shipTime: o.shipTime ? fullTime(o.shipTime) : null,
+      finishTime: o.finishTime ? fullTime(o.finishTime) : null
+    });
+  }
+
   const QM_API = {
     get online() { return state.online; },
     set online(v) { state.online = v; },
@@ -224,81 +304,201 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 购物车（后端预留 → 本地存储演示） ================= */
+    /* ================= 购物车（后端实现后走真实接口；未实现时回退本地存储演示） =================
+       契约要点（详见 docs/商城三功能联调接口文档.md）：
+       · GET    /cart                     → data: [条目]，条目含 itemKey/productId/sku/qty/product{...}
+       · POST   /cart                     → body {productId, skuText, quantity}，data: {itemKey}（合并后的条目）
+       · PUT    /cart/items               → body {itemKey, quantity}（itemKey 含 '/'，故不走路径参数）
+       · DELETE /cart/items               → body {itemKeys: []} 批量删除
+       · DELETE /cart                     → 清空购物车
+       每个变更成功后重新拉取一次列表（写穿缓存），保证本地 store 与服务端一致。 */
     cart: {
-      list() {
-        return call(
+      async list() {
+        const data = await call(
           { name: '购物车列表', method: 'GET', path: '/cart', query: {}, token: tokenOf() },
-          () => QM_STORE.cart.list()
+          () => QM_STORE.cart.list().map(cartItemToApi)
         );
+        syncCartFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
+        return QM_STORE.cart.list();
       },
-      add(productId, skuText, qty) {
-        return call(
+      async add(productId, skuText, qty) {
+        await call(
           { name: '加入购物车', method: 'POST', path: '/cart', body: { productId, skuText, quantity: qty }, token: tokenOf() },
-          () => { QM_STORE.cart.add(productId, skuText, qty); return { added: true }; }
+          () => { QM_STORE.cart.add(productId, skuText, qty); return { itemKey: productId + '|' + (skuText || '默认') }; }
         );
+        return QM_API.cart.list();
       },
-      update(itemKey, qty) {
-        return call(
-          { name: '修改数量', method: 'PUT', path: '/cart/items/' + encodeURIComponent(itemKey), body: { quantity: qty }, token: tokenOf() },
+      async update(itemKey, qty) {
+        await call(
+          { name: '修改数量', method: 'PUT', path: '/cart/items', body: { itemKey, quantity: qty }, token: tokenOf() },
           () => { QM_STORE.cart.setQty(itemKey, qty); return { updated: true }; }
         );
+        return QM_API.cart.list();
       },
-      remove(itemKeys) {
-        return call(
-          { name: '删除购物车', method: 'DELETE', path: '/cart/items', body: { itemKeys }, token: tokenOf() },
-          () => { QM_STORE.cart.remove(itemKeys); return { removed: itemKeys.length }; }
+      async remove(itemKeys) {
+        const keys = [].concat(itemKeys || []);
+        await call(
+          { name: '删除购物车', method: 'DELETE', path: '/cart/items', body: { itemKeys: keys }, token: tokenOf() },
+          () => { QM_STORE.cart.remove(keys); return { removed: keys.length }; }
         );
+        return QM_API.cart.list();
+      },
+      async clear() {
+        await call(
+          { name: '清空购物车', method: 'DELETE', path: '/cart', body: {}, token: tokenOf() },
+          () => { QM_STORE.cart.clear(); return { cleared: true }; }
+        );
+        return QM_API.cart.list();
       }
     },
 
-    /* ================= 订单（后端预留 → 本地存储演示） ================= */
+    /* ================= 订单（后端实现后走真实接口；未实现时回退本地存储演示） =================
+       契约要点（详见 docs/商城三功能联调接口文档.md）：
+       · GET    /orders?status=&page=&size=      → {total,page,size,list}（status 空=全部）
+       · GET    /orders/counts                   → {all,pending,paid,shipped,done,canceled}
+       · GET    /orders/{orderId}                → 订单详情
+       · POST   /orders                          → 创建订单，data: 创建的订单（status=pending）
+       · POST   /orders/{orderId}/pay            → 支付（演示：直接置 paid）
+       · POST   /orders/{orderId}/cancel         → 取消（仅 pending 可取消）
+       · POST   /orders/{orderId}/confirm        → 确认收货（仅 shipped 可确认）
+       · POST   /orders/{orderId}/remind         → 提醒发货（后端可选实现）
+       · GET    /orders/{orderId}/logistics      → {list:[{text,time}]}
+       时间统一 'yyyy-MM-dd HH:mm:ss'，前端映射回本地毫秒结构。 */
     orders: {
-      list(status) {
-        return call(
-          { name: '订单列表', method: 'GET', path: '/orders', query: { status }, token: tokenOf() },
-          () => QM_STORE.orders.list(status)
+      async list(status, page = 1, size = 100) {
+        const data = await call(
+          { name: '订单列表', method: 'GET', path: '/orders', query: { status, page, size }, token: tokenOf() },
+          () => {
+            const all = QM_STORE.orders.list(status);
+            const start = (page - 1) * size;
+            return { total: all.length, page, size, list: all.slice(start, start + size).map(orderToApi) };
+          }
         );
+        const list = ((data && data.list) || []).map(orderFromApi);
+        /* 「全部」列表同步本地 store.orders（卖家端等本地视图仍可复用；分页拉取时以全部页为准） */
+        if (!status) {
+          QM_STORE.state.orders = list;
+          QM_STORE.saveNow();
+          QM_STORE.emit('orders');
+        }
+        return { total: (data && data.total) || list.length, page: (data && data.page) || page, size: (data && data.size) || size, list };
       },
-      create(payload) {
+      async counts() {
+        const data = await call(
+          { name: '订单状态计数', method: 'GET', path: '/orders/counts', query: {}, token: tokenOf() },
+          () => {
+            const c = { all: 0, pending: 0, paid: 0, shipped: 0, done: 0, canceled: 0 };
+            QM_STORE.state.orders.forEach(o => { c.all++; if (c[o.status] !== undefined) c[o.status]++; });
+            return c;
+          }
+        );
+        return data || {};
+      },
+      get(orderId) {
         return call(
+          { name: '订单详情', method: 'GET', path: '/orders/' + encodeURIComponent(orderId), query: {}, token: tokenOf() },
+          () => orderToApi(QM_STORE.orders.get(orderId))
+        ).then(orderFromApi);
+      },
+      async create(payload) {
+        const data = await call(
           { name: '创建订单', method: 'POST', path: '/orders', body: payload, token: tokenOf() },
           () => QM_STORE.orders.create(payload)
         );
+        const order = orderFromApi(data);
+        if (order && !QM_STORE.state.orders.some(o => o.id === order.id)) {
+          QM_STORE.state.orders.unshift(order);
+          QM_STORE.saveNow();
+          QM_STORE.emit('orders');
+        }
+        return order;
       },
-      pay(orderId) {
-        return call(
+      async pay(orderId) {
+        await call(
           { name: '订单支付', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/pay', body: {}, token: tokenOf() },
           () => { QM_STORE.orders.pay(orderId); return { paid: true }; }
         );
+        QM_STORE.orders.pay(orderId); // 幂等：仅 pending→paid；mock 路径已改，重复调用无副作用
+        return { paid: true };
       },
-      cancel(orderId) {
-        return call(
+      async cancel(orderId) {
+        await call(
           { name: '取消订单', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/cancel', body: {}, token: tokenOf() },
           () => { QM_STORE.orders.cancel(orderId); return { canceled: true }; }
         );
+        QM_STORE.orders.cancel(orderId);
+        return { canceled: true };
       },
-      confirm(orderId) {
-        return call(
+      async confirm(orderId) {
+        await call(
           { name: '确认收货', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/confirm', body: {}, token: tokenOf() },
           () => { QM_STORE.orders.confirm(orderId); return { confirmed: true }; }
+        );
+        QM_STORE.orders.confirm(orderId);
+        return { confirmed: true };
+      },
+      async remind(orderId) {
+        return call(
+          { name: '提醒发货', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/remind', body: {}, token: tokenOf() },
+          () => ({ reminded: true })
+        );
+      },
+      async logistics(orderId) {
+        return call(
+          { name: '物流信息', method: 'GET', path: '/orders/' + encodeURIComponent(orderId) + '/logistics', query: {}, token: tokenOf() },
+          () => {
+            const o = QM_STORE.orders.get(orderId);
+            return { list: (o && o.logistics) || [] };
+          }
         );
       }
     },
 
-    /* ================= 收藏（后端预留 → 本地存储演示） ================= */
+    /* ================= 收藏（后端实现后走真实接口；未实现时回退本地存储演示） =================
+       契约要点（详见 docs/商城三功能联调接口文档.md）：
+       · GET    /favorites?page=&size= → {total,page,size,list:[商品对象]}（商品对象含收藏页渲染所需字段）
+       · POST   /favorites             → body {productId}，收藏/取消切换，data: {favorited}
+       · DELETE /favorites             → 清空全部收藏
+       成功响应后同步本地收藏 id 列表（驱动详情页收藏按钮状态）。 */
     favorites: {
-      list() {
-        return call(
-          { name: '收藏列表', method: 'GET', path: '/favorites', query: {}, token: tokenOf() },
-          () => QM_STORE.fav.list()
+      async list(page = 1, size = 100) {
+        const data = await call(
+          { name: '收藏列表', method: 'GET', path: '/favorites', query: { page, size }, token: tokenOf() },
+          () => {
+            const all = QM_STORE.fav.list();
+            const start = (page - 1) * size;
+            return { total: all.length, page, size, list: all.slice(start, start + size) };
+          }
         );
+        const list = (data && data.list) || [];
+        QM_STORE.state.favorites = list.map(p => (p && p.id) || p);
+        QM_STORE.saveNow();
+        QM_STORE.emit('favorites');
+        return { total: (data && data.total) || list.length, page: (data && data.page) || page, size: (data && data.size) || size, list };
       },
-      toggle(productId) {
-        return call(
+      async toggle(productId) {
+        const data = await call(
           { name: '收藏/取消收藏', method: 'POST', path: '/favorites', body: { productId }, token: tokenOf() },
           () => ({ favorited: QM_STORE.fav.toggle(productId) })
         );
+        const favorited = !!(data && data.favorited);
+        const list = QM_STORE.state.favorites;
+        const idx = list.indexOf(productId);
+        if (favorited && idx < 0) list.unshift(productId);
+        if (!favorited && idx >= 0) list.splice(idx, 1);
+        QM_STORE.saveNow();
+        QM_STORE.emit('favorites');
+        return { favorited };
+      },
+      async clear() {
+        await call(
+          { name: '清空收藏', method: 'DELETE', path: '/favorites', body: {}, token: tokenOf() },
+          () => { QM_STORE.state.favorites.length = 0; QM_STORE.saveNow(); QM_STORE.emit('favorites'); return { cleared: true }; }
+        );
+        QM_STORE.state.favorites.length = 0;
+        QM_STORE.saveNow();
+        QM_STORE.emit('favorites');
+        return { cleared: true };
       }
     },
 
@@ -342,6 +542,36 @@ function noteOnline(online) {
       },
       async logout() {
         try { await http('POST', '/logout', { token: tokenOf() }); } catch (e) { /* 忽略 */ }
+      }
+    },
+
+    /* ================= 用户资料（头像上传 OSS / 资料更新） =================
+       契约（后端实现见 docs/用户头像上传OSS与资料更新-后端实现教程.md）：
+       · POST /users/avatar —— multipart 字段 file，后端上传阿里云 OSS 后返回 { url }；
+       · PUT  /users/profile —— JSON { nickname, gender, avatar, signature }，返回更新后的用户。 */
+    user: {
+      /* 头像上传：multipart 提交（字段 file），后端把图片传到阿里云 OSS，返回 { url } */
+      async uploadAvatar(file) {
+        if (!file) throw new Error('文件不能为空');
+        const form = new FormData();
+        form.append('file', file, file.name);
+        try {
+          return await call(
+            { name: '上传头像', method: 'POST', path: '/users/avatar', timeout: QM_CFG.UPLOAD_TIMEOUT, body: form, token: tokenOf() },
+            null,
+            { strict: true }
+          );
+        } catch (e) {
+          throw formatUploadError(e);
+        }
+      },
+      /* 资料更新：PUT /users/profile，body { nickname, gender, avatar, signature } */
+      updateProfile(payload) {
+        return call(
+          { name: '更新资料', method: 'PUT', path: '/users/profile', body: payload, token: tokenOf() },
+          null,
+          { strict: true }
+        );
       }
     },
 

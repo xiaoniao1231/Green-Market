@@ -34,7 +34,7 @@ const state = reactive({
   emojiOpen: false,
   /* 文件上传中：上传期间禁用「📎 发送文件」按钮、显示进度提示，避免重复点击传多份 */
   uploading: false,
-  /* 媒体预览灯箱：{ kind:'image'|'video'|'audio', url, name } | null —— 点图片缩略图 / 「大屏播放」打开 */
+  /* 图片放大预览灯箱：{ kind:'image', url, name } | null —— 点气泡里的图片即打开 */
   preview: null,
   /* 在线状态刷新计数：QM_STORE.state 不是响应式对象，靠它驱动 peer computed 重算，
      否则收到 PRESENCE 广播后左侧绿点会更新，聊天面板头部的「● 在线」却不变 */
@@ -179,51 +179,40 @@ function fileKind(name, url) {
   return 'file';
 }
 
-function kindIcon(kind) {
-  return kind === 'image' ? '🖼' : kind === 'video' ? '🎬' : kind === 'audio' ? '🎵' : '📄';
-}
-
-/* 文件气泡 HTML：媒体类内联展示（图片缩略图 / 视频内嵌播放器 / 音频播放条），
-   都带「下载」入口；非媒体文件保持原来的文件名 + 下载样式。
-   data-action="preview-media" 交给聊天区的点击委托处理，弹灯箱看大图 / 大屏播放。 */
+/* 文件气泡 HTML（统一版式）：
+   · 气泡框里只放「文件内容」——图片缩略图（点一下即可放大）、视频播放器、音频播放条；
+     非媒体文件就是图标 + 文件名 + 大小；
+   · 「下载」按钮固定放在气泡框左侧，所有类型的文件都一样（没有 OSS 地址时不显示按钮）。
+   data-action="preview-media" 由聊天区的点击委托处理（只用于图片放大）。 */
 function fileBubbleHtml(name, size, url, kind) {
   const meta = esc(size || '');
   const info = `
-        <span class="file-ico">${kindIcon(kind)}</span>
+        <span class="file-ico">📄</span>
         <span class="file-info">
           <span class="file-name" title="${esc(name)}">${esc(name)}</span>
           <span class="file-meta">${meta}</span>
         </span>`;
+  /* 老数据 / 上传失败：没有地址就不给下载按钮，只留文件名 */
   if (!url) {
-    return `
-      <div class="bubble file-bubble">
-        ${info}
-        <span class="file-dl disabled">无地址</span>
-      </div>`;
+    return `<div class="file-row"><div class="bubble file-bubble">${info}</div></div>`;
   }
-  if (kind === 'file') {
-    return `
-      <div class="bubble file-bubble">
-        ${info}
-        <a class="file-dl" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>
-      </div>`;
+  const download = `<a class="file-dl-side" href="${esc(url)}" target="_blank" rel="noopener"
+        download="${esc(name)}" title="下载 ${esc(name)}" aria-label="下载 ${esc(name)}">⬇</a>`;
+  let cls = 'file-bubble';
+  let body = info;
+  if (kind === 'image') {
+    cls = 'file-bubble media';
+    body = `<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" title="${esc(name)} · 点击放大"
+        loading="lazy" data-action="preview-media" data-kind="image"
+        data-url="${esc(url)}" data-name="${esc(name)}" />`;
+  } else if (kind === 'video') {
+    cls = 'file-bubble media';
+    body = `<video class="file-video" src="${esc(url)}" title="${esc(name)}" controls preload="metadata" playsinline></video>`;
+  } else if (kind === 'audio') {
+    cls = 'file-bubble media';
+    body = `<audio class="file-audio" src="${esc(url)}" title="${esc(name)}" controls preload="metadata"></audio>`;
   }
-  const media = kind === 'image'
-    ? `<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" loading="lazy"
-            data-action="preview-media" data-kind="image" data-url="${esc(url)}" data-name="${esc(name)}" />`
-    : kind === 'video'
-      ? `<video class="file-video" src="${esc(url)}" controls preload="metadata" playsinline></video>`
-      : `<audio class="file-audio" src="${esc(url)}" controls preload="metadata"></audio>`;
-  return `
-      <div class="bubble file-bubble media">
-        <div class="file-media-head">${info}</div>
-        ${media}
-        <div class="file-media-foot">
-          <button class="file-dl" type="button" data-action="preview-media" data-kind="${kind}"
-                  data-url="${esc(url)}" data-name="${esc(name)}">${kind === 'image' ? '查看大图' : '大屏播放'}</button>
-          <a class="file-dl ghost" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>
-        </div>
-      </div>`;
+  return `<div class="file-row">${download}<div class="bubble ${cls}">${body}</div></div>`;
 }
 
 function msgHtml(m, peerObj) {
@@ -474,7 +463,7 @@ async function onFileInputChange(e) {
 /* ---------- 会话区事件委托（原版 mount 里 #chatPanel / #chatContacts 的 onclick） ---------- */
 /* 注：消息气泡里的 open-product / quick-add-cart 由 App.vue 全局代理处理，这里只处理
    chat-clear 这类页面特有动作，避免重复加购 / 重复跳转（见移植规范第 4 条）。 */
-/* ---------- 媒体预览灯箱（图片看大图 / 视频大屏播放 / 音频播放） ---------- */
+/* ---------- 图片放大预览灯箱（点气泡里的图片即打开） ---------- */
 function openPreview(kind, url, name) {
   if (!url) return;
   state.preview = { kind: kind || 'image', url, name: name || '文件' };
@@ -868,7 +857,7 @@ onBeforeUnmount(() => {
         </template>
       </section>
     </div>
-    <!-- 媒体预览灯箱：图片看大图 / 视频大屏播放 / 音频播放，点击空白或按 Esc 关闭 -->
+    <!-- 图片放大预览灯箱：点气泡里的图片打开，点击空白或按 Esc 关闭 -->
     <div v-if="state.preview" class="media-lightbox" @click="closePreview">
       <div class="ml-body" @click.stop>
         <img v-if="state.preview.kind === 'image'" :src="state.preview.url" :alt="state.preview.name" />

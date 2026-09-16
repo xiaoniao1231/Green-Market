@@ -115,39 +115,40 @@
 .goods-bubble .price { font-size: 17px; margin-top: 5px; display: inline-block; }
 .goods-bubble .btn { width: 100%; height: 30px; font-size: 12px; margin-top: 9px; }
 
-/* 文件消息气泡（阿里云 OSS 地址直链） */
-.file-bubble { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 210px; max-width: 280px; background: #fff !important; box-shadow: var(--shadow-sm); }
-.file-bubble .file-ico { font-size: 26px; line-height: 1; flex: none; }
+/* 文件消息：气泡框左侧固定一个下载按钮，气泡框内只放「文件内容」（所有类型版式一致） */
+.file-row { display: flex; align-items: center; gap: 8px; max-width: 100%; }
+.file-dl-side {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; border: 1px solid var(--border-strong); color: var(--text-2);
+  font-size: 14px; line-height: 1; text-decoration: none; box-shadow: var(--shadow-sm);
+  transition: all var(--dur) var(--ease);
+}
+.file-dl-side:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-softer); }
+
+/* 非媒体文件：图标 + 文件名 + 大小 */
+.file-bubble { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 190px; max-width: 280px; background: #fff !important; box-shadow: var(--shadow-sm); }
+.file-bubble .file-ico { font-size: 24px; line-height: 1; flex: none; }
 .file-bubble .file-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .file-bubble .file-name { font-size: 13px; color: var(--text); word-break: break-all; max-width: 150px; line-height: 1.4; }
 .file-bubble .file-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-.file-bubble .file-dl { flex: none; font-size: 12px; color: #fff; background: var(--brand); border-radius: 999px; padding: 5px 12px; text-decoration: none; transition: opacity var(--dur) var(--ease); }
-.file-bubble .file-dl:hover { opacity: .85; }
-.file-bubble .file-dl.disabled { background: #e8eaee; color: var(--text-3); cursor: not-allowed; }
 
-/* ---------- 媒体类文件气泡：图片缩略图 / 视频内嵌播放 / 音频播放条（免下载即可预览） ---------- */
-.file-bubble.media { display: block; padding: 10px; min-width: 220px; max-width: 320px; }
-.file-bubble.media .file-media-head { display: flex; align-items: center; gap: 10px; }
-.file-bubble.media .file-media-head .file-info { flex: 1; }
-.file-bubble .file-dl { border: none; cursor: pointer; font-family: inherit; }
+/* ---------- 媒体类文件气泡：框内只有媒体本身（图片点一下放大、视频/音频内嵌播放） ---------- */
+.file-bubble.media { display: block; padding: 6px; min-width: 0; max-width: 320px; }
 .file-thumb {
-  display: block; width: 100%; max-height: 200px; margin-top: 9px; object-fit: cover;
-  border-radius: var(--radius); background: #f2f4f7; cursor: zoom-in;
+  display: block; width: 100%; max-height: 200px; object-fit: cover;
+  border-radius: calc(var(--radius) - 2px); background: #f2f4f7; cursor: zoom-in;
   transition: opacity var(--dur) var(--ease);
 }
 .file-thumb:hover { opacity: .9; }
-.file-video { display: block; width: 100%; max-height: 220px; margin-top: 9px; border-radius: var(--radius); background: #000; }
-.file-audio { display: block; width: 100%; margin-top: 9px; }
+.file-video { display: block; width: 100%; max-height: 220px; border-radius: calc(var(--radius) - 2px); background: #000; }
+.file-audio { display: block; width: 240px; max-width: 100%; }
 .file-thumb-fail {
-  margin-top: 9px; padding: 14px 12px; border-radius: var(--radius); font-size: 12px; line-height: 1.6;
+  padding: 14px 12px; border-radius: var(--radius); font-size: 12px; line-height: 1.6;
   background: #fff6f6; border: 1px dashed #f0c2c2; color: #b25b5b;
 }
-.file-media-foot { display: flex; gap: 8px; margin-top: 9px; }
-.file-media-foot .file-dl { flex: 1; text-align: center; }
-.file-dl.ghost { background: #f2f4f7; color: var(--text-2); }
-.file-dl.ghost:hover { background: #e8eaee; }
 
-/* ---------- 媒体预览灯箱（点缩略图 / 「大屏播放」弹出，Esc 或点空白关闭） ---------- */
+/* ---------- 图片放大预览灯箱（点气泡里的图片弹出，Esc 或点空白关闭） ---------- */
 .media-lightbox {
   position: fixed; inset: 0; z-index: 4000; background: rgba(16, 18, 24, .82);
   display: flex; flex-direction: column; align-items: center; justify-content: center;

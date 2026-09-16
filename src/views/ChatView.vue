@@ -34,7 +34,7 @@ const state = reactive({
   emojiOpen: false,
   /* 文件上传中：上传期间禁用「📎 发送文件」按钮、显示进度提示，避免重复点击传多份 */
   uploading: false,
-  /* 图片放大预览灯箱：{ kind:'image', url, name } | null —— 点气泡里的图片即打开 */
+  /* 图片放大预览灯箱：{ kind:'image', url, name, size } | null —— 点气泡里的图片即打开 */
   preview: null,
   /* 在线状态刷新计数：QM_STORE.state 不是响应式对象，靠它驱动 peer computed 重算，
      否则收到 PRESENCE 广播后左侧绿点会更新，聊天面板头部的「● 在线」却不变 */
@@ -182,6 +182,7 @@ function fileKind(name, url) {
 /* 文件气泡 HTML（统一版式）：
    · 气泡框里只放「文件内容」——图片缩略图（点一下即可放大）、视频播放器、音频播放条；
      非媒体文件就是图标 + 文件名 + 大小；
+   · 媒体内容角上叠一个大小角标，不下载也能看到体积（角标不吃点击，点它照样能放大图片）；
    · 「下载」按钮固定放在气泡框左侧，所有类型的文件都一样（没有 OSS 地址时不显示按钮）。
    data-action="preview-media" 由聊天区的点击委托处理（只用于图片放大）。 */
 function fileBubbleHtml(name, size, url, kind) {
@@ -198,19 +199,22 @@ function fileBubbleHtml(name, size, url, kind) {
   }
   const download = `<a class="file-dl-side" href="${esc(url)}" target="_blank" rel="noopener"
         download="${esc(name)}" title="下载 ${esc(name)}" aria-label="下载 ${esc(name)}">⬇</a>`;
+  /* 大小角标：老数据没有 fileSize 时不渲染 */
+  const sizeTag = meta ? `<span class="file-size-tag">${meta}</span>` : '';
+  const box = (inner, extra = '') => `<div class="file-media-box${extra}">${inner}${sizeTag}</div>`;
   let cls = 'file-bubble';
   let body = info;
   if (kind === 'image') {
-    cls = 'file-bubble media';
-    body = `<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" title="${esc(name)} · 点击放大"
-        loading="lazy" data-action="preview-media" data-kind="image"
-        data-url="${esc(url)}" data-name="${esc(name)}" />`;
+    cls = 'file-bubble media media-image';
+    body = box(`<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" title="${esc(name)} · 点击放大"
+        loading="lazy" data-action="preview-media" data-kind="image" data-size="${meta}"
+        data-url="${esc(url)}" data-name="${esc(name)}" />`);
   } else if (kind === 'video') {
-    cls = 'file-bubble media';
-    body = `<video class="file-video" src="${esc(url)}" title="${esc(name)}" controls preload="metadata" playsinline></video>`;
+    cls = 'file-bubble media media-video';
+    body = box(`<video class="file-video" src="${esc(url)}" title="${esc(name)}" controls preload="metadata" playsinline></video>`);
   } else if (kind === 'audio') {
-    cls = 'file-bubble media';
-    body = `<audio class="file-audio" src="${esc(url)}" title="${esc(name)}" controls preload="metadata"></audio>`;
+    cls = 'file-bubble media media-audio';
+    body = box(`<audio class="file-audio" src="${esc(url)}" title="${esc(name)}" controls preload="metadata"></audio>`, ' is-audio');
   }
   return `<div class="file-row">${download}<div class="bubble ${cls}">${body}</div></div>`;
 }
@@ -464,9 +468,9 @@ async function onFileInputChange(e) {
 /* 注：消息气泡里的 open-product / quick-add-cart 由 App.vue 全局代理处理，这里只处理
    chat-clear 这类页面特有动作，避免重复加购 / 重复跳转（见移植规范第 4 条）。 */
 /* ---------- 图片放大预览灯箱（点气泡里的图片即打开） ---------- */
-function openPreview(kind, url, name) {
+function openPreview(kind, url, name, size) {
   if (!url) return;
-  state.preview = { kind: kind || 'image', url, name: name || '文件' };
+  state.preview = { kind: kind || 'image', url, name: name || '文件', size: size || '' };
 }
 function closePreview() {
   state.preview = null;
@@ -476,7 +480,7 @@ function onMessagesClick(e) {
   const t = e.target.closest ? e.target.closest('[data-action="preview-media"]') : null;
   if (!t) return;
   e.preventDefault();
-  openPreview(t.dataset.kind, t.dataset.url, t.dataset.name);
+  openPreview(t.dataset.kind, t.dataset.url, t.dataset.name, t.dataset.size);
 }
 /* 图片加载失败（Bucket 私有读 / 地址失效）：把缩略图换成可读提示，而不是只留一个破图图标。
    注意 error 事件不冒泡，必须用捕获阶段监听。 */
@@ -865,7 +869,7 @@ onBeforeUnmount(() => {
         <audio v-else :src="state.preview.url" controls autoplay></audio>
       </div>
       <div class="ml-bar" @click.stop>
-        <span class="ml-name" :title="state.preview.name">{{ state.preview.name }}</span>
+        <span class="ml-name" :title="state.preview.name">{{ state.preview.name }}<i v-if="state.preview.size" class="ml-size"> · {{ state.preview.size }}</i></span>
         <a class="ml-btn" :href="state.preview.url" target="_blank" rel="noopener">新标签打开</a>
         <a class="ml-btn" :href="state.preview.url" :download="state.preview.name">下载</a>
         <button class="ml-btn primary" @click="closePreview">关闭（Esc）</button>

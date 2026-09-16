@@ -135,6 +135,16 @@
 
 /* ---------- 媒体类文件气泡：框内只有媒体本身（图片点一下放大、视频/音频内嵌播放） ---------- */
 .file-bubble.media { display: block; padding: 6px; min-width: 0; max-width: 320px; }
+/* 音频控件占满整行，气泡给固定宽度并在右侧留白，大小角标才不会压住控件 */
+.file-bubble.media.media-audio { width: 300px; }
+.file-media-box { position: relative; display: block; }
+.file-media-box.is-audio { padding-right: 54px; }
+/* 大小角标：不下载也能看到体积；pointer-events:none 保证点角标同样能触发图片放大 */
+.file-size-tag {
+  position: absolute; top: 6px; right: 6px; z-index: 2; pointer-events: none;
+  padding: 1px 7px; border-radius: var(--radius-pill);
+  background: rgba(16, 18, 24, .62); color: #fff; font-size: 11px; line-height: 16px;
+}
 .file-thumb {
   display: block; width: 100%; max-height: 200px; object-fit: cover;
   border-radius: calc(var(--radius) - 2px); background: #f2f4f7; cursor: zoom-in;
@@ -142,7 +152,7 @@
 }
 .file-thumb:hover { opacity: .9; }
 .file-video { display: block; width: 100%; max-height: 220px; border-radius: calc(var(--radius) - 2px); background: #000; }
-.file-audio { display: block; width: 240px; max-width: 100%; }
+.file-audio { display: block; width: 100%; }
 .file-thumb-fail {
   padding: 14px 12px; border-radius: var(--radius); font-size: 12px; line-height: 1.6;
   background: #fff6f6; border: 1px dashed #f0c2c2; color: #b25b5b;
@@ -163,6 +173,7 @@
   padding: 12px 20px; background: rgba(22, 24, 30, .92); color: #fff;
 }
 .media-lightbox .ml-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.media-lightbox .ml-size { font-style: normal; opacity: .75; }
 .media-lightbox .ml-btn {
   flex: none; border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: #fff;
   border-radius: 999px; padding: 6px 14px; font-size: 12px; cursor: pointer; text-decoration: none;

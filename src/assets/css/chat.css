@@ -115,7 +115,7 @@
 .goods-bubble .price { font-size: 17px; margin-top: 5px; display: inline-block; }
 .goods-bubble .btn { width: 100%; height: 30px; font-size: 12px; margin-top: 9px; }
 
-/* 文件消息：气泡框左侧固定一个下载按钮，气泡框内只放「文件内容」（所有类型版式一致） */
+/* 文件消息：图片/视频是内容卡片，音频是内嵌播放条，普通文件是「图标 + 文件名 + 下载」 */
 .file-row { display: flex; align-items: center; gap: 8px; max-width: 100%; }
 .file-dl-side {
   flex: none; width: 30px; height: 30px; border-radius: 50%;
@@ -126,20 +126,68 @@
 }
 .file-dl-side:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-softer); }
 
-/* 非媒体文件：图标 + 文件名 + 大小 */
+/* 普通文件：图标 + 文件名 + 大小 + 气泡内「下载」按钮（最早的样子） */
 .file-bubble { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 190px; max-width: 280px; background: #fff !important; box-shadow: var(--shadow-sm); }
 .file-bubble .file-ico { font-size: 24px; line-height: 1; flex: none; }
 .file-bubble .file-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .file-bubble .file-name { font-size: 13px; color: var(--text); word-break: break-all; max-width: 150px; line-height: 1.4; }
 .file-bubble .file-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.file-bubble .file-dl { flex: none; font-size: 12px; color: #fff; background: var(--brand); border-radius: 999px; padding: 5px 12px; text-decoration: none; transition: opacity var(--dur) var(--ease); }
+.file-bubble .file-dl:hover { opacity: .85; }
 
-/* ---------- 媒体类文件气泡：框内只有媒体本身（图片点一下放大、视频/音频内嵌播放） ---------- */
-.file-bubble.media { display: block; padding: 6px; min-width: 0; max-width: 320px; }
-/* 音频控件占满整行，气泡给固定宽度并在右侧留白，大小角标才不会压住控件 */
-.file-bubble.media.media-audio { width: 300px; }
+/* ---------- 图片 / 视频：内容卡片（参考 Telegram：左上角「⬇ 时长 / 大小」胶囊 + 右上角 ⋮） ---------- */
+.file-bubble.media { display: block; min-width: 0; }
+.file-bubble.media-card { padding: 0; max-width: 300px; overflow: hidden; }
+.file-card { position: relative; display: block; line-height: 0; }
+.file-card .file-thumb, .file-card .file-video { border-radius: 0; max-height: 240px; }
+/* 左上角胶囊：下载图标 + 时长（视频）+ 大小，点它即下载 */
+.file-card-tag {
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 11px; border-radius: 14px; text-decoration: none;
+  background: rgba(62, 60, 58, .58); color: #fff; line-height: 1.3;
+  backdrop-filter: blur(4px); transition: background var(--dur) var(--ease);
+}
+.file-card-tag:hover { background: rgba(62, 60, 58, .76); }
+.file-card-tag .fct-ico { font-size: 17px; line-height: 1; }
+.file-card-tag .fct-lines { display: flex; flex-direction: column; font-size: 12px; }
+.file-card-tag .fct-dur { font-weight: 600; font-size: 12px; }
+.file-card-tag .fct-size { font-style: normal; opacity: .92; font-size: 12px; }
+/* 右上角 ⋮：更多操作（新标签打开 / 下载） */
+.file-card-more {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: 50%; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(62, 60, 58, .5); color: #fff; font-size: 16px; line-height: 1;
+  backdrop-filter: blur(4px); transition: background var(--dur) var(--ease);
+}
+.file-card-more:hover { background: rgba(62, 60, 58, .72); }
+/* 视频中央圆形播放按钮（视频卡片默认不带 controls，点它才切到原生控件播放） */
+.file-play {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2;
+  width: 54px; height: 54px; padding: 0 0 0 4px; border: none; border-radius: 50%; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(62, 60, 58, .55); color: #fff; font-size: 20px; line-height: 1;
+  backdrop-filter: blur(4px); transition: background var(--dur) var(--ease);
+}
+.file-play:hover { background: rgba(62, 60, 58, .74); }
+.file-play.is-hidden { display: none; }
+
+/* ⋮ 弹出菜单（fixed 定位，跟随按钮） */
+.media-menu {
+  position: fixed; z-index: 3500; min-width: 160px; padding: 6px;
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .16);
+}
+.media-menu a { padding: 8px 10px; border-radius: 6px; font-size: 13px; color: var(--text); text-decoration: none; }
+.media-menu a:hover { background: var(--brand-softer); color: var(--brand-ink); }
+
+/* ---------- 音频：气泡内嵌播放条 + 左侧圆形下载按钮 + 右上角大小角标 ---------- */
+.file-bubble.media-audio { padding: 6px; width: 300px; }
 .file-media-box { position: relative; display: block; }
 .file-media-box.is-audio { padding-right: 54px; }
-/* 大小角标：不下载也能看到体积；pointer-events:none 保证点角标同样能触发图片放大 */
+/* 大小角标：不下载也能看到体积 */
 .file-size-tag {
   position: absolute; top: 6px; right: 6px; z-index: 2; pointer-events: none;
   padding: 1px 7px; border-radius: var(--radius-pill);

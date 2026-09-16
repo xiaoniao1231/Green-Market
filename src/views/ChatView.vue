@@ -36,6 +36,8 @@ const state = reactive({
   uploading: false,
   /* 图片放大预览灯箱：{ kind:'image', url, name, size } | null —— 点气泡里的图片即打开 */
   preview: null,
+  /* 图片/视频卡片右上角 ⋮ 的弹出菜单：{ url, name, top, left } | null */
+  mediaMenu: null,
   /* 在线状态刷新计数：QM_STORE.state 不是响应式对象，靠它驱动 peer computed 重算，
      否则收到 PRESENCE 广播后左侧绿点会更新，聊天面板头部的「● 在线」却不变 */
   presenceTick: 0
@@ -179,12 +181,11 @@ function fileKind(name, url) {
   return 'file';
 }
 
-/* 文件气泡 HTML（统一版式）：
-   · 气泡框里只放「文件内容」——图片缩略图（点一下即可放大）、视频播放器、音频播放条；
-     非媒体文件就是图标 + 文件名 + 大小；
-   · 媒体内容角上叠一个大小角标，不下载也能看到体积（角标不吃点击，点它照样能放大图片）；
-   · 「下载」按钮固定放在气泡框左侧，所有类型的文件都一样（没有 OSS 地址时不显示按钮）。
-   data-action="preview-media" 由聊天区的点击委托处理（只用于图片放大）。 */
+/* 文件气泡 HTML：
+   · 图片 / 视频 → 内容卡片（Telegram 风格）：整块是媒体本身，左上角一个「⬇ 时长 / 大小」胶囊
+     （下载入口就在胶囊上），右上角 ⋮ 菜单，视频中间一个圆形播放按钮；图片点一下即放大；
+   · 音频 → 气泡内嵌播放条（左侧仍是圆形下载按钮，右上角大小角标）；
+   · 其它文件 → 图标 + 文件名 + 大小 + 右侧「下载」按钮（最早的样子，未改动）。 */
 function fileBubbleHtml(name, size, url, kind) {
   const meta = esc(size || '');
   const info = `
@@ -193,30 +194,80 @@ function fileBubbleHtml(name, size, url, kind) {
           <span class="file-name" title="${esc(name)}">${esc(name)}</span>
           <span class="file-meta">${meta}</span>
         </span>`;
-  /* 老数据 / 上传失败：没有地址就不给下载按钮，只留文件名 */
+  /* 老数据 / 上传失败：没有地址就不给下载入口，只留文件名 */
   if (!url) {
-    return `<div class="file-row"><div class="bubble file-bubble">${info}</div></div>`;
+    return `<div class="bubble file-bubble">${info}</div>`;
   }
-  const download = `<a class="file-dl-side" href="${esc(url)}" target="_blank" rel="noopener"
+
+  /* ---------- 图片 / 视频：内容卡片 ---------- */
+  if (kind === 'image' || kind === 'video') {
+    const tag = `
+        <a class="file-card-tag" href="${esc(url)}" target="_blank" rel="noopener"
+           download="${esc(name)}" title="下载 ${esc(name)}">
+          <span class="fct-ico">⬇</span>
+          <span class="fct-lines">
+            ${kind === 'video' ? '<b class="fct-dur" hidden>0:00</b>' : ''}
+            <i class="fct-size">${meta || '文件'}</i>
+          </span>
+        </a>`;
+    const more = `
+        <button class="file-card-more" type="button" title="更多操作" aria-label="更多操作"
+                data-action="media-menu" data-url="${esc(url)}" data-name="${esc(name)}">⋮</button>`;
+    const media = kind === 'image'
+      ? `<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" title="${esc(name)} · 点击放大"
+            loading="lazy" data-action="preview-media" data-kind="image" data-size="${meta}"
+            data-url="${esc(url)}" data-name="${esc(name)}" />`
+      : `<video class="file-video" src="${esc(url)}" title="${esc(name)}" preload="metadata" playsinline></video>
+          <button class="file-play" type="button" data-action="play-video" aria-label="播放视频">▶</button>`;
+    return `<div class="bubble file-bubble media media-card"><div class="file-card">${media}${tag}${more}</div></div>`;
+  }
+
+  /* ---------- 音频：内嵌播放条 ---------- */
+  if (kind === 'audio') {
+    const download = `<a class="file-dl-side" href="${esc(url)}" target="_blank" rel="noopener"
         download="${esc(name)}" title="下载 ${esc(name)}" aria-label="下载 ${esc(name)}">⬇</a>`;
-  /* 大小角标：老数据没有 fileSize 时不渲染 */
-  const sizeTag = meta ? `<span class="file-size-tag">${meta}</span>` : '';
-  const box = (inner, extra = '') => `<div class="file-media-box${extra}">${inner}${sizeTag}</div>`;
-  let cls = 'file-bubble';
-  let body = info;
-  if (kind === 'image') {
-    cls = 'file-bubble media media-image';
-    body = box(`<img class="file-thumb" src="${esc(url)}" alt="${esc(name)}" title="${esc(name)} · 点击放大"
-        loading="lazy" data-action="preview-media" data-kind="image" data-size="${meta}"
-        data-url="${esc(url)}" data-name="${esc(name)}" />`);
-  } else if (kind === 'video') {
-    cls = 'file-bubble media media-video';
-    body = box(`<video class="file-video" src="${esc(url)}" title="${esc(name)}" controls preload="metadata" playsinline></video>`);
-  } else if (kind === 'audio') {
-    cls = 'file-bubble media media-audio';
-    body = box(`<audio class="file-audio" src="${esc(url)}" title="${esc(name)}" controls preload="metadata"></audio>`, ' is-audio');
+    const sizeTag = meta ? `<span class="file-size-tag">${meta}</span>` : '';
+    return `<div class="file-row">${download}
+      <div class="bubble file-bubble media media-audio">
+        <div class="file-media-box is-audio">
+          <audio class="file-audio" src="${esc(url)}" title="${esc(name)}" controls preload="metadata"></audio>
+          ${sizeTag}
+        </div>
+      </div>
+    </div>`;
   }
-  return `<div class="file-row">${download}<div class="bubble ${cls}">${body}</div></div>`;
+
+  /* ---------- 其它文件：气泡内「图标 + 文件名 + 大小 + 下载」 ---------- */
+  return `
+      <div class="bubble file-bubble">
+        ${info}
+        <a class="file-dl" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>
+      </div>`;
+}
+
+/** 视频时长（秒 → m:ss）：拿到元数据后回填到卡片胶囊的第一行 */
+function fmtDuration(sec) {
+  if (!isFinite(sec) || sec <= 0) return '';
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+/** 渲染后回填视频时长（元数据可能还没加载完，等 loadedmetadata 再填） */
+function hydrateVideoMeta() {
+  const box = document.getElementById('chatMessages');
+  if (!box) return;
+  box.querySelectorAll('.file-card').forEach(card => {
+    const v = card.querySelector('video');
+    const dur = card.querySelector('.fct-dur');
+    if (!v || !dur) return;
+    const apply = () => {
+      const text = fmtDuration(v.duration);
+      if (text) { dur.textContent = text; dur.hidden = false; }
+    };
+    if (v.readyState >= 1) apply();
+    else v.addEventListener('loadedmetadata', apply, { once: true });
+  });
 }
 
 function msgHtml(m, peerObj) {
@@ -364,6 +415,7 @@ function openPeer(peerId) {
     if (input) { input.value = ''; input.style.height = ''; }
     const fi = fileInputEl.value;
     if (fi) fi.value = '';
+    hydrateVideoMeta(); // 视频卡片回填时长
   });
   /* 打开会话即加载第一页历史（点击会话 & 商品详情「联系卖家」?peer= 自动开聊都走这里） */
   loadHistory(peerId);
@@ -378,6 +430,7 @@ function renderActive() {
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     messagesBoxHtml.value = messagesHtml(state.activePeer, peerObj);
     if (atBottom) scrollActiveMessages(true);
+    nextTick(hydrateVideoMeta); // 视频卡片回填时长（元数据可能晚于渲染到达）
   }
 }
 
@@ -410,6 +463,10 @@ function toggleEmoji() {
    （emojiBtn 点击已 stopPropagation，等同原版不会触发关闭）。 */
 function onDocEmojiClick(e) {
   if (!e.target || !e.target.closest) return;
+  /* 点别处关闭 ⋮ 菜单（点菜单自身与 ⋮ 按钮时不关，各自有处理） */
+  if (state.mediaMenu && !e.target.closest('.media-menu') && !e.target.closest('[data-action="media-menu"]')) {
+    state.mediaMenu = null;
+  }
   if (e.target.closest('#emojiBtn')) return;
   if (state.emojiOpen) state.emojiOpen = false;
 }
@@ -477,10 +534,38 @@ function closePreview() {
 }
 /* 消息区点击委托：v-html 渲染出来的气泡用 data-action 声明意图（与页面其他委托口径一致） */
 function onMessagesClick(e) {
-  const t = e.target.closest ? e.target.closest('[data-action="preview-media"]') : null;
-  if (!t) return;
-  e.preventDefault();
-  openPreview(t.dataset.kind, t.dataset.url, t.dataset.name, t.dataset.size);
+  const el = e.target.closest ? e.target.closest('[data-action]') : null;
+  if (!el) return;
+  const action = el.dataset.action;
+
+  /* 视频中央播放按钮：切到原生控件并播放
+     （视频卡片默认不带 controls，否则还没播放底部就压着一条控制栏，不像参考图的卡片样式） */
+  if (action === 'play-video') {
+    const card = el.closest('.file-card');
+    const v = card && card.querySelector('video');
+    if (v) { v.controls = true; const p = v.play(); if (p && p.catch) p.catch(() => { /* 自动播放被拦截时用户可再点原生控件 */ }); }
+    el.classList.add('is-hidden');
+    return;
+  }
+
+  /* 卡片右上角 ⋮：弹出「在新标签打开 / 下载」菜单（fixed 定位，贴着按钮下方） */
+  if (action === 'media-menu') {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = el.getBoundingClientRect();
+    state.mediaMenu = {
+      url: el.dataset.url,
+      name: el.dataset.name,
+      top: Math.round(r.bottom + 6),
+      left: Math.round(Math.max(8, Math.min(r.right - 168, window.innerWidth - 176)))
+    };
+    return;
+  }
+
+  if (action === 'preview-media') {
+    e.preventDefault();
+    openPreview(el.dataset.kind, el.dataset.url, el.dataset.name, el.dataset.size);
+  }
 }
 /* 图片加载失败（Bucket 私有读 / 地址失效）：把缩略图换成可读提示，而不是只留一个破图图标。
    注意 error 事件不冒泡，必须用捕获阶段监听。 */
@@ -494,9 +579,11 @@ function onMediaError(e) {
   tip.textContent = '图片加载失败（可能是 Bucket 非公共读或地址已失效），可点「下载」查看';
   el.replaceWith(tip);
 }
-/* Esc 关闭预览灯箱 */
+/* Esc 关闭预览灯箱 / ⋮ 菜单 */
 function onPreviewKeydown(e) {
-  if (e.key === 'Escape' && state.preview) closePreview();
+  if (e.key !== 'Escape') return;
+  if (state.preview) closePreview();
+  if (state.mediaMenu) state.mediaMenu = null;
 }
 
 function onPanelClick(e) {
@@ -860,6 +947,13 @@ onBeforeUnmount(() => {
           </footer>
         </template>
       </section>
+    </div>
+    <!-- 图片/视频卡片右上角 ⋮ 的弹出菜单（fixed 定位，点别处或 Esc 关闭） -->
+    <div v-if="state.mediaMenu" class="media-menu"
+         :style="{ top: state.mediaMenu.top + 'px', left: state.mediaMenu.left + 'px' }"
+         @click="state.mediaMenu = null">
+      <a :href="state.mediaMenu.url" target="_blank" rel="noopener">在新标签打开</a>
+      <a :href="state.mediaMenu.url" :download="state.mediaMenu.name">下载文件</a>
     </div>
     <!-- 图片放大预览灯箱：点气泡里的图片打开，点击空白或按 Esc 关闭 -->
     <div v-if="state.preview" class="media-lightbox" @click="closePreview">

@@ -20,7 +20,6 @@ public class User {
     private String nickname;//昵称（最长 30 位）
     private String gender;//性别：male 男 / female 女 / secret 保密
     private String avatar;//头像（emoji 字符）
-    private String avatarColor;//头像底色（#RRGGBB）
     private String signature;//个性签名（最长 40 字）
     private String shopId;//所属店铺标识（未开店为 null）
     private LocalDateTime createdAt;//创建时间

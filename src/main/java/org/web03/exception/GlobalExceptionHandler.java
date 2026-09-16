@@ -21,10 +21,16 @@ public class GlobalExceptionHandler {
         return Result.error(e.getMessage());
     }
 
-    /** 唯一键冲突：账号已存在、手机号已注册等 */
+    /** 唯一键冲突：账号已存在、手机号已注册、消息重复提交等 */
     @ExceptionHandler(DuplicateKeyException.class)
     public Result handleDuplicateKeyException(DuplicateKeyException e) {
-        log.warn("数据重复: {}", e.getMessage());
+        String raw = String.valueOf(e.getMessage());
+        log.warn("数据重复: {}", raw);
+        /* messages.msg_id 冲突：同一条消息被重复提交（网络重试 / 双击发送），
+           与注册类冲突区分开，否则会给出「账号或手机号已存在」这种误导性提示 */
+        if (raw.contains("msg_id") || raw.contains("messages")) {
+            return Result.error("消息已发送，请勿重复提交");
+        }
         return Result.error("账号或手机号已存在");
     }
 }

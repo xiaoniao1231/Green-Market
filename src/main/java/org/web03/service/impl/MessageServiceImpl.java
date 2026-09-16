@@ -56,6 +56,10 @@ public class MessageServiceImpl implements MessageService {
         requireSender(myUserId);
         String receiverId = req.getReceiverId() == null ? "" : req.getReceiverId().trim();
         String content = req.getContent() == null ? "" : req.getContent();
+        /* 空内容拦截：原先只校验长度，空串会被当成一条空消息入库（前端虽已拦截，但接口层要兜住） */
+        if (!StringUtils.hasLength(content.trim())) {
+            throw new BusinessException("消息内容不能为空");
+        }
         if(content.length() > MAX_CONTENT_LENGTH){
             throw new BusinessException("消息内容最长 " + MAX_CONTENT_LENGTH + " 字");
         }
@@ -70,14 +74,15 @@ public class MessageServiceImpl implements MessageService {
         m.setSendTime(LocalDateTime.now());
         m.setRecalled(false);
 
-/*        //检查消息是否已存在
+        //检查消息是否已存在（客户端重试 / 双击发送会带同一个 msgId，命中即返回既有记录，
+        //否则会撞 msg_id 唯一键，被全局异常处理器翻译成「账号或手机号已存在」这种误导提示）
         Messages exist = messageMapper.selectByMsgId(m.getMsgId());
         if(exist != null){
             log.info("消息已存在，返回既有记录");
             return new SendPrivateResult(exist.getMsgId(),
                     TIME_FORMATTER.format(exist.getSendTime()),
                     chatWebSocketHandler.isOnline(exist.getReceiverId()));
-        }*/
+        }
 
         //保存消息到数据库
         messageMapper.insert(m);

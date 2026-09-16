@@ -1,5 +1,6 @@
 package org.web03.mapper;
 
+import org.apache.ibatis.annotations.Update;
 import org.web03.pojo.PhoneRegisterRequest;
 import org.web03.pojo.User;
 import org.apache.ibatis.annotations.Mapper;
@@ -22,4 +23,12 @@ public interface EmpMapper {
     //账号是否存在
     @Select("select count(*) from users where user_id = #{userId}")
     int countByUserId(String userId);
+
+    //修改用户信息
+    @Update("update users set nickname = #{nickname}, gender = #{gender}, avatar = #{avatar},signature = #{signature} where user_id = #{userId}")
+    void updateProfile(User user);
+
+    //根据用户ID查询用户信息
+    @Select("select * from users where user_id = #{userId}")
+    User findByUserId(String myUserId);
 }

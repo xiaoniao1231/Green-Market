@@ -34,7 +34,8 @@ public class RegisterServiceImpl implements RegisterService {
         if (prr.getNickname() == null || prr.getNickname().trim().isEmpty() || prr.getNickname().length() > 30) {
             throw new BusinessException("昵称不能为空且最长 30 位");
         }
-        // 校验验证码
+        /* 校验验证码在前：验证码在成功注册后会被清除，因此"已注册号码 + 旧验证码"的重放
+           会先被判为验证码错误，不会暴露该号码是否已注册（避免手机号枚举） */
         if (!smsVerificationCodeService.verifyCode(prr.getPhone(), "register", prr.getSmsCode())) {
             throw new BusinessException("验证码错误或已过期");
         }
@@ -44,10 +45,10 @@ public class RegisterServiceImpl implements RegisterService {
         }
         User user = new User();
         user.setUserId(prr.getPhone());
-        user.setPhone_number(prr.getPhone());
+        user.setPhoneNumber(prr.getPhone());
         user.setPassword(prr.getPassword());
         user.setNickname(prr.getNickname());
-        user.setCreated_at(LocalDateTime.now());
+        user.setCreatedAt(LocalDateTime.now());
         registerMapper.registerByPhone(user);
 
         // 5. 验证码一次性使用
@@ -70,7 +71,7 @@ public class RegisterServiceImpl implements RegisterService {
         if (registerMapper.existsByUserId(user.getUserId()) > 0) {
             throw new BusinessException("账号已存在");
         }
-        user.setCreated_at(LocalDateTime.now());
+        user.setCreatedAt(LocalDateTime.now());
         registerMapper.register(user);
     }
 }

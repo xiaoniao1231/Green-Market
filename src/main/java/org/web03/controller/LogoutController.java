@@ -1,0 +1,14 @@
+package org.web03.controller;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.web03.pojo.Result;
+import org.web03.utils.CurrentHolder;
+
+
+@Slf4j
+@RestController
+public class LogoutController {
+
+}

@@ -34,7 +34,7 @@ public class LongServiceImpl implements LongService {
         if (!smsVerificationCodeService.verifyCode(prr.getPhone(), "login", prr.getSmsCode())) {
             throw new BusinessException("验证码错误或已过期");
         }
-        // 验证码校验通过后立即清除，保证一次性使用（无论用户是否存在）
+        // 验证码校验通过后立即清除，保证一次性使用
         smsVerificationCodeService.clearCode(prr.getPhone(), "login");
         User phone = empMapper.longinPhone(prr);
         if (phone != null){

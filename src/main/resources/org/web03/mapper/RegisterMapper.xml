@@ -5,15 +5,16 @@
 <mapper namespace="org.web03.mapper.RegisterMapper">
 
 
+    <!-- 账号注册：性别 / 头像 / 底色 / 签名 / 店铺标识由 users 表默认值填充，注册后可在个人中心修改 -->
     <insert id="register">
     insert into users(user_id,password,nickname,created_at)
-    values(#{userId},#{password},#{nickname},#{created_at})
+    values(#{userId},#{password},#{nickname},#{createdAt})
     </insert>
 
 
     <insert id="registerByPhone">
         insert into users(user_id, phone_number, password, nickname, created_at)
-        values(#{userId}, #{phone_number}, #{password}, #{nickname}, #{created_at})
+        values(#{userId}, #{phoneNumber}, #{password}, #{nickname}, #{createdAt})
     </insert>
 
 

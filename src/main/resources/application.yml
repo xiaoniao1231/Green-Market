@@ -1,10 +1,10 @@
-#配置数据库的链接
+# 配置数据库的连接
 spring:
   application:
-    name: 网页通信
+    name: 青集市通信
 
   datasource:
-    url: jdbc:mysql://localhost:3306/网页通信?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/青集市通信?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: 123456
@@ -17,13 +17,20 @@ spring:
       database: 0
       timeout: 3000ms
 
+  # 文件上传限制：前端「发送文件」走 multipart（接口文档 3.2，上限 1GB）
+  # 注意：经 nginx 访问时还受 nginx.conf 的 client_max_body_size 限制，如需更大文件请同步调大
+  servlet:
+    multipart:
+      max-file-size: 1073741824
+      max-request-size: 2147483648
+
 
 #mybatis配置
 mybatis:
   configuration:
     #日志输出
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-    #驼峰命名
+    #驼峰映射
     map-underscore-to-camel-case: true
   #自定义存放路径
   mapper-locations: classpath:org/web03/mapper/*.xml
@@ -34,3 +41,11 @@ mybatis:
 logging:
   level:
     org.springframework.jdbc.support.JdbcTransactionManager: debug
+
+# 阿里云OSS
+aliyun:
+  oss:
+    endpoint: https://oss-cn-beijing.aliyuncs.com
+    bucketName: java---web-ai
+    region: cn-beijing
+

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.MessageMapper">
+
+    <!-- 列名（下划线）→ 驼峰属性显式映射：JSON 输出即前端契约字段
+         （msgId / senderId / receiverId / mesType / content / sendTime / recalled） -->
+    <resultMap id="MessageMap" type="org.web03.pojo.Messages">
+        <id     column="id"          property="id"/>
+        <result column="msg_id"      property="msgId"/>
+        <result column="sender_id"   property="senderId"/>
+        <result column="receiver_id" property="receiverId"/>
+        <result column="msg_type"    property="msgType"/>
+        <result column="content"     property="content"/>
+        <result column="send_time"   property="sendTime"/>
+        <result column="is_recalled" property="recalled"/>
+        <result column="file_url"  property="fileUrl"/>
+        <result column="file_size" property="fileSize"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="org.web03.pojo.Messages">
+        insert into messages(msg_id, sender_id, receiver_id, msg_type, content, file_url, file_size, send_time, is_recalled)
+        values(#{msgId}, #{senderId}, #{receiverId}, #{msgType}, #{content}, #{fileUrl}, #{fileSize}, #{sendTime}, 0)
+    </insert>
+
+    <!-- 幂等查重：msg_id 上有唯一约束 -->
+    <select id="selectByMsgId" resultMap="MessageMap">
+        select *
+        from messages
+        where msg_id = #{msgId}
+        limit 1
+    </select>
+
+    <!-- 双向私聊统计：我发给对方 + 对方发给我 -->
+    <select id="countByPeer" resultType="long">
+        select count(*)
+        from messages
+        where (sender_id = #{myId}   and receiver_id = #{peerId})
+           or (sender_id = #{peerId} and receiver_id = #{myId})
+    </select>
+
+    <!-- 时间倒序（同秒按自增 id 兜底），前端拿到后 reverse 再渲染 -->
+    <select id="selectPageByPeer" resultMap="MessageMap">
+        select *
+        from messages
+        where (sender_id = #{myId}   and receiver_id = #{peerId})
+           or (sender_id = #{peerId} and receiver_id = #{myId})
+        order by send_time desc, id desc
+        limit #{offset}, #{size}
+    </select>
+
+    <!-- 会话列表：涉及我的消息按对端（sender/receiver 中的另一方）分组，每组取 id 最大的那条（最新），
+         排除群发（receiver_id='ALL'）避免把群发通道误当会话。
+         用 max(id) 而非 max(send_time)：id 自增有序，同秒多条也能稳定取到真正的最新一条。 -->
+    <select id="selectConversations" resultMap="MessageMap">
+        select *
+        from messages
+        where id in (
+            select max(id)
+            from (
+                select id,
+                       case when sender_id = #{myId} then receiver_id else sender_id end as peer_id
+                from messages
+                where (sender_id = #{myId} or receiver_id = #{myId})
+                  and receiver_id &lt;&gt; 'ALL'
+            ) t
+            group by peer_id
+        )
+        order by send_time desc, id desc;
+    </select>
+
+    <!-- 未读数：对方发给我、发送时间晚于该会话最近已读时间的消息数 -->
+    <select id="countUnreadByPeer" resultType="map">
+        select sender_id as peerId, count(*) as unreadCount
+        from messages
+        where receiver_id = #{myId}
+          and send_time &gt; ifnull(
+                (select last_read_time from read_state
+                 where user_id = #{myId} and peer_id = sender_id),
+                '1970-01-01 00:00:00')
+        group by sender_id
+    </select>
+
+    <!-- 记录已读时间（read_state 表主键 (user_id, peer_id)，重复打开自动更新时间） -->
+    <insert id="upsertReadState">
+        insert into read_state(user_id, peer_id, last_read_time)
+        values(#{myId}, #{peerId}, now())
+        on duplicate key update last_read_time = now()
+    </insert>
+
+</mapper>

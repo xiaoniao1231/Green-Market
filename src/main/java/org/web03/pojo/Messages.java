@@ -10,16 +10,20 @@ import java.time.LocalDateTime;
  * 消息
  */
 
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class Messages {
-    private Integer id;
-    private String msg_id;//消息ID
-    private String sender_id;//发送者ID
-    private String receiver_id;//接收者ID
-    private String msg_type;//消息类型
-    private String content;//消息内容
-    private LocalDateTime send_time;//发送时间
-    private Integer is_recalled;//是否撤回
+    private Integer id;                //主键
+    private String msgId;              //消息唯一ID
+    private String senderId;           //发送消息者
+    private String receiverId;         //接收消息者
+    private String msgType;            //消息类型
+    private String content;            //文本内容或文件名
+    private LocalDateTime sendTime;    //发送时间
+    private Boolean recalled;          //是否撤回消息
+
+    private String fileUrl;    // 文件在阿里云 OSS 的访问地址
+    private Long fileSize;     // 文件大小（字节）
 }

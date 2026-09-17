@@ -2,7 +2,9 @@ package org.web03.pojo;
 
 import lombok.Data;
 
-//发送私聊请求体
+/**
+ * 发送私聊请求体
+ */
 @Data
 public class PrivateMessageRequest {
     private String receiverId;//接收者ID

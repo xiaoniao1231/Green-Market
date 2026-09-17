@@ -2,6 +2,7 @@ package org.web03.service.impl;
 
 import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
+import org.web03.mapper.ShopMapper;
 import org.web03.pojo.LoginInfo;
 import org.web03.pojo.PhoneRegisterRequest;
 import org.web03.pojo.User;
@@ -22,6 +23,9 @@ public class LongServiceImpl implements LongService {
     @Autowired
     private SmsVerificationCodeService smsVerificationCodeService;
 
+    @Autowired
+    private ShopMapper shopMapper;
+
     @Override
     public LoginInfo longinPhone(PhoneRegisterRequest prr) {
         if (prr.getPhone() == null || !prr.getPhone().matches("^1[3-9]\\d{9}$")) {
@@ -37,20 +41,16 @@ public class LongServiceImpl implements LongService {
         // 验证码校验通过后立即清除，保证一次性使用
         smsVerificationCodeService.clearCode(prr.getPhone(), "login");
         User phone = empMapper.longinPhone(prr);
-        if (phone != null){
-            HashMap<String, Object> claims = new HashMap<>();
-            claims.put("id", phone.getId());
-            claims.put("userId", phone.getUserId());
-            String jwt = JwtUtils.generateToken(claims);
-
-            return new LoginInfo(phone.getId(), phone.getUserId(), phone.getNickname(), jwt);
-        }
-        return null;
+        return getLoginInfo(phone);
     }
 
     @Override
     public LoginInfo login(User user) {
         User login = empMapper.login(user);
+        return getLoginInfo(login);
+    }
+
+    private LoginInfo getLoginInfo(User login) {
         if (login != null) {
             //    创建JWT令牌
             HashMap<String, Object> claims = new HashMap<>();
@@ -58,8 +58,13 @@ public class LongServiceImpl implements LongService {
             claims.put("userId", login.getUserId());
             String jwt = JwtUtils.generateToken(claims);
 
-            return new LoginInfo(login.getId(), login.getUserId(), login.getNickname(), jwt);
+            String shopId = shopMapper.findShopIdByOwner(login.getUserId());
+            return new LoginInfo(login.getId(), login.getUserId(), login.getNickname(), jwt, shopId);
         }
         return null;
     }
+
 }
+
+
+

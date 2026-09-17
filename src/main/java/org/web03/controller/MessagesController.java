@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.web03.pojo.MessagesFile;
 import org.web03.pojo.PrivateMessageRequest;
 import org.web03.pojo.Result;
 import org.web03.pojo.SendPrivateResult;
@@ -51,7 +52,7 @@ public class  MessagesController {
 /*        if (file == null || file.isEmpty()) {
             return Result.error("上传文件不能为空");
         }*/
-        Map<String,Object> data = messageService.sendFile(CurrentHolder.getCurrentUserId(), file, receiverId);
+        MessagesFile data = messageService.sendFile(CurrentHolder.getCurrentUserId(), file, receiverId);
         return Result.success(data);
     }
 

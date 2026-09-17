@@ -101,7 +101,7 @@ public class MessageServiceImpl implements MessageService {
 
     /** 发送文件消息 */
     @Override
-    public Map<String, Object> sendFile(String myUserId, MultipartFile file, String receiverId) {
+    public MessagesFile sendFile(String myUserId, MultipartFile file, String receiverId) {
         requireSender(myUserId);
         if (file == null || file.isEmpty()){
             throw new BusinessException("文件不能为空");
@@ -160,15 +160,8 @@ public class MessageServiceImpl implements MessageService {
             chatWebSocketHandler.pushTo(myUserId, "SYSTEM", new WsMessage("", "系统", "系统", myUserId,
                     "用户 " + receiverId + " 不在线，文件消息未送达", sendTime));
         }
-        // 返回给发送方：前端据此渲染自己这边的文件气泡
-        Map<String, Object> data = new HashMap<>();
-        data.put("msgId", m.getMsgId());
-        data.put("fileName", originalName);
-        data.put("fileSize", file.getSize());
-        data.put("fileUrl", fileUrl);
-        data.put("sendTime", sendTime);
-        data.put("delivered", delivered);
-        return data;
+
+        return new MessagesFile(m.getMsgId(), originalName, fileUrl, file.getSize(), sendTime, delivered);
     }
 
     /** 历史消息 */

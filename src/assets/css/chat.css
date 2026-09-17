@@ -134,9 +134,6 @@
 .file-bubble .file-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 .file-bubble .file-dl { flex: none; font-size: 12px; color: #fff; background: var(--brand); border-radius: 999px; padding: 5px 12px; text-decoration: none; white-space: nowrap; transition: opacity var(--dur) var(--ease); }
 .file-bubble .file-dl:hover { opacity: .85; }
-/* 次要按钮（文档的「预览」）：浅底深字，与主色「下载」区分开 */
-.file-bubble .file-dl.ghost { background: #eef0f4; color: var(--text-2); }
-.file-bubble .file-dl.ghost:hover { background: #e3e6ec; opacity: 1; }
 
 /* ---------- 图片 / 视频：内容卡片（参考 Telegram：左上角「⬇ 时长 / 大小」胶囊 + 右上角 ⋮） ---------- */
 .file-bubble.media { display: block; min-width: 0; }
@@ -224,17 +221,15 @@
 }
 .media-lightbox .ml-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .media-lightbox .ml-size { font-style: normal; opacity: .75; }
-.media-lightbox .ml-tip { flex: none; font-size: 12px; opacity: .72; }
-/* 文档预览：PDF / 纯文本 / Office 都放在 iframe 里（白底铺满窗口） */
-.media-lightbox .ml-frame { width: min(1000px, 92vw); height: 78vh; border: 0; border-radius: 8px; background: #fff; }
-/* 后端未提供 /files/preview 时的兜底说明 */
-.media-lightbox .ml-doc-fallback {
-  width: min(560px, 88vw); padding: 26px 28px; border-radius: 10px;
-  background: #fff; color: var(--text); font-size: 13px; line-height: 1.9;
+/* 右上角关闭按钮（唯一的退出入口，配合 Esc；点窗口以外不会关闭） */
+.media-lightbox .ml-close {
+  position: absolute; top: 18px; right: 20px; z-index: 5;
+  width: 40px; height: 40px; padding: 0; border: none; border-radius: 50%; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .16); color: #fff; font-size: 17px; line-height: 1;
+  backdrop-filter: blur(4px); transition: background var(--dur) var(--ease);
 }
-.media-lightbox .ml-doc-fallback b { display: block; font-size: 15px; margin-bottom: 8px; }
-.media-lightbox .ml-doc-fallback p { margin: 6px 0 0; color: var(--text-2); }
-.media-lightbox .ml-doc-fallback code { background: #f2f4f7; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+.media-lightbox .ml-close:hover { background: rgba(255, 255, 255, .32); }
 .media-lightbox .ml-btn {
   flex: none; border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: #fff;
   border-radius: 999px; padding: 6px 14px; font-size: 12px; cursor: pointer; text-decoration: none;

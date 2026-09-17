@@ -126,14 +126,17 @@
 }
 .file-dl-side:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-softer); }
 
-/* 普通文件：图标 + 文件名 + 大小 + 气泡内「下载」按钮（最早的样子） */
-.file-bubble { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 190px; max-width: 280px; background: #fff !important; box-shadow: var(--shadow-sm); }
+/* 普通文件：图标 + 文件名 + 大小 + 「预览」（可预览的文档）+「下载」 */
+.file-bubble { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-width: 190px; max-width: 330px; background: #fff !important; box-shadow: var(--shadow-sm); }
 .file-bubble .file-ico { font-size: 24px; line-height: 1; flex: none; }
 .file-bubble .file-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .file-bubble .file-name { font-size: 13px; color: var(--text); word-break: break-all; max-width: 150px; line-height: 1.4; }
 .file-bubble .file-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-.file-bubble .file-dl { flex: none; font-size: 12px; color: #fff; background: var(--brand); border-radius: 999px; padding: 5px 12px; text-decoration: none; transition: opacity var(--dur) var(--ease); }
+.file-bubble .file-dl { flex: none; font-size: 12px; color: #fff; background: var(--brand); border-radius: 999px; padding: 5px 12px; text-decoration: none; white-space: nowrap; transition: opacity var(--dur) var(--ease); }
 .file-bubble .file-dl:hover { opacity: .85; }
+/* 次要按钮（文档的「预览」）：浅底深字，与主色「下载」区分开 */
+.file-bubble .file-dl.ghost { background: #eef0f4; color: var(--text-2); }
+.file-bubble .file-dl.ghost:hover { background: #e3e6ec; opacity: 1; }
 
 /* ---------- 图片 / 视频：内容卡片（参考 Telegram：左上角「⬇ 时长 / 大小」胶囊 + 右上角 ⋮） ---------- */
 .file-bubble.media { display: block; min-width: 0; }
@@ -162,7 +165,7 @@
   backdrop-filter: blur(4px); transition: background var(--dur) var(--ease);
 }
 .file-card-more:hover { background: rgba(62, 60, 58, .72); }
-/* 视频中央圆形播放按钮（视频卡片默认不带 controls，点它才切到原生控件播放） */
+/* 视频中央圆形播放按钮：点它在预览窗口里播放（卡片本身不展开控件，避免误触全屏） */
 .file-play {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2;
   width: 54px; height: 54px; padding: 0 0 0 4px; border: none; border-radius: 50%; cursor: pointer;
@@ -171,7 +174,6 @@
   backdrop-filter: blur(4px); transition: background var(--dur) var(--ease);
 }
 .file-play:hover { background: rgba(62, 60, 58, .74); }
-.file-play.is-hidden { display: none; }
 
 /* ⋮ 弹出菜单（fixed 定位，跟随按钮） */
 .media-menu {
@@ -222,6 +224,17 @@
 }
 .media-lightbox .ml-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .media-lightbox .ml-size { font-style: normal; opacity: .75; }
+.media-lightbox .ml-tip { flex: none; font-size: 12px; opacity: .72; }
+/* 文档预览：PDF / 纯文本 / Office 都放在 iframe 里（白底铺满窗口） */
+.media-lightbox .ml-frame { width: min(1000px, 92vw); height: 78vh; border: 0; border-radius: 8px; background: #fff; }
+/* 后端未提供 /files/preview 时的兜底说明 */
+.media-lightbox .ml-doc-fallback {
+  width: min(560px, 88vw); padding: 26px 28px; border-radius: 10px;
+  background: #fff; color: var(--text); font-size: 13px; line-height: 1.9;
+}
+.media-lightbox .ml-doc-fallback b { display: block; font-size: 15px; margin-bottom: 8px; }
+.media-lightbox .ml-doc-fallback p { margin: 6px 0 0; color: var(--text-2); }
+.media-lightbox .ml-doc-fallback code { background: #f2f4f7; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 .media-lightbox .ml-btn {
   flex: none; border: 1px solid rgba(255, 255, 255, .35); background: transparent; color: #fff;
   border-radius: 999px; padding: 6px 14px; font-size: 12px; cursor: pointer; text-decoration: none;

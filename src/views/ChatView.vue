@@ -166,19 +166,44 @@ function fileMsgText(name, size) {
   return `[文件] ${name}（${fmtSize(size) || '0KB'}）`;
 }
 
-/* ---------- 文件消息：图片 / 视频 / 音频免下载直接预览 ----------
+/* ---------- 文件消息：按类型决定预览方式 ----------
    类型判定依据文件名扩展名（后端 content 列存的就是原始文件名）；文件名没有
-   扩展名时退化为用 OSS 地址里的扩展名判断；都不匹配则维持「文件 + 下载」。 */
+   扩展名时退化为用 OSS 地址里的扩展名判断；都不匹配则只提供下载。
+     · 图片 / 视频 / 音频 → 直接在聊天里预览
+     · PDF / 纯文本 / Office 文档 → 点「预览」在弹出窗口里看（不用先下载） */
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)(\?|#|$)/i;
 const VIDEO_EXT = /\.(mp4|webm|ogv|mov|m4v|mkv)(\?|#|$)/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac|opus)(\?|#|$)/i;
+const PDF_EXT = /\.pdf(\?|#|$)/i;
+const TEXT_EXT = /\.(txt|md|markdown|csv|json|log|xml|yml|yaml|ini|conf|properties|sql|sh|bat|java|js|ts|vue|py|c|cpp|h|css)(\?|#|$)/i;
+const OFFICE_EXT = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf)(\?|#|$)/i;
+
+/* 可以在弹窗里预览的类型（图片/视频走媒体弹窗，文档走 iframe 弹窗） */
+const DOC_KINDS = ['pdf', 'text', 'office'];
 
 function fileKind(name, url) {
   const hay = String(name || '') + ' ' + String(url || '');
   if (IMAGE_EXT.test(hay)) return 'image';
   if (VIDEO_EXT.test(hay)) return 'video';
   if (AUDIO_EXT.test(hay)) return 'audio';
+  if (PDF_EXT.test(hay)) return 'pdf';
+  if (OFFICE_EXT.test(hay)) return 'office';
+  if (TEXT_EXT.test(hay)) return 'text';
   return 'file';
+}
+
+const isDocKind = kind => DOC_KINDS.includes(kind);
+
+/* Office 文档用微软在线预览服务渲染（OSS 地址本来就是公网可直链，满足它的取件要求） */
+function officeViewerUrl(url) {
+  return 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(url);
+}
+
+function kindIcon(kind) {
+  if (kind === 'pdf') return '📕';
+  if (kind === 'text') return '📃';
+  if (kind === 'office') return '📘';
+  return '📄';
 }
 
 /* 文件气泡 HTML：
@@ -189,7 +214,7 @@ function fileKind(name, url) {
 function fileBubbleHtml(name, size, url, kind) {
   const meta = esc(size || '');
   const info = `
-        <span class="file-ico">📄</span>
+        <span class="file-ico">${kindIcon(kind)}</span>
         <span class="file-info">
           <span class="file-name" title="${esc(name)}">${esc(name)}</span>
           <span class="file-meta">${meta}</span>
@@ -218,7 +243,9 @@ function fileBubbleHtml(name, size, url, kind) {
             loading="lazy" data-action="preview-media" data-kind="image" data-size="${meta}"
             data-url="${esc(url)}" data-name="${esc(name)}" />`
       : `<video class="file-video" src="${esc(url)}" title="${esc(name)}" preload="metadata" playsinline></video>
-          <button class="file-play" type="button" data-action="play-video" aria-label="播放视频">▶</button>`;
+          <button class="file-play" type="button" data-action="play-video" data-kind="video"
+                  data-url="${esc(url)}" data-name="${esc(name)}" data-size="${meta}"
+                  aria-label="播放视频">▶</button>`;
     return `<div class="bubble file-bubble media media-card"><div class="file-card">${media}${tag}${more}</div></div>`;
   }
 
@@ -237,10 +264,15 @@ function fileBubbleHtml(name, size, url, kind) {
     </div>`;
   }
 
-  /* ---------- 其它文件：气泡内「图标 + 文件名 + 大小 + 下载」 ---------- */
+  /* ---------- 其它文件：图标 + 文件名 + 大小 +（可预览的文档）预览 + 下载 ---------- */
+  const previewBtn = isDocKind(kind)
+    ? `<button class="file-dl ghost" type="button" data-action="preview-doc" data-kind="${kind}"
+          data-url="${esc(url)}" data-name="${esc(name)}" data-size="${meta}">预览</button>`
+    : '';
   return `
       <div class="bubble file-bubble">
         ${info}
+        ${previewBtn}
         <a class="file-dl" href="${esc(url)}" target="_blank" rel="noopener" download="${esc(name)}">下载</a>
       </div>`;
 }
@@ -524,10 +556,48 @@ async function onFileInputChange(e) {
 /* ---------- 会话区事件委托（原版 mount 里 #chatPanel / #chatContacts 的 onclick） ---------- */
 /* 注：消息气泡里的 open-product / quick-add-cart 由 App.vue 全局代理处理，这里只处理
    chat-clear 这类页面特有动作，避免重复加购 / 重复跳转（见移植规范第 4 条）。 */
-/* ---------- 图片放大预览灯箱（点气泡里的图片即打开） ---------- */
+/* ---------- 预览窗口（图片放大 / 视频播放 / 文档预览共用） ----------
+   关闭方式只有两种：点窗口里的「关闭」按钮，或按 Esc —— 点窗口以外的区域不会退出。 */
 function openPreview(kind, url, name, size) {
   if (!url) return;
-  state.preview = { kind: kind || 'image', url, name: name || '文件', size: size || '' };
+  const k = kind || 'image';
+  /* 文档（PDF / 文本 / Office）：先探测后端内联代理是否可用，再决定窗口里放什么地址 */
+  if (isDocKind(k)) {
+    state.preview = { kind: k, url, name: name || '文件', size: size || '', frameSrc: '', proxyOk: null };
+    resolveDocFrame(k, url);
+    return;
+  }
+  state.preview = { kind: k, url, name: name || '文件', size: size || '' };
+}
+
+/* 后端内联代理地址（同源）：绕开 OSS 对象自带的 Content-Disposition: attachment 与跨域限制 */
+function inlinePreviewUrl(url) {
+  return String(QM_CFG.API_BASE).replace(/\/+$/, '') + '/files/preview?url=' + encodeURIComponent(url);
+}
+
+/* 探测后端是否实现了 /files/preview（结果缓存一次；后端未实现时返回 404，前端自动降级） */
+let inlineProxyAvailable = null;
+async function probeInlineProxy() {
+  if (inlineProxyAvailable !== null) return inlineProxyAvailable;
+  const base = String(QM_CFG.API_BASE).replace(/\/+$/, '');
+  try {
+    const r = await fetch(base + '/files/preview?probe=1&url=' + encodeURIComponent('probe'));
+    inlineProxyAvailable = r.ok;
+  } catch (e) {
+    inlineProxyAvailable = false;
+  }
+  return inlineProxyAvailable;
+}
+
+/* 决定文档预览窗口里的地址：
+   · 代理可用 → 同源代理（PDF / 文本 / Office 都能直接看）；
+   · 代理不可用 → PDF / Office 退化为微软在线预览（由微软服务器取件，不受浏览器限制），
+     纯文本没有可靠兜底，窗口里给出说明与下载入口。 */
+async function resolveDocFrame(kind, url) {
+  const ok = await probeInlineProxy();
+  if (!state.preview || state.preview.url !== url) return; // 探测期间窗口已被关闭
+  state.preview.proxyOk = ok;
+  state.preview.frameSrc = ok ? inlinePreviewUrl(url) : (kind === 'text' ? '' : officeViewerUrl(url));
 }
 function closePreview() {
   state.preview = null;
@@ -538,13 +608,11 @@ function onMessagesClick(e) {
   if (!el) return;
   const action = el.dataset.action;
 
-  /* 视频中央播放按钮：切到原生控件并播放
-     （视频卡片默认不带 controls，否则还没播放底部就压着一条控制栏，不像参考图的卡片样式） */
-  if (action === 'play-video') {
-    const card = el.closest('.file-card');
-    const v = card && card.querySelector('video');
-    if (v) { v.controls = true; const p = v.play(); if (p && p.catch) p.catch(() => { /* 自动播放被拦截时用户可再点原生控件 */ }); }
-    el.classList.add('is-hidden');
+  /* 视频中央播放键 / 文档「预览」 / 图片：统一在弹出窗口里打开
+     （以前视频是原地切原生控件，用户容易顺手点到全屏；现在一律走窗口） */
+  if (action === 'play-video' || action === 'preview-doc' || action === 'preview-media') {
+    e.preventDefault();
+    openPreview(el.dataset.kind, el.dataset.url, el.dataset.name, el.dataset.size);
     return;
   }
 
@@ -560,11 +628,6 @@ function onMessagesClick(e) {
       left: Math.round(Math.max(8, Math.min(r.right - 168, window.innerWidth - 176)))
     };
     return;
-  }
-
-  if (action === 'preview-media') {
-    e.preventDefault();
-    openPreview(el.dataset.kind, el.dataset.url, el.dataset.name, el.dataset.size);
   }
 }
 /* 图片加载失败（Bucket 私有读 / 地址失效）：把缩略图换成可读提示，而不是只留一个破图图标。
@@ -955,15 +1018,25 @@ onBeforeUnmount(() => {
       <a :href="state.mediaMenu.url" target="_blank" rel="noopener">在新标签打开</a>
       <a :href="state.mediaMenu.url" :download="state.mediaMenu.name">下载文件</a>
     </div>
-    <!-- 图片放大预览灯箱：点气泡里的图片打开，点击空白或按 Esc 关闭 -->
-    <div v-if="state.preview" class="media-lightbox" @click="closePreview">
-      <div class="ml-body" @click.stop>
+    <!-- 预览窗口（图片放大 / 视频播放 / PDF·文本·Office 文档预览）：
+         点窗口以外的区域不会关闭，必须点「关闭」按钮（或按 Esc）才退出 -->
+    <div v-if="state.preview" class="media-lightbox">
+      <div class="ml-body">
         <img v-if="state.preview.kind === 'image'" :src="state.preview.url" :alt="state.preview.name" />
         <video v-else-if="state.preview.kind === 'video'" :src="state.preview.url" controls autoplay playsinline></video>
-        <audio v-else :src="state.preview.url" controls autoplay></audio>
+        <audio v-else-if="state.preview.kind === 'audio'" :src="state.preview.url" controls autoplay></audio>
+        <iframe v-else-if="state.preview.frameSrc" class="ml-frame"
+                :src="state.preview.frameSrc" :title="state.preview.name"></iframe>
+        <div v-else class="ml-doc-fallback">
+          <b>这个文档暂时不能在窗口里直接预览</b>
+          <p>后端还没有提供文件内联预览接口（<code>/files/preview</code>）。OSS 上的对象被强制以「下载」方式响应，
+             浏览器无法内嵌显示纯文本内容。</p>
+          <p>请先点下面的「新标签打开」或「下载」；后端补上该接口后这里就能直接看文档。</p>
+        </div>
       </div>
-      <div class="ml-bar" @click.stop>
+      <div class="ml-bar">
         <span class="ml-name" :title="state.preview.name">{{ state.preview.name }}<i v-if="state.preview.size" class="ml-size"> · {{ state.preview.size }}</i></span>
+        <span v-if="state.preview.kind === 'office'" class="ml-tip">Office 文档由微软在线预览，打不开请点「下载」</span>
         <a class="ml-btn" :href="state.preview.url" target="_blank" rel="noopener">新标签打开</a>
         <a class="ml-btn" :href="state.preview.url" :download="state.preview.name">下载</a>
         <button class="ml-btn primary" @click="closePreview">关闭（Esc）</button>

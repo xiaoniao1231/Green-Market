@@ -32,9 +32,9 @@ public class TokenFilter implements Filter {
             "/sms-code"
     );
 
-    /** 公开浏览类接口前缀（首页/分类/搜索的商品列表与详情，浏览无需登录） */
+    /** 公开浏览类接口前缀（首页/分类/搜索的商品列表与详情，浏览无需登录；文件内联预览由 iframe 加载，无法带令牌） */
     private static final Set<String> WHITE_PREFIXES = Set.of(
-            "/home/", "/products"
+            "/home/", "/products", "/files/preview"
     );
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();

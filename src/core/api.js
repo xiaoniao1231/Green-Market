@@ -2,8 +2,8 @@
    青集市 · api.js —— 接口访问层
    · 所有页面只调用本文件的业务方法，不直接 fetch。
    · 聊天/用户接口（strict=true）直接请求真实后端（Spring Boot）；
-   · 商城预留接口在 404/501（后端未实现）时自动使用本地演示数据，
-     保证预留页面可正常浏览。
+   · 商品接口（products / seller）自 2026-09-17 起删除本地演示数据回退，
+     统一 strict=true 严格对接后端（由后端实现 docs/店家中心商品管理接口文档.md 契约）。
    ========================================================= */
 import QM_CFG from './config.js';
 import QM_MOCK from './mock.js';
@@ -186,7 +186,7 @@ function noteOnline(online) {
     };
   }
   /* 接口购物车列表 → 本地 store：
-     checked 属前端态（勾选不落库）——刷新后对已存在条目保持原勾选，新条目默认勾选；
+     checked 属前端态（勾选不落库）——刷新后对已存在条目保持原勾选，新条目默认不勾选（由用户手动勾选）；
      product 存服务端下发的商品快照，供页面渲染（不依赖 mock 商品库是否有该商品） */
   function syncCartFromApi(apiList) {
     const prev = {};
@@ -196,7 +196,7 @@ function noteOnline(online) {
       productId: it.productId,
       sku: it.sku || '默认',
       qty: it.qty,
-      checked: prev[it.itemKey] !== undefined ? prev[it.itemKey] : true,
+      checked: prev[it.itemKey] !== undefined ? prev[it.itemKey] : false,
       product: it.product || null
     }));
     QM_STORE.saveNow();
@@ -247,60 +247,72 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 商品模块（后端预留 → 自动演示数据） ================= */
+    /* ================= 店铺档案（读） =================
+       契约见 docs/店家中心商品管理接口文档.md 2.11 / 2.12：
+       · GET /shops/{shopId}  → 店铺公开档案（店铺主页 / 商品详情店铺栏使用，含店名 / 头像 / 简介 /
+         评分 / 粉丝 / 开店时间 / 店主账号）；
+       · GET /shops/profile   → 当前登录账号店铺档案（店家中心回显，见 seller.shopProfile）。
+       两个接口都是 strict：后端未实现时抛错，由页面回退本地档案（演示数据 / 本地缓存），不白屏。 */
+    shops: {
+      get(shopId) {
+        return call(
+          { name: '店铺档案', method: 'GET', path: '/shops/' + encodeURIComponent(shopId), query: {} },
+          null, { strict: true }
+        );
+      }
+    },
+
+    /* ================= 商品模块（strict：严格对接后端，无本地演示回退） ================= */
     products: {
       list(opts = {}) {
         return call(
-          { name: '商品列表', method: 'GET', path: '/products', query: { page: opts.page || 1, size: opts.size || 20, category: opts.category, sub: opts.sub, sort: opts.sort } },
-          () => {
-            let list = opts.category ? QM_MOCK.byCategory(opts.category, opts.sub) : QM_MOCK.products.slice();
-            if (opts.sort) list = QM_MOCK.sortProducts(list, opts.sort);
-            return QM_MOCK.paginate(list, opts.page || 1, opts.size || 20);
-          }
+          { name: '商品列表', method: 'GET', path: '/products', query: { page: opts.page || 1, size: opts.size || 20, category: opts.category, sub: opts.sub, sort: opts.sort, keyword: opts.keyword, shopId: opts.shopId } },
+          null, { strict: true }
         );
       },
       get(id) {
         return call(
           { name: '商品详情', method: 'GET', path: '/products/' + encodeURIComponent(id) },
-          () => {
-            const p = QM_MOCK.byId(id);
-            if (!p) throw new Error('商品不存在');
-            return p;
-          }
+          null, { strict: true }
         );
       },
       search(q, opts = {}) {
         return call(
           { name: '商品搜索', method: 'GET', path: '/products/search', query: { q, page: opts.page || 1, size: opts.size || 20, sort: opts.sort } },
-          () => {
-            let list = QM_MOCK.search(q);
-            if (opts.sort) list = QM_MOCK.sortProducts(list, opts.sort);
-            return QM_MOCK.paginate(list, opts.page || 1, opts.size || 20);
-          }
+          null, { strict: true }
         );
       },
       flash() {
         return call(
           { name: '限时秒杀', method: 'GET', path: '/home/flash' },
-          () => ({ endTime: QM_MOCK.getFlashEnd(), list: QM_MOCK.flashIds.map(QM_MOCK.byId).filter(Boolean) })
+          null, { strict: true }
         );
       },
       recommend(opts = {}) {
         return call(
           { name: '猜你喜欢', method: 'GET', path: '/home/recommend', query: { page: opts.page || 1, size: opts.size || 15 } },
-          () => QM_MOCK.paginate(QM_MOCK.products.slice(), opts.page || 1, opts.size || 15)
+          null, { strict: true }
         );
       },
       related(id, size = 5) {
         return call(
           { name: '相关推荐', method: 'GET', path: '/products/' + encodeURIComponent(id) + '/related', query: { size } },
-          () => {
-            const p = QM_MOCK.byId(id);
-            const same = QM_MOCK.byCategory(p ? p.category : '数码科技').filter(x => x.id !== id);
-            const rest = QM_MOCK.products.filter(x => x.id !== id && !same.includes(x));
-            return (same.concat(rest)).slice(0, size);
-          }
+          null, { strict: true }
         );
+      },
+      /* 上传商品图片：multipart 字段 file，后端上传阿里云 OSS 后返回 { url }（与 /users/avatar 同链路） */
+      async uploadImage(file) {
+        if (!file) throw new Error('文件不能为空');
+        const form = new FormData();
+        form.append('file', file, file.name);
+        try {
+          return await call(
+            { name: '上传商品图片', method: 'POST', path: '/products/image', timeout: QM_CFG.UPLOAD_TIMEOUT, body: form, token: tokenOf() },
+            null, { strict: true }
+          );
+        } catch (e) {
+          throw formatUploadError(e);
+        }
       }
     },
 
@@ -499,6 +511,119 @@ function noteOnline(online) {
         QM_STORE.saveNow();
         QM_STORE.emit('favorites');
         return { cleared: true };
+      }
+    },
+
+    /* ================= 店家中心 · 商品管理（strict：严格对接后端，无本地演示回退） =================
+       契约要点（详见 docs/店家中心商品管理接口文档.md）：
+       · GET    /seller/products            → { total, page, size, list }（status=on/off 可筛选上下架）
+       · GET    /seller/products/{id}       → 单个商品（编辑回显）
+       · POST   /seller/products            → 新增商品，data: 创建后的完整商品（含 id）
+       · PUT    /seller/products/{id}       → 更新商品（部分字段即可），data: 更新后的完整商品
+       · PUT    /seller/products/{id}/status→ 上下架，body { onSale }，data: { onSale }
+       · DELETE /seller/products/{id}       → 删除商品，data: { deleted }
+       鉴权：全部需要 Bearer token（不在 TokenFilter 白名单）；后端从令牌解析 userId →
+       shopId，返回该店铺商品，前端不传店铺参数。
+       商品对象字段与全站商品结构一致：{ id,title,price,original,sales,stock,category,sub,tag,
+       art:{img},shop:{name,score},skus:[{name,values:[{v,img}]}],desc,params:[[k,v]],
+       detail:[{type:"text"|"img",...}],onSale }。 */
+    seller: {
+      /* 当前店铺商品列表（status: ''全部 / on在售 / off已下架；keyword 按标题模糊搜索） */
+      products(opts = {}) {
+        return call(
+          { name: '店家商品列表', method: 'GET', path: '/seller/products', query: { page: opts.page || 1, size: opts.size || 100, status: opts.status, keyword: opts.keyword }, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 单个商品（编辑回显） */
+      get(id) {
+        return call(
+          { name: '店家商品详情', method: 'GET', path: '/seller/products/' + encodeURIComponent(id), query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 新增商品：payload 为商品对象（不含 id），返回创建后的完整商品 */
+      create(payload) {
+        return call(
+          { name: '新增商品', method: 'POST', path: '/seller/products', body: payload || {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 更新商品：payload 传需要修改的字段即可，返回更新后的完整商品 */
+      update(id, payload) {
+        return call(
+          { name: '更新商品', method: 'PUT', path: '/seller/products/' + encodeURIComponent(id), body: payload || {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 上下架：onSale=true 上架 / false 下架，返回 { onSale } */
+      setStatus(id, onSale) {
+        return call(
+          { name: '商品上下架', method: 'PUT', path: '/seller/products/' + encodeURIComponent(id) + '/status', body: { onSale: !!onSale }, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 删除商品 */
+      remove(id) {
+        return call(
+          { name: '删除商品', method: 'DELETE', path: '/seller/products/' + encodeURIComponent(id), body: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 上传店铺头像：multipart 字段 file → { url }（与商品图同一套 OSS 上传，见教程 Step 2(c)） */
+      async uploadShopAvatar(file) {
+        if (!file) throw new Error('文件不能为空');
+        const form = new FormData();
+        form.append('file', file, file.name);
+        try {
+          return await call(
+            { name: '上传店铺头像', method: 'POST', path: '/shops/avatar', timeout: QM_CFG.UPLOAD_TIMEOUT, body: form, token: tokenOf() },
+            null, { strict: true }
+          );
+        } catch (e) {
+          throw formatUploadError(e);
+        }
+      },
+      /* 保存店铺资料：body { avatar, intro } 部分更新（intro=店铺简介），返回最新店铺信息 */
+      updateShopProfile(payload) {
+        return call(
+          { name: '保存店铺资料', method: 'PUT', path: '/shops/profile', body: payload || {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 开通店铺：body { name, intro, avatar }（开店基本信息，见接口文档 2.10），
+         返回创建好的店铺档案（必须含店铺标识 shopId）；后端同时把该店铺绑到当前账号的 users.shop_id */
+      createShop(payload) {
+        return call(
+          { name: '开通店铺', method: 'POST', path: '/shops', body: payload || {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 当前账号的店铺档案（店家中心回显：店名 / 头像 / 简介 / 评分 / 粉丝 / 开店时间） */
+      shopProfile() {
+        return call(
+          { name: '店铺档案', method: 'GET', path: '/shops/profile', query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 店家订单列表：{ total, page, size, list }，订单结构同 docs/商城三功能联调接口文档.md
+         （时间字段为 'yyyy-MM-dd HH:mm:ss'，这里统一转成毫秒时间戳供页面直接渲染） */
+      async orders(opts = {}) {
+        const data = await call(
+          { name: '店家订单列表', method: 'GET', path: '/seller/orders', query: { page: opts.page || 1, size: opts.size || 100, status: opts.status }, token: tokenOf() },
+          null, { strict: true }
+        );
+        const d = data || {};
+        return Object.assign({ total: 0, page: 1, size: 0, list: [] }, d, {
+          list: ((d.list) || []).map(orderFromApi).filter(Boolean)
+        });
+      },
+      /* 发货：body 空，data { shipped: true }（幂等：非待发货状态由后端决定是否报错） */
+      shipOrder(orderId) {
+        return call(
+          { name: '订单发货', method: 'PUT', path: '/seller/orders/' + encodeURIComponent(orderId) + '/ship', body: {}, token: tokenOf() },
+          null, { strict: true }
+        );
       }
     },
 

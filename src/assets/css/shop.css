@@ -13,6 +13,20 @@
   flex: none;
   /* emoji 图形自带颜色，加一点阴影保证在任意店铺底色上都清晰 */
   text-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+  /* OSS 图片头像：图片铺满圆角，隐藏 span 的字符回退 */
+  overflow: hidden;
+}
+.shop-avatar img.avatar-img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+/* 大号头像（开店弹窗 / 弹窗头部用） */
+.shop-avatar.xl {
+  width: 72px; height: 72px;
+  border-radius: 20px;
+  font-size: 34px;
 }
 .shop-avatar.lg { width: 72px; height: 72px; font-size: 34px; border-radius: 20px; }
 .shop-avatar.ring { box-shadow: 0 0 0 3px rgba(255, 255, 255, .35), 0 6px 18px rgba(0, 0, 0, .18); cursor: pointer; transition: transform var(--dur) var(--ease); }

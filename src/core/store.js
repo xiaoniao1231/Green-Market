@@ -43,6 +43,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
   function defaults() {
     return {
       user: null,            // {userId, nickname, token, demo}
+      chatOwner: null,       // 本地聊天数据归属的账号（登录写入、退出保留；换账号登录时据此清空旧会话）
       cart: [],              // {key, productId, sku, qty, checked}
       favorites: [],         // productId[]
       /* 演示订单种子（首次打开时展示各订单状态；下单后由真实逻辑接管） */
@@ -89,7 +90,11 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       contacts: QM_MOCK.contacts.slice(),
       chats: {},
       shopFavs: [],        // 关注的店铺名（用户可关注店铺，店铺页 / 详情页使用）
-      sellerProducts: {}   // 卖家商品管理状态 { productId: { onSale, price } }
+      /* 本地店铺档案：{ shopId: { id, name, avatar, color, intro, shopIntro, score, fans, founded, userId } }
+         来源：① 店家「店铺信息管理」保存的即时覆盖；② 后端店铺档案（GET /shops/profile、
+         GET /shops/{id}、POST /shops）返回的真实数据；③ 新开通店铺的档案。
+         优先级高于 mock 演示数据，供工作台 / 店铺主页 / 详情页 / 商品卡片统一读取 */
+      shopProfile: {}
     };
   }
 
@@ -147,13 +152,13 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
           delete QM_STORE.state.chats[k];
         }
       });
-      /* 会话保留规则：① 店铺会话（role=shop，商品详情「联系卖家」创建）；
-         ② 有实际聊天记录的联系人（收到对方消息时以 role=friend 自动创建）。
-         旧实现只保留 role=shop，会让「接收方」一刷新就丢掉会话入口与聊天记录，
-         导致两个用户无法持续互聊 —— 这是多用户互相聊天必须放开的一环。 */
+      /* 会话保留规则：只有「有实际聊天记录」的联系人才算会话。
+         以前无条件保留 role=shop 联系人（商品详情「联系卖家」创建但从未发消息），
+         会让从未建立过聊天的账号在消息中心看到空会话；统一以 chats 记录为准 ——
+         没聊过天就不出现在会话列表（再次从商品详情进入时仍可创建，聊天后自然保留）。 */
       const chatKeys = new Set(Object.keys(QM_STORE.state.chats));
       QM_STORE.state.contacts = QM_STORE.state.contacts.filter(
-          c => c && (c.role === 'shop' || chatKeys.has(c.id))
+          c => c && chatKeys.has(c.id)
       );
       QM_STORE.state.contacts.forEach(c => {
         const svc = QM_MOCK.serviceById(c.id);
@@ -186,16 +191,22 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       set(user, token) {
         /* 切换账号时重置聊天数据：会话在语义上属于某个账号，
            否则在同一标签页换账号登录，会看到上一个账号的联系人与聊天记录。
-           注意只在「确实从 A 账号切到 B 账号」时清空（prevId 非空且不同）：
-           退出登录后重新登录同一账号（prevId 为 null）不清空，本地会话直接保留；
-           即便本地被清（关闭标签页 / 换账号），登录后 ChatView 也会从后端
-           /messages/conversations 重建会话列表，不会白屏。 */
-        const prevId = QM_STORE.state.user && QM_STORE.state.user.userId;
+           判定依据是本地会话归属账号 chatOwner（随登录写入、退出后保留）：
+           · chatOwner 存在且与本次登录账号不同 → 换号，清空本地会话；
+           · chatOwner 为空但本地已有会话数据 → 旧版本残留（归属不明），
+             同样清空 —— 本地会话可由后端 /messages/conversations 恢复；
+           · chatOwner 与本次登录账号相同（退出后重登同一账号）→ 保留本地会话。 */
+        const prevOwner = QM_STORE.state.chatOwner || (QM_STORE.state.user && QM_STORE.state.user.userId);
         const nextId = user && user.userId;
-        if (nextId && prevId && prevId !== nextId) {
+        const staleLocal = !prevOwner && (
+          Object.keys(QM_STORE.state.chats || {}).length > 0
+          || (QM_STORE.state.contacts || []).length > 0
+        );
+        if (nextId && ((prevOwner && prevOwner !== nextId) || staleLocal)) {
           QM_STORE.state.chats = {};
           QM_STORE.state.contacts = QM_MOCK.contacts.slice();
         }
+        QM_STORE.state.chatOwner = nextId; // 本地会话归属账号：退出登录后保留，用于下次登录识别是否换号
         QM_STORE.state.user = user ? Object.assign({}, user, { token }) : null;
         persist(); // 登录态是关键数据：同步落盘，避免关标签页丢登录
         emit('user', QM_STORE.state.user);
@@ -232,7 +243,8 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         const key = productId + '|' + (sku || '默认');
         const found = QM_STORE.state.cart.find(i => i.key === key);
         if (found) found.qty = Math.min(999, found.qty + qty);
-        else QM_STORE.state.cart.unshift({ key, productId, sku: sku || '默认', qty, checked: true });
+        /* 新加入的商品默认不勾选：由用户手动勾选后再结算 */
+        else QM_STORE.state.cart.unshift({ key, productId, sku: sku || '默认', qty, checked: false });
         save(); emit('cart');
         return found || QM_STORE.state.cart[0];
       },
@@ -252,7 +264,8 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         save(); emit('cart');
       },
       clear() { QM_STORE.state.cart = []; save(); emit('cart'); },
-      count() { return QM_STORE.state.cart.reduce((n, i) => n + i.qty, 0); },
+      /* 角标计数：按「不同商品（productId）」去重 —— 同一商品无论加多少次、多少件，都只算 1 */
+      count() { return new Set(QM_STORE.state.cart.map(i => i.productId)).size; },
       selected() {
         return QM_STORE.cart.list().filter(i => i.checked);
       },
@@ -408,50 +421,104 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
     },
 
     /* ---------- 我的店铺（账号持有店铺 shopId 即已开店，见 mock.shopOwners；账号本身仍是普通用户） ---------- */
-    seller: {
-      /* 当前账号的店铺：返回 {username, ownerName, shopName, id, userId, name, color, intro}；
-         未开店（无 shopId）返回 null */
+    /* 覆盖名 → shopId：店家改店名后，新店名也能定位到原店铺（找不到返回 null） */
+  shopIdOf(shopName) {
+    for (const [id, ov] of Object.entries(QM_STORE.state.shopProfile || {})) {
+      if (ov && ov.name && ov.name === shopName) return id;
+    }
+    return null;
+  },
+  /* 店铺名展示映射：该店有改名覆盖则显示新名（商品卡片 / 各处原店名渲染统一走这里） */
+  displayShopName(name) {
+    const s = QM_MOCK.shopServices[name];
+    const ov = s && QM_STORE.state.shopProfile[s.id];
+    return ov && ov.name ? ov.name : name;
+  },
+  /* 按店铺名取店铺信息（合并本地档案，供店铺页 / 详情页浏览；
+     店家改店名后，新店名通过档案映射同样可定位到原店铺；
+     本地档案 shopProfile 同时承载「店家保存的即时覆盖」与「后端返回的真实店铺档案」，
+     新开通的店铺（演示数据里没有）也在这里，因此本地档案优先于演示数据） */
+  shopService(shopName) {
+    const byOverride = QM_STORE.shopIdOf(shopName);
+    const demo = byOverride ? QM_MOCK.serviceById(byOverride) : QM_MOCK.shopServices[shopName];
+    const local = (byOverride && QM_STORE.state.shopProfile[byOverride]) || null;
+    if (!demo && !local) return QM_MOCK.serviceOf(shopName);   // 未知店铺：兜底平台客服信息
+    const base = Object.assign({}, demo || {}, local || {});
+    const id = base.id || byOverride;
+    const ov = id ? QM_STORE.state.shopProfile[id] : null;
+    return ov ? Object.assign({}, base, ov, { id }) : Object.assign({}, base, id ? { id } : {});
+  },
+
+  /* 记住（合并）一份店铺档案：来源可以是后端返回的店铺信息，也可以是本地保存的覆盖。
+     后端 GET /shops/profile、GET /shops/{id}、POST /shops 成功后就调这里，
+     工作台 / 店铺主页 / 商品卡片随即显示真实店铺；接口未实现时页面用已有档案兜底。 */
+  rememberShop(shop) {
+    if (!shop) return null;
+    const id = shop.id || shop.shopId || shop.shop_id;
+    if (!id) return null;
+    const prev = QM_STORE.state.shopProfile[id] || {};
+    const next = Object.assign({}, prev, shop, { id });
+    /* 后端字段名 intro → 前端展示字段 shopIntro（店铺简介），两边都保留便于复用 */
+    if (next.intro !== undefined && next.shopIntro === undefined) next.shopIntro = next.intro;
+    if (next.shopIntro !== undefined && next.intro === undefined) next.intro = next.shopIntro;
+    if (!next.color) next.color = prev.color || '#ff6a2b';
+    /* 无实质变化时不写盘、不广播：进页面拉一次后端档案不会触发多余的持久化与重渲染 */
+    const changed = !QM_STORE.state.shopProfile[id] || Object.keys(shop).some(k => prev[k] !== shop[k]);
+    QM_STORE.state.shopProfile[id] = next;
+    if (!changed) return next;
+    persist();
+    emit('shopProfile', next);
+    return next;
+  },
+
+  seller: {
+      /* 当前账号的店铺：返回 {username, ownerName, shopName, id, shopId, userId, name, color, intro,
+         avatar, shopIntro, score, fans, founded}；未开店（无 shopId）返回 null。
+         演示店铺（mock.shopServices）与本地档案（后端返回 / 开店结果）合并，本地档案优先——
+         因此改过的店名 / 头像 / 简介、以及新开通的店铺都能立即生效。
+         shopId 既不在演示数据、也没有本地档案时视为未开店。 */
       current() {
         const u = QM_STORE.state.user;
         if (!u || !u.shopId) return null;
-        const s = QM_MOCK.serviceById(u.shopId);
-        if (!s) return null;
+        const id = u.shopId;
+        const demo = QM_MOCK.serviceById(id);
+        const local = QM_STORE.state.shopProfile[id] || null;
+        if (!demo && !local) return null;
+        const base = Object.assign({}, demo || {}, local || {});
+        /* 注意：mock 店铺条目的 name 是「店主昵称」，店名要看档案里的 name 或 mock 的键名 */
+        const shopName = (local && local.name) || QM_MOCK.shopNameById(id) || base.name || '';
         return {
           username: u.userId,
           ownerName: u.nickname,
-          shopName: QM_MOCK.shopNameById(s.id) || '',
-          id: s.id,          // 店铺标识
-          userId: s.userId,  // 开店用户账号，兼作聊天身份（买家就是和这位用户聊天）
-          name: s.name,
-          color: s.color,
-          intro: s.intro
+          shopName,
+          id,                                  // 店铺标识
+          shopId: id,
+          userId: base.userId || u.userId,     // 开店用户账号，兼作聊天身份（买家就是和这位用户聊天）
+          name: base.name || '',
+          color: base.color || '#ff6a2b',
+          intro: base.intro || '',
+          score: base.score,
+          fans: base.fans,
+          founded: base.founded,
+          avatar: base.avatar || '',           // OSS 地址或 emoji
+          shopIntro: base.shopIntro !== undefined ? base.shopIntro : '',
+          isDemo: !local && !!demo             // 只有演示数据、没有本地/真实档案
         };
+      },
+      /* 店铺资料保存（写入本地档案并落盘）：patch 形如 { name, avatar, shopIntro } */
+      saveProfile(shopId, patch) {
+        if (!shopId || !patch) return null;
+        return QM_STORE.rememberShop(Object.assign({}, patch, { id: shopId }));
       },
       /* 全部店铺（含开店用户映射），供开店引导 / 演示账号提示使用 */
       list() {
         return Object.keys(QM_MOCK.shopServices).map(name => Object.assign({ shopName: name }, QM_MOCK.shopServices[name]));
       },
       /* 店铺标识 / 开店用户 id → 店铺名 */
-      shopName(shopId) { return QM_MOCK.shopNameById(shopId); },
-      /* 该店铺商品（合并卖家上下架 / 改价状态） */
-      products(shopId) {
-        const name = QM_MOCK.shopNameById(shopId);
-        return QM_MOCK.products.filter(p => p.shop.name === name).map(p => Object.assign({}, p, QM_STORE.state.sellerProducts[p.id] || {}));
-      },
-      setProduct(pid, patch) {
-        QM_STORE.state.sellerProducts[pid] = Object.assign({}, QM_STORE.state.sellerProducts[pid] || {}, patch);
-        save(); emit('seller');
-      },
-      /* 该店铺商品产生的订单 */
-      orders(shopId) {
-        const name = QM_MOCK.shopNameById(shopId);
-        return QM_STORE.state.orders.filter(o => o.items.some(it => {
-          const p = QM_MOCK.byId(it.productId);
-          return p && p.shop.name === name;
-        }));
-      }
-      /* 注：消息统一在「消息中心」（ChatView）处理——与任何联系人一样，
-         聊天就是对端的用户账号，不再有独立商家消息中心 */
+      shopName(shopId) { return QM_MOCK.shopNameById(shopId); }
+      /* 注：① 店家订单改走后端接口 QM_API.seller.orders()（原本地演示订单查询已移除）；
+             ② 消息统一在「消息中心」（ChatView）处理——与任何联系人一样，
+                聊天就是对端的用户账号，不再有独立商家消息中心 */
     }
   };
 

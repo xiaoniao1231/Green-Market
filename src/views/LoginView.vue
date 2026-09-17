@@ -75,15 +75,10 @@ async function commitLogin(data) {
   if (data.gender !== undefined) user.gender = data.gender;
   if (data.signature !== undefined) user.signature = data.signature;
   if (data.shopId !== undefined) user.shopId = data.shopId;
-  /* 账号若已开店则附带店铺绑定 shopId（演示映射见 mock.shopOwners；后端已返回时不再覆盖） */
-  const owner = QM_MOCK.shopOf(user.userId);
-  if (owner) {
-    const svc = QM_MOCK.serviceById(owner.shopId);
-    if (!user.shopId) user.shopId = owner.shopId;
-    if (!user.avatar) user.avatar = (svc && svc.avatar) || '';
-  }
+  /* 是否开店完全以服务端为准：数据库未绑定店铺（后端未返回 shopId）即为未开店，
+     不再用演示账号映射兜底 —— 店家中心入口与商品/订单管理据此收敛 */
   QM_STORE.user.set(user, data.token);
-  toast(`欢迎回来，${user.nickname}` + (owner ? '（已开店）' : ''), 'success');
+  toast(`欢迎回来，${user.nickname}` + (user.shopId ? '（已开店）' : ''), 'success');
   refreshView();
   router.replace(redirect);
 }

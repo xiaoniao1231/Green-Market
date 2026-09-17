@@ -8,7 +8,7 @@ import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { esc, productCard, emptyState } = QM_UI;
+const { esc, productCard, emptyState, toast } = QM_UI;
 const route = useRouteCompat();
 
 const sort = ref('default');
@@ -22,10 +22,16 @@ const cardsHtml = computed(() => list.value.length
   : emptyState('🔍', '没有找到相关商品', '换个关键词试试，或去首页逛逛推荐好物'));
 
 async function load() {
-  const data = await QM_API.products.search(q.value, Object.assign({ page: 1, size: 40 }, sort.value === 'default' ? {} : { sort: sort.value }));
-  /* 后端返回 {code:1,data:null} 时 data.list 会抛 TypeError，导致搜索结果页整页空白 */
-  list.value = (data && data.list) || [];
-  total.value = (data && data.total) || 0;
+  try {
+    const data = await QM_API.products.search(q.value, Object.assign({ page: 1, size: 40 }, sort.value === 'default' ? {} : { sort: sort.value }));
+    /* 后端返回 {code:1,data:null} 时 data.list 会抛 TypeError，导致搜索结果页整页空白 */
+    list.value = (data && data.list) || [];
+    total.value = (data && data.total) || 0;
+  } catch (e) {
+    list.value = [];
+    total.value = 0;
+    toast(e.message, 'error');
+  }
 }
 
 function setSort(key) {

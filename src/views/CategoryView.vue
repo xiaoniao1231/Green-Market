@@ -9,7 +9,7 @@ import QM_MOCK from '../core/mock.js';
 import QM_API from '../core/api.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { esc, productCard, emptyState } = QM_UI;
+const { esc, productCard, emptyState, toast } = QM_UI;
 const route = useRouteCompat();
 
 const sort = ref('default');
@@ -24,13 +24,19 @@ const cardsHtml = computed(() => list.value.length
   : emptyState('📦', '该分类暂无商品', '商品正在上架中，敬请期待'));
 
 async function load() {
-  const opts = sort.value === 'default' ? {} : { sort: sort.value };
-  const data = catId.value === '全部'
-    ? await QM_API.products.list(Object.assign({ page: 1, size: 40 }, opts))
-    : await QM_API.products.list(Object.assign({ page: 1, size: 40, category: catId.value }, opts));
-  /* 后端返回 {code:1,data:null} 时 data 为 null：直接取 data.list 会抛 TypeError 导致整页空白 */
-  list.value = (data && data.list) || [];
-  total.value = (data && data.total) || 0;
+  try {
+    const opts = sort.value === 'default' ? {} : { sort: sort.value };
+    const data = catId.value === '全部'
+      ? await QM_API.products.list(Object.assign({ page: 1, size: 40 }, opts))
+      : await QM_API.products.list(Object.assign({ page: 1, size: 40, category: catId.value }, opts));
+    /* 后端返回 {code:1,data:null} 时 data 为 null：直接取 data.list 会抛 TypeError 导致整页空白 */
+    list.value = (data && data.list) || [];
+    total.value = (data && data.total) || 0;
+  } catch (e) {
+    list.value = [];
+    total.value = 0;
+    toast(e.message, 'error');
+  }
 }
 
 function setSort(key) {

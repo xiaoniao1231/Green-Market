@@ -55,6 +55,11 @@
   box-shadow: 0 2px 8px rgba(230, 73, 0, .3);
 }
 .pc-tag.plain { background: rgba(0, 0, 0, .5); box-shadow: none; }
+/* 店家上传主图：铺满图区容器（pc-art / g-main / 缩略图等），无图时容器回退渐变背景 */
+img.art-img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; z-index: 1; display: block;
+}
 .pc-info { padding: 11px 13px 13px; }
 .pc-info h3 { font-size: 13px; font-weight: 400; color: var(--text); line-height: 1.5; height: 39px; margin-bottom: 7px; }
 .pc-price-row { display: flex; align-items: baseline; gap: 8px; }

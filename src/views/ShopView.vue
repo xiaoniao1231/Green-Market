@@ -8,11 +8,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
+import QM_API from '../core/api.js';
 import QM_MOCK from '../core/mock.js';
 import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { esc, sales, productCard, toast, modal } = QM_UI;
+const { esc, sales, productCard, toast, modal, avatarHtml, isImage } = QM_UI;
 const route = useRouteCompat();
 const router = useRouter();
 
@@ -20,13 +21,21 @@ const shopName = computed(() => route.value.params[0] || '');
 
 /* 页面状态：loading 加载中 / missing 店铺不存在 / ready 已就绪 */
 const phase = ref('loading');
-const shop = ref(null);       // 店铺信息（shopServices 条目 + shopName/score）
+const shop = ref(null);       // 店铺信息（本地档案 / 演示数据 + shopName/score）
 const sort = ref('default');  // default 综合 / sales 销量 / priceAsc 价格↑ / priceDesc 价格↓
 
+/* 店铺商品：接口优先（GET /products?shopId=xxx），接口未实现时回退本地演示商品
+   —— 店铺浏览属于买家侧浏览，文档约定可保留演示数据，保证不白屏 */
+const rawGoods = ref([]);
+const goodsFrom = ref('demo');   // server = 后端接口 / demo = 演示数据兜底
+
+/* 演示商品：按店铺身份匹配（本地数据以店铺 id 关联，店家改店名后新旧店名都能列出同一家店的商品） */
+function demoGoods(shopIdValue) {
+  return QM_MOCK.products.filter(p => (QM_MOCK.serviceOf(p.shop.name) || {}).id === shopIdValue);
+}
+
 const goods = computed(() => {
-  if (!shop.value) return [];
-  const list = QM_MOCK.products.filter(p => p.shop.name === shop.value.shopName);
-  const copy = list.slice();
+  const copy = rawGoods.value.slice();
   if (sort.value === 'sales') copy.sort((a, b) => b.sales - a.sales);
   else if (sort.value === 'priceAsc') copy.sort((a, b) => a.price - b.price);
   else if (sort.value === 'priceDesc') copy.sort((a, b) => b.price - a.price);
@@ -34,25 +43,49 @@ const goods = computed(() => {
 });
 const goodsHtml = computed(() => goods.value.map(p => productCard(p)).join(''));
 
-/* 店铺平均分：商品评分均值（无商品时取 4.8） */
+/* 店铺平均分：当前商品评分的均值（无商品时取 4.8） */
 const avgScore = computed(() => {
-  const list = QM_MOCK.products.filter(p => p.shop.name === shopName.value);
+  const list = rawGoods.value;
   if (!list.length) return '4.8';
-  return (list.reduce((s, p) => s + p.shop.score, 0) / list.length).toFixed(1);
+  return (list.reduce((s, p) => s + Number((p.shop && p.shop.score) || 0), 0) / list.length).toFixed(1);
 });
+
+async function loadGoods(shopIdValue) {
+  try {
+    const data = await QM_API.products.list({ shopId: shopIdValue, page: 1, size: 100 });
+    rawGoods.value = (data && data.list) || [];
+    goodsFrom.value = 'server';
+  } catch (e) {
+    rawGoods.value = demoGoods(shopIdValue);
+    goodsFrom.value = 'demo';
+  }
+}
 
 /* 关注店铺状态 */
 const favTick = ref(0);
 const faved = computed(() => { favTick.value; return QM_STORE.shopFav.has(shopName.value); });
 let offShopFav = null;
 
-function load() {
+async function load() {
   phase.value = 'loading';
   shop.value = null;
   sort.value = 'default';
-  const hit = QM_MOCK.shopServices[shopName.value];
-  if (!hit) { phase.value = 'missing'; return; }
-  shop.value = Object.assign({ shopName: shopName.value, score: Number(avgScore.value) }, hit);
+  rawGoods.value = [];
+  if (!QM_MOCK.shopServices[shopName.value] && !QM_STORE.shopIdOf(shopName.value)) { phase.value = 'missing'; return; }
+  let hit = QM_STORE.shopService(shopName.value);
+  const sid = hit.id;
+  /* 店铺档案接口优先（GET /shops/{id}）：成功后写入本地档案，店名 / 头像 / 简介 / 评分随之更新 */
+  try {
+    const remote = await QM_API.shops.get(sid);
+    if (remote) {
+      QM_STORE.rememberShop(Object.assign({}, remote, { id: remote.id || remote.shopId || remote.shop_id || sid }));
+      hit = QM_STORE.shopService(shopName.value);
+    }
+  } catch (e) {
+    /* 接口未实现：沿用本地档案 / 演示数据 */
+  }
+  await loadGoods(sid);
+  shop.value = Object.assign({ shopName: QM_STORE.displayShopName(shopName.value), score: Number(avgScore.value) }, hit);
   phase.value = 'ready';
 }
 
@@ -63,7 +96,7 @@ function openShopInfo() {
   modal(`
     <div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
-        <span class="shop-avatar lg" style="background:${s.color}">${s.avatar || '店'}</span>
+        ${avatarHtml(s.avatar, 'lg', s.color)}
         <div>
           <h3 style="margin-bottom:2px">${esc(s.shopName)}</h3>
           <p class="modal-sub" style="margin-bottom:0">卖家：${esc(s.owner || '—')}</p>
@@ -130,7 +163,8 @@ onBeforeUnmount(() => { if (offShopFav) { offShopFav(); offShopFav = null; } });
       <!-- 店铺封面 -->
       <div class="shop-cover" :style="{ background: 'linear-gradient(120deg, ' + shop.color + ', #ff5000)' }">
         <button class="shop-avatar lg ring" :title="'点击查看「' + shop.shopName + '」基本信息'" @click="openShopInfo">
-          {{ shop.avatar || '店' }}
+          <img v-if="isImage(shop.avatar)" class="avatar-img" :src="shop.avatar" alt="" />
+          <template v-else>{{ shop.avatar || '店' }}</template>
         </button>
         <div class="shop-cover-main">
           <h1>{{ shop.shopName }}</h1>
@@ -160,6 +194,7 @@ onBeforeUnmount(() => { if (offShopFav) { offShopFav(); offShopFav = null; } });
             <button :class="{ active: sort === 'priceDesc' }" @click="sort = 'priceDesc'">价格↓</button>
           </div>
         </div>
+        <div v-if="goodsFrom === 'demo'" class="hint" style="margin:0 0 10px">当前展示的是本地演示商品（后端商品接口未实现或不可达）；后端实现后自动切换为真实商品。</div>
         <div class="product-grid" v-html="goodsHtml"></div>
         <div v-if="!goods.length" class="empty-state">
           <div class="empty-icon">🛍️</div>

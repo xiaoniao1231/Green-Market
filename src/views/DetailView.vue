@@ -20,7 +20,7 @@ import QM_MOCK from '../core/mock.js';
 import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { artStyle, artHtml, sales, productCard, toast } = QM_UI;
+const { artStyle, artHtml, sales, productCard, toast, avatarHtml, isImage } = QM_UI;
 const route = useRouteCompat();
 const router = useRouter();
 
@@ -33,13 +33,18 @@ const VARIANTS = [
 
 const id = computed(() => route.value.params[0] || 'p01');
 
+/* ---------- SKU 值兼容两种形态：字符串（旧数据）或 { v, img }（新数据，款式带图） ---------- */
+const valOf = v => (typeof v === 'string' ? v : (v && v.v) || '');
+const valImg = v => (typeof v === 'string' ? '' : (v && v.img) || '');
+
 /* ---------- 页面状态（对应原版 render + mount 阶段性输出） ---------- */
 const phase = ref('loading');   // loading 加载中 / missing 商品不存在 / ready 已就绪
 const product = ref(null);
 const dTitle = ref('加载中…');
 const selected = ref([]);       // 每组 SKU 当前选中值的下标（原版 selected[group]）
 const qty = ref(1);
-const variant = ref(0);         // 当前图集外观（VARIANTS 下标）
+const variant = ref(0);         // 无图商品的图集外观（VARIANTS 下标，仅 art.img 为空时使用）
+const lastSkuGroup = ref(null); // 最近点击的 SKU 组：有图商品主图跟随款式切换
 const tab = ref('desc');        // desc 图文详情 / spec 规格参数 / comment 商品评价
 const relatedList = ref([]);
 const favTick = ref(0);         // QM_STORE 非响应式：用版本号驱动收藏按钮重算
@@ -63,7 +68,7 @@ const serviceId = computed(() => (product.value ? QM_MOCK.serviceOf(product.valu
 const shopInfo = computed(() => {
   const p = product.value;
   if (!p) return null;
-  const s = QM_MOCK.serviceOf(p.shop.name);
+  const s = QM_STORE.shopService(p.shop.name);
   return Object.assign({ shopName: p.shop.name, score: p.shop.score }, s);
 });
 /* 关注店铺按钮文案：订阅 shopFavs 事件驱动重算 */
@@ -80,7 +85,7 @@ function openShopInfo() {
   QM_UI.modal(`
     <div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
-        <span class="shop-avatar lg" style="background:${s.color}">${s.avatar || '店'}</span>
+        ${avatarHtml(s.avatar, 'lg', s.color)}
         <div>
           <h3 style="margin-bottom:2px">${s.shopName}</h3>
           <p class="modal-sub" style="margin-bottom:0">卖家：${s.owner || '—'}</p>
@@ -114,12 +119,61 @@ function requireLogin() {
   return false;
 }
 
-/* 商品图形（表情 + 渐变） */
+/* 商品图形（表情 + 渐变；仅无图商品使用） */
 const thumbArtOf = v => {
   const p = product.value;
   return v.g ? { e: p.art.e, g: v.g } : p.art;
 };
-const mainArt = computed(() => thumbArtOf(VARIANTS[variant.value]));
+
+/* 有图商品：主图跟随款式 —— 最近点击的 SKU 组选中值有图则显示该图，否则回退商品主图；
+   无图商品：保持原「原色 / 暖色 / 冷色」外观变体切换 */
+const mainArt = computed(() => {
+  const p = product.value;
+  if (!p) return null;
+  if (p.art.img) {
+    const g = lastSkuGroup.value;
+    if (g !== null && p.skus[g]) {
+      const v = p.skus[g].values[selected.value[g]];
+      const img = v && valImg(v);
+      if (img) return { img };
+    }
+    return p.art;
+  }
+  return thumbArtOf(VARIANTS[variant.value]);
+});
+
+/* 缩略图列表：
+   · 无图商品 → 3 个渐变外观变体（原行为）；
+   · 有图商品 → 商品主图 + 各 SKU 值图（去重），点击即选中对应款式 */
+const thumbs = computed(() => {
+  const p = product.value;
+  if (!p) return [];
+  if (!p.art.img) return VARIANTS.map((v, i) => ({ kind: 'variant', i }));
+  const list = [{ kind: 'main' }];
+  const seen = new Set();
+  p.skus.forEach((g, gi) => (g.values || []).forEach((v, vi) => {
+    const img = valImg(v);
+    if (img && !seen.has(img)) { seen.add(img); list.push({ kind: 'sku', group: gi, vi, img }); }
+  }));
+  return list;
+});
+/* 当前高亮缩略图：有图商品按最近点击款式定位，否则主图 */
+const currentThumb = computed(() => {
+  const p = product.value;
+  if (!p) return { kind: 'main' };
+  if (p.art.img) {
+    const g = lastSkuGroup.value;
+    if (g !== null && p.skus[g]) {
+      const v = p.skus[g].values[selected.value[g]];
+      if (v && valImg(v)) return { kind: 'sku', group: g, vi: selected.value[g] };
+    }
+    return { kind: 'main' };
+  }
+  return { kind: 'variant', i: variant.value };
+});
+
+/* 图文详情段落：新数据为 detail 段落数组（text/img 混合），旧数据仅有 desc 字符串 */
+const detailBlocks = computed(() => (product.value && product.value.detail) || []);
 
 const relatedHtml = computed(() => relatedList.value.map(p => productCard(p)).join(''));
 
@@ -143,6 +197,7 @@ async function load() {
   relatedList.value = [];
   qty.value = 1;
   variant.value = 0;
+  lastSkuGroup.value = null;
   tab.value = 'desc';
   let p = null;
   try { p = await QM_API.products.get(pid); } catch (e) { toast(e.message, 'error'); }
@@ -172,10 +227,17 @@ async function loadRelated(pid, mySeq) {
 }
 
 /* ---------- 交互（原版 mount 里逐个绑定的事件） ---------- */
-const skuText = () => product.value.skus.map((s, i) => s.values[selected.value[i]]).join(' / ');
+const skuText = () => product.value.skus.map((s, i) => valOf(s.values[selected.value[i]])).join(' / ');
 
-function pickSku(group, vi) { selected.value[group] = vi; }
-function pickThumb(i) { variant.value = i; }
+function pickSku(group, vi) {
+  selected.value[group] = vi;
+  lastSkuGroup.value = group; // 有图商品：点击款式即切换主图
+}
+function pickThumb(t) {
+  if (t.kind === 'sku') { lastSkuGroup.value = t.group; selected.value[t.group] = t.vi; }
+  else if (t.kind === 'variant') { variant.value = t.i; }
+  else { lastSkuGroup.value = null; } // 点主图缩略图 → 恢复商品主图
+}
 function setTab(name) { tab.value = name; }
 function setQty(v) { qty.value = Math.max(1, Math.min(5, v)); }
 function stepQty(dir) { setQty(qty.value + dir); }
@@ -237,21 +299,18 @@ onBeforeUnmount(() => {
 
       <template v-else>
         <div class="detail-layout">
-          <!-- 图集（表情 + 渐变） -->
+          <!-- 图集（店家上传主图 / 表情+渐变，缩略图随款式联动） -->
           <div class="detail-gallery">
             <div class="g-main" id="gMain" :style="artStyle(mainArt)" v-html="artHtml(mainArt)"></div>
             <div class="g-thumbs">
-              <div
-                v-for="(v, i) in VARIANTS"
-                :key="i"
-                class="g-thumb"
-                :class="{ active: variant === i }"
-                data-action="thumb"
-                :data-i="i"
-                :style="artStyle(thumbArtOf(v))"
-                v-html="artHtml(thumbArtOf(v))"
-                @click="pickThumb(i)"
-              ></div>
+              <template v-for="(t, i) in thumbs" :key="i">
+                <!-- 无图商品：外观变体缩略图 -->
+                <div v-if="t.kind === 'variant'" class="g-thumb" :class="{ active: currentThumb.kind === 'variant' && currentThumb.i === t.i }" data-action="thumb" :data-i="t.i" :style="artStyle(thumbArtOf(VARIANTS[t.i]))" v-html="artHtml(thumbArtOf(VARIANTS[t.i]))" @click="pickThumb(t)"></div>
+                <!-- 有图商品：款式图缩略图 -->
+                <div v-else-if="t.kind === 'sku'" class="g-thumb" :class="{ active: currentThumb.kind === 'sku' && currentThumb.group === t.group && currentThumb.vi === t.vi }" :title="valOf(product.skus[t.group].values[t.vi])" @click="pickThumb(t)"><img class="thumb-img" :src="t.img" alt="" loading="lazy" /></div>
+                <!-- 有图商品：主图缩略图 -->
+                <div v-else class="g-thumb" :class="{ active: currentThumb.kind === 'main' }" title="商品主图" @click="pickThumb(t)"><span :style="artStyle(product.art)" v-html="artHtml(product.art)"></span></div>
+              </template>
             </div>
           </div>
 
@@ -282,7 +341,7 @@ onBeforeUnmount(() => {
                   :data-group="gi"
                   :data-value="v"
                   @click="pickSku(gi, vi)"
-                >{{ v }}</button>
+                >{{ valOf(v) }}</button>
               </div>
             </div>
 
@@ -312,7 +371,10 @@ onBeforeUnmount(() => {
           <!-- 店铺信息 -->
           <aside class="detail-shop">
             <div class="shop-mini">
-              <span class="shop-avatar" :style="{ background: shopInfo.color }">{{ shopInfo.avatar || '店' }}</span>
+              <span class="shop-avatar" :style="{ background: shopInfo.color }">
+                <img v-if="isImage(shopInfo.avatar)" class="avatar-img" :src="shopInfo.avatar" alt="" />
+                <template v-else>{{ shopInfo.avatar || '店' }}</template>
+              </span>
               <button class="shop-mini-meta" title="点击查看店铺信息" @click="openShopInfo">
                 <b class="ellipsis">{{ shopInfo.shopName }}</b>
                 <small>点击查看店铺信息</small>
@@ -334,11 +396,17 @@ onBeforeUnmount(() => {
             <div class="detail-tabs" id="detailTabs">
               <button :class="{ active: tab === 'desc' }" data-tab="desc" @click="setTab('desc')">图文详情</button>
               <button :class="{ active: tab === 'spec' }" data-tab="spec" @click="setTab('spec')">规格参数</button>
-              <button :class="{ active: tab === 'comment' }" data-tab="comment" @click="setTab('comment')">商品评价（{{ product.comments.length }}）</button>
+              <button :class="{ active: tab === 'comment' }" data-tab="comment" @click="setTab('comment')">商品评价（{{ (product.comments || []).length }}）</button>
             </div>
             <div id="tabDesc" class="detail-desc" :class="{ hidden: tab !== 'desc' }">
-              <p>{{ product.desc }}</p>
-              <p style="margin-top:14px" v-html="artHtml(product.art, '120px')"></p>
+              <p v-if="product.desc">{{ product.desc }}</p>
+              <!-- 旧数据（无图文详情段落）：补一张渐变主图大图 -->
+              <p v-if="!product.art.img && !detailBlocks.length" class="detail-art-big" style="margin-top:14px" v-html="artHtml(product.art, '120px')"></p>
+              <!-- 图文详情段落：文字 / 图片穿插渲染 -->
+              <template v-for="(b, i) in detailBlocks" :key="i">
+                <div v-if="b.type === 'img'" class="detail-desc-img"><img :src="b.url" alt="" loading="lazy" /></div>
+                <p v-else>{{ b.text }}</p>
+              </template>
             </div>
             <table id="tabSpec" class="spec-table" :class="{ hidden: tab !== 'spec' }">
               <tr v-for="(p, i) in product.params" :key="i"><td>{{ p[0] }}</td><td>{{ p[1] }}</td></tr>

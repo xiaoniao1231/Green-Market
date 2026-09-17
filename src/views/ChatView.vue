@@ -780,11 +780,19 @@ function onMessagesScroll() {
 }
 
 /* 登录后重建会话列表：GET /messages/conversations 返回每个会话的对端与最后一条消息，
-   据此 ensureContact 创建会话入口；本地没有该会话消息时写入最后一条作预览
+   会话列表以服务端为准 —— 先清掉本地有、服务端没有的会话（如仅点了「联系卖家」
+   从未发消息、或旧版本残留），保证未建立过聊天的账号会话列表为空；
+   再据此 ensureContact 创建会话入口；本地没有该会话消息时写入最后一条作预览
    （点开会话仍走 loadHistory 拉全量，避免覆盖本地已有的完整历史）。 */
 async function restoreConversations() {
   const convs = await QM_API.chat.conversations();
-  if (!Array.isArray(convs) || !convs.length) return;
+  if (!Array.isArray(convs)) return;
+  /* 权威清理：服务端返回的会话集合之外的本地会话入口与聊天记录一并移除 */
+  const peerIds = new Set(convs.map(c => c && c.peerId).filter(Boolean));
+  QM_STORE.state.contacts = QM_STORE.state.contacts.filter(c => c && peerIds.has(c.id));
+  Object.keys(QM_STORE.state.chats).forEach(k => { if (!peerIds.has(k)) delete QM_STORE.state.chats[k]; });
+  QM_STORE.saveNow();
+  if (!convs.length) { QM_STORE.emit('chat'); renderContacts(); return; }
   const me = QM_STORE.state.user ? QM_STORE.state.user.userId : 'me';
   convs.forEach(conv => {
     const peerId = conv.peerId;

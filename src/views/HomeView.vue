@@ -71,8 +71,12 @@ function flashCard(p) {
 
 async function loadFlash() {
   let endTime = QM_MOCK.getFlashEnd();
-  const data = await QM_API.products.flash();
-  flashCardsHtml.value = (data.list || []).map(p => flashCard(p)).join('');
+  try {
+    const data = await QM_API.products.flash();
+    flashCardsHtml.value = (data.list || []).map(p => flashCard(p)).join('');
+  } catch (e) {
+    flashCardsHtml.value = emptyState('⚡', '秒杀商品加载失败', '后端 /home/flash 接口未实现');
+  }
   flashReady.value = true;
   const tick = () => {
     let left = Math.max(0, endTime - Date.now());
@@ -100,15 +104,20 @@ const moreVisible = ref(true); // 骨架期「加载更多」按钮默认可见�
 let page = 1;
 
 async function loadRecommend(filter) {
-  const res = await QM_API.products.recommend({ page: 1, size: 15 });
-  let list = (res && res.list) || [];
-  if (filter !== '全部') list = list.filter(p => p.category === filter);
-  recGridHtml.value = list.length
-    ? list.map(p => productCard(p)).join('')
-    : emptyState('🔍', '该分类暂无推荐', '去其他分类看看吧');
-  const btnShow = list.length >= 15 && filter === '全部';
-  moreVisible.value = btnShow;
-  if (btnShow) page = 1;
+  try {
+    const res = await QM_API.products.recommend({ page: 1, size: 15 });
+    let list = (res && res.list) || [];
+    if (filter !== '全部') list = list.filter(p => p.category === filter);
+    recGridHtml.value = list.length
+      ? list.map(p => productCard(p)).join('')
+      : emptyState('🔍', '该分类暂无推荐', '去其他分类看看吧');
+    const btnShow = list.length >= 15 && filter === '全部';
+    moreVisible.value = btnShow;
+    if (btnShow) page = 1;
+  } catch (e) {
+    recGridHtml.value = emptyState('🔍', '推荐商品加载失败', '后端 /home/recommend 接口未实现');
+    moreVisible.value = false;
+  }
 }
 
 function onRecTab(c) {

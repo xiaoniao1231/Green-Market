@@ -44,12 +44,19 @@ let currentLoginModal = null;
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
-  /* ---------- 商品图形（离线可用：表情 + 渐变） ---------- */
+  /* ---------- 商品图形（离线可用：表情 + 渐变；店家上传图片后优先显示真实图） ----------
+     兼容两种主图形态：
+     · art.img 存在  → 显示店家上传的商品图（img.art-img 由 CSS 铺满容器）；
+     · 否则          → 回退「表情 + 渐变」离线主图（演示数据）。 */
   const artStyle = art => {
+    if (art && art.img) return 'background:#f2f3f5';
     const g = (art && art.g) || ['#ffe4d3', '#ffb88c'];
     return `background:linear-gradient(135deg,${g[0]},${g[1]})`;
   };
-  const artHtml = (art, fontSize) => `<span style="font-size:${fontSize || 'inherit'}">${esc(art && art.e ? art.e : '🛍️')}</span>`;
+  const artHtml = (art, fontSize) => {
+    if (art && art.img) return `<img class="art-img" src="${esc(art.img)}" alt="" loading="lazy" />`;
+    return `<span style="font-size:${fontSize || 'inherit'}">${esc(art && art.e ? art.e : '🛍️')}</span>`;
+  };
 
   /* ---------- Toast ---------- */
   function toast(message, type) {
@@ -91,6 +98,16 @@ let currentLoginModal = null;
     });
   }
 
+  /* ---------- 头像（店铺 / 用户通用）：OSS 图片 URL → img，emoji / 空 → 字符 ---------- */
+  const isImage = v => typeof v === 'string' && /^(https?:|blob:)/i.test(v.trim());
+  const avatarHtml = (avatar, cls, color) => {
+    const c = color || '#ff6a2b';
+    if (isImage(avatar)) {
+      return `<span class="shop-avatar ${cls || ''}" style="background:${c}"><img class="avatar-img" src="${esc(avatar.trim())}" alt="" /></span>`;
+    }
+    return `<span class="shop-avatar ${cls || ''}" style="background:${c}">${esc(String(avatar || '店'))}</span>`;
+  };
+
   /* ---------- 商品卡 ---------- */
   function productCard(p, extra) {
     return `
@@ -103,7 +120,7 @@ let currentLoginModal = null;
         <h3 class="ellipsis-2">${esc(p.title)}</h3>
         <div class="pc-price-row">${price(p.price)}<del>${price(p.original)}</del></div>
         <div class="pc-meta"><span>${sales(p.sales)}人付款</span><span>好评 ${p.shop.score}</span></div>
-        <div class="pc-shop"><b class="ellipsis">${esc(p.shop.name)}</b><span class="btn btn-plain" data-action="quick-add-cart" data-id="${esc(p.id)}">＋购物车</span></div>
+        <div class="pc-shop"><b class="ellipsis">${esc(QM_STORE.displayShopName(p.shop.name))}</b><span class="btn btn-plain" data-action="quick-add-cart" data-id="${esc(p.id)}">＋购物车</span></div>
       </div>
       ${extra || ''}
     </div>`;
@@ -243,17 +260,12 @@ let currentLoginModal = null;
       if (data.gender !== undefined) user.gender = data.gender;
       if (data.signature !== undefined) user.signature = data.signature;
       if (data.shopId !== undefined) user.shopId = data.shopId;
-      /* 账号若已开店则附带店铺绑定 shopId（演示映射见 mock.shopOwners；后端已返回时不再覆盖） */
-      const owner = QM_MOCK.shopOf(user.userId);
-      if (owner) {
-        const svc = QM_MOCK.serviceById(owner.shopId);
-        if (!user.shopId) user.shopId = owner.shopId;
-        if (!user.avatar) user.avatar = (svc && svc.avatar) || '';
-      }
+      /* 是否开店完全以服务端为准：数据库未绑定店铺（后端未返回 shopId）即为未开店，
+         不再用演示账号映射兜底 —— 店家中心入口与商品/订单管理据此收敛 */
       /* 密令与用户信息一并保存进同一个登录态对象 */
       QM_STORE.user.set(user, data.token);
       m.close();
-      toast(`欢迎回来，${user.nickname}` + (owner ? '（已开店）' : ''), 'success');
+      toast(`欢迎回来，${user.nickname}` + (user.shopId ? '（已开店）' : ''), 'success');
       refreshView();
     }
 
@@ -403,9 +415,116 @@ let currentLoginModal = null;
     if (startWin === 'register') { showRegister(); pickRegister('acct'); }
   }
 
+  /* ---------- 开店弹窗：填写店铺基本信息 → POST /shops（strict） ----------
+     契约见 docs/店家中心商品管理接口文档.md 2.10：
+       body { name, intro, avatar } → data 创建好的店铺档案（必须含 shopId）。
+     成功后就地完成三件事：① 把 shopId 绑到当前账号（user.shopId）；
+     ② 写入本地店铺档案（工作台 / 商品管理 / 店铺主页随即显示真实店铺）；③ 回调 onDone 让页面刷新。
+     接口未实现（404 / 网络不可达）时只提示失败，**不伪造店铺、不写本地绑定**——
+     与商品管理页一致的 strict 策略；店铺名查重与评分 / 粉丝初始值由后端负责。 */
+  function openShopCreate(opts) {
+    const done = (opts && opts.onDone) || null;
+    const user = QM_STORE.state.user;
+    if (!user) { toast('请先登录后再开店', 'error'); return; }
+    let avatar = '';   // 已上传到 OSS 的店铺头像地址（提交时才保存）
+
+    const m = modal(`
+      <div class="shop-create">
+        <!-- 顶部品牌横幅 -->
+        <div class="sc-hero">
+          <span class="sc-hero-badge">🛍️</span>
+          <div>
+            <h3>开通我的店铺</h3>
+            <p>开店即可上架商品、管理订单，全程使用当前账号</p>
+          </div>
+        </div>
+        <div class="sc-body">
+          <!-- 店主身份 + 头像上传 -->
+          <div class="sc-owner">
+            <span class="sc-avatar">${avatarHtml('', 'xl', '#ff6a2b')}</span>
+            <div class="sc-owner-info">
+              <b>店主：${esc(user.nickname || user.userId || '')}</b>
+              <p>绑定账号 @${esc(user.userId || '')} · 开店后仍可买家身份下单</p>
+            </div>
+            <button type="button" class="btn btn-plain btn-sm" id="scPick">📷 上传头像</button>
+          </div>
+          <div class="sc-field">
+            <label for="scName">店铺名称 <em>*</em></label>
+            <input id="scName" class="se-name" maxlength="20" placeholder="2-20 个字，将展示在商品与店铺主页" />
+          </div>
+          <div class="sc-field">
+            <label for="scIntro">店铺简介</label>
+            <textarea id="scIntro" class="se-intro" rows="3" maxlength="120" placeholder="一句话介绍你的店铺，如主营类目 / 发货时效 / 售后承诺（选填）"></textarea>
+            <p class="se-count"><span id="scCount">0</span>/120</p>
+          </div>
+          <div class="modal-actions sc-actions">
+            <button type="button" class="btn btn-plain" data-close>取消</button>
+            <button type="button" class="btn btn-primary" id="scSubmit">立即开店</button>
+          </div>
+        </div>
+      </div>`, { wide: true });
+
+    const root = m.root;
+    const nameEl = root.querySelector('#scName');
+    const introEl = root.querySelector('#scIntro');
+    const btn = root.querySelector('#scSubmit');
+    introEl.oninput = () => { root.querySelector('#scCount').textContent = introEl.value.length; };
+
+    /* 店铺头像上传（POST /shops/avatar，与商品图同一套 OSS 链路）：成功后即时预览 */
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.hidden = true;
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) return toast('图片不能超过 10MB', 'error');
+      if (!/^image\//.test(file.type)) return toast('请选择 jpg / png 等图片文件', 'error');
+      try {
+        toast('正在上传店铺头像…');
+        const data = await QM_API.seller.uploadShopAvatar(file);
+        const url = data && data.url;
+        if (!url) throw new Error('上传未返回图片地址');
+        avatar = url;
+        root.querySelector('.sc-avatar').innerHTML = avatarHtml(url, 'xl', '#ff6a2b');
+        toast('头像已上传，点击「立即开店」后生效', 'success');
+      } catch (e) {
+        toast('头像上传失败：' + e.message, 'error');
+      }
+    };
+    root.querySelector('#scPick').onclick = () => input.click();
+
+    btn.onclick = async () => {
+      const name = nameEl.value.trim();
+      const intro = introEl.value.trim();
+      if (!name) return toast('请填写店铺名称', 'error');
+      if (name.length < 2 || name.length > 20) return toast('店铺名称需 2-20 个字', 'error');
+      if (intro.length > 120) return toast('店铺简介不能超过 120 字', 'error');
+      btn.disabled = true;
+      try {
+        const payload = { name, intro };
+        if (avatar) payload.avatar = avatar;
+        const shop = await QM_API.seller.createShop(payload);
+        const shopId = shop && (shop.shopId || shop.shop_id || shop.id);
+        if (!shopId) throw new Error('后端未返回店铺标识(shopId)');
+        QM_STORE.user.update({ shopId });                                   // 账号绑定新店铺
+        QM_STORE.rememberShop(Object.assign({}, shop || {}, { id: shopId, name, intro }));  // 后端字段优先
+        if (avatar) QM_STORE.rememberShop({ id: shopId, avatar });          // 后端未回头像时用刚上传的
+        toast('店铺已开通，去上架第一件商品吧 🎉', 'success');
+        m.close();
+        if (done) done(shopId); else refreshView();
+      } catch (e) {
+        toast('开店失败：' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+
 const QM_UI = {
   $, esc, price, sales, timeText, fullTime,
-  artStyle, artHtml, toast, modal, confirmDialog, productCard, emptyState, openLogin,
+  artStyle, artHtml, isImage, avatarHtml, toast, modal, confirmDialog, productCard, emptyState, openLogin, openShopCreate,
   /** 打开注册窗口（与登录窗口同属一个弹窗，直接定位到注册界面） */
   openRegister() { return openLogin('register'); }
 };

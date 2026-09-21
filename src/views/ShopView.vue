@@ -9,7 +9,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
-import QM_MOCK from '../core/mock.js';
 import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
@@ -21,18 +20,13 @@ const shopName = computed(() => route.value.params[0] || '');
 
 /* 页面状态：loading 加载中 / missing 店铺不存在 / ready 已就绪 */
 const phase = ref('loading');
-const shop = ref(null);       // 店铺信息（本地档案 / 演示数据 + shopName/score）
+const shop = ref(null);       // 店铺信息（后端店铺档案 + shopName/score）
 const sort = ref('default');  // default 综合 / sales 销量 / priceAsc 价格↑ / priceDesc 价格↓
 
-/* 店铺商品：接口优先（GET /products?shopId=xxx），接口未实现时回退本地演示商品
-   —— 店铺浏览属于买家侧浏览，文档约定可保留演示数据，保证不白屏 */
+/* 店铺商品：全部来自后端（GET /products?shopId=xxx）；
+   本地已无演示商品，接口未实现或该店暂无商品时显示空态 */
 const rawGoods = ref([]);
-const goodsFrom = ref('demo');   // server = 后端接口 / demo = 演示数据兜底
-
-/* 演示商品：按店铺身份匹配（本地数据以店铺 id 关联，店家改店名后新旧店名都能列出同一家店的商品） */
-function demoGoods(shopIdValue) {
-  return QM_MOCK.products.filter(p => (QM_MOCK.serviceOf(p.shop.name) || {}).id === shopIdValue);
-}
+const goodsLoaded = ref(false);   // 是否成功从后端取到商品（区分「暂无商品」与「接口失败」）
 
 const goods = computed(() => {
   const copy = rawGoods.value.slice();
@@ -54,10 +48,10 @@ async function loadGoods(shopIdValue) {
   try {
     const data = await QM_API.products.list({ shopId: shopIdValue, page: 1, size: 100 });
     rawGoods.value = (data && data.list) || [];
-    goodsFrom.value = 'server';
+    goodsLoaded.value = true;
   } catch (e) {
-    rawGoods.value = demoGoods(shopIdValue);
-    goodsFrom.value = 'demo';
+    rawGoods.value = [];
+    goodsLoaded.value = false;
   }
 }
 
@@ -71,7 +65,9 @@ async function load() {
   shop.value = null;
   sort.value = 'default';
   rawGoods.value = [];
-  if (!QM_MOCK.shopServices[shopName.value] && !QM_STORE.shopIdOf(shopName.value)) { phase.value = 'missing'; return; }
+  /* 店铺定位：店铺名 → 本地档案里的 shopId（档案由 GET /shops/{id} 写入，随会话持久化）。
+     档案里没有该店名时无法定位店铺（后端暂无「按店名查店铺」的接口）→ 显示店铺不存在 */
+  if (!QM_STORE.shopIdOf(shopName.value)) { phase.value = 'missing'; return; }
   let hit = QM_STORE.shopService(shopName.value);
   const sid = hit.id;
   /* 店铺档案接口优先（GET /shops/{id}）：成功后写入本地档案，店名 / 头像 / 简介 / 评分随之更新 */
@@ -82,7 +78,7 @@ async function load() {
       hit = QM_STORE.shopService(shopName.value);
     }
   } catch (e) {
-    /* 接口未实现：沿用本地档案 / 演示数据 */
+    /* 后端店铺档案接口未实现或不可达：沿用本地已有档案 */
   }
   await loadGoods(sid);
   shop.value = Object.assign({ shopName: QM_STORE.displayShopName(shopName.value), score: Number(avgScore.value) }, hit);
@@ -194,7 +190,7 @@ onBeforeUnmount(() => { if (offShopFav) { offShopFav(); offShopFav = null; } });
             <button :class="{ active: sort === 'priceDesc' }" @click="sort = 'priceDesc'">价格↓</button>
           </div>
         </div>
-        <div v-if="goodsFrom === 'demo'" class="hint" style="margin:0 0 10px">当前展示的是本地演示商品（后端商品接口未实现或不可达）；后端实现后自动切换为真实商品。</div>
+        <div v-if="!goodsLoaded" class="hint" style="margin:0 0 10px">商品加载失败：后端商品接口尚未实现或暂不可达。</div>
         <div class="product-grid" v-html="goodsHtml"></div>
         <div v-if="!goods.length" class="empty-state">
           <div class="empty-icon">🛍️</div>

@@ -6,7 +6,6 @@
      统一 strict=true 严格对接后端（由后端实现 docs/店家中心商品管理接口文档.md 契约）。
    ========================================================= */
 import QM_CFG from './config.js';
-import QM_MOCK from './mock.js';
 import QM_STORE from './store.js';
 import { uploadToOss } from './oss.js';
 
@@ -87,8 +86,11 @@ function noteOnline(online) {
   }
 
   /**
-   * 通用调用：strict=true 的接口（聊天相关，后端已实现）在服务可达时会抛出真实业务错误；
-   * strict=false 的接口（商城预留接口）在 404/501 等情况下自动使用本地演示数据。
+   * 通用调用：把后端的 Result 结构统一转成业务数据 / 业务错误。
+   *
+   * mockFn 是**本地离线回退**：只用于后端尚未实现的购物车 / 订单 / 收藏等接口，
+   * 让用户在不接后端时仍能把数据存到本地（存的是用户自己的操作，不是预置假数据）。
+   * 后端已实现的接口一律 strict=true，出错就如实抛出，不再有任何演示数据兜底。
    */
   async function call(entry, mockFn, { strict = false } = {}) {
     let res;
@@ -98,9 +100,8 @@ function noteOnline(online) {
     } catch (e) {
       // 网络不可达 → 后端未启动
       noteOnline(false);
-      if (strict) throw new Error('无法连接后端服务，请确认 Spring Boot 已启动');
+      if (strict || !mockFn) throw new Error('无法连接后端服务，请确认 Spring Boot 已启动');
       if (!QM_CFG.FALLBACK_MOCK) throw new Error('无法连接后端服务');
-      await QM_MOCK.delay();
       return mockFn();
     }
     // 令牌校验（后端侧）：令牌缺失 / 无效 / 过期 → 清除本地登录态
@@ -111,9 +112,11 @@ function noteOnline(online) {
     if (res.ok && res.json && res.json.code === 0) {
       throw new Error(res.json.msg || '请求未成功');
     }
-    // HTTP 错误（404：预留接口未实现；500：服务异常…）
-    if (strict) throw new Error(res.json && res.json.msg ? res.json.msg : '后端返回错误（' + res.status + '）');
-    await QM_MOCK.delay();
+    // HTTP 错误（404：后端接口尚未实现；500：服务异常…）
+    if (strict || !mockFn) {
+      if (res.status === 404) throw new Error('该功能后端接口尚未实现（404）');
+      throw new Error(res.json && res.json.msg ? res.json.msg : '后端返回错误（' + res.status + '）');
+    }
     return mockFn();
   }
 
@@ -174,9 +177,9 @@ function noteOnline(online) {
     const t = Date.parse(v);
     return isNaN(t) ? null : t;
   }
-  /* 本地购物车条目 → 接口条目（mock 回退路径使用；product 由 mock 商品补全） */
+  /* 本地购物车条目 → 接口条目（本地离线回退路径使用；商品信息取条目自带的快照） */
   function cartItemToApi(item) {
-    const p = item.product || QM_MOCK.byId(item.productId);
+    const p = item.product || null;
     return {
       itemKey: item.key,
       productId: item.productId,
@@ -202,7 +205,7 @@ function noteOnline(online) {
     QM_STORE.saveNow();
     QM_STORE.emit('cart');
   }
-  /* 接口订单 → 本地 store 结构（时间字符串 → millis；条目补 art 供卡片渲染） */
+  /* 接口订单 → 本地 store 结构（时间字符串 → millis；条目自带 art 时直接用） */
   function orderFromApi(o) {
     if (!o) return null;
     return Object.assign({}, o, {
@@ -210,13 +213,10 @@ function noteOnline(online) {
       payTime: o.payTime ? parseTime(o.payTime) : null,
       shipTime: o.shipTime ? parseTime(o.shipTime) : null,
       finishTime: o.finishTime ? parseTime(o.finishTime) : null,
-      items: (o.items || []).map(it => {
-        const p = QM_MOCK.byId(it.productId);
-        return Object.assign({}, it, { art: it.art || (p ? p.art : null) });
-      })
+      items: (o.items || []).map(it => Object.assign({}, it, { art: it.art || null }))
     });
   }
-  /* 本地订单 → 接口订单（mock 回退路径使用；时间 millis → 字符串） */
+  /* 本地订单 → 接口订单（本地离线回退路径使用；时间 millis → 字符串） */
   function orderToApi(o) {
     if (!o) return null;
     return Object.assign({}, o, {
@@ -704,7 +704,7 @@ function noteOnline(online) {
       onlineUsers() {
         return call(
           { name: '在线用户', method: 'GET', path: '/users/online', query: {}, token: tokenOf() },
-          () => ({ onlineCount: QM_MOCK.contacts.filter(c => c.online).length, onlineUsers: QM_MOCK.contacts.filter(c => c.online).map(c => c.id) }),
+          null,
           { strict: true }
         );
       },
@@ -716,11 +716,7 @@ function noteOnline(online) {
       history(peerId, page = 1, size = 50) {
         return call(
           { name: '历史消息', method: 'GET', path: '/messages/history', query: { peerId, page, size }, token: tokenOf() },
-          () => {
-            const msgs = (QM_STORE.chat.messages(peerId) || []);
-            const start = (page - 1) * size;
-            return { total: msgs.length, page, size, list: msgs.slice(start, start + size).map(m => ({ msgId: m.id, senderId: m.from === 'me' ? 'me' : m.from, receiverId: peerId, mesType: m.type === 'file' ? 'FILE_MES' : 'COMM_MES', content: m.content, sendTime: new Date(m.time).toLocaleString('zh-CN'), recalled: false })) };
-          },
+          null,
           { strict: true }
         );
       },

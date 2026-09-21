@@ -80,12 +80,80 @@
   border: 1px solid #ffe0cd;
 }
 .detail-price-card .price { font-size: 32px; }
-.detail-price-card del { margin-left: 10px; }
+/* 价格行：现价 +「到手价」标签 + 划线原价，同一基线排布，窄屏自动换行 */
+.detail-price-card .price-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+/* 「到手价」标签：红底白字小方牌，贴着现价基线，作为价格的主语义提示 */
+.detail-price-card .price-badge {
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 600; line-height: 1;
+  padding: 4px 8px; border-radius: 4px; letter-spacing: .5px;
+  box-shadow: 0 2px 6px rgba(255, 59, 48, .25);
+}
+/* 划线原价：降为灰色小字（现价一半字号），只作价格锚点，不抢现价视线。
+   注意 <del> 自身是正文大小、内部 .price 却被放大到 32px，而 line-through 的位置
+   取「声明划线那个元素」的字体度量 —— 沿用 <del> 默认划线会按小字号基线绘制、
+   飘到数字上方且只有 1px，看不出划掉。这里关掉自带划线，改用伪元素按容器高度
+   居中画一条灰线，位置与粗细都可控：字浅、线深，弱化与「已划掉」兼顾。 */
+.detail-price-card del { position: relative; display: inline-block; text-decoration: none; }
+.detail-price-card del .price { font-size: 16px; font-weight: 500; color: var(--text-4); }
+/* 原价内的货币符号 / 小数不再按 .price 的 em 比例缩小，避免出现 10px 以下的字号 */
+.detail-price-card del .price i, .detail-price-card del .price em { font-size: .85em; }
+.detail-price-card del::after {
+  content: ""; position: absolute;
+  left: -2px; right: -2px; top: 50%; height: 1.5px; margin-top: -.75px;
+  border-radius: 2px; background: #6f7784;
+  pointer-events: none;
+}
 .detail-price-card .price-meta { display: flex; gap: 20px; margin-top: 8px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
 .detail-skus { border-top: 1px dashed var(--border); padding-top: 15px; }
 .detail-qty { border-top: 1px dashed var(--border); padding: 15px 0; display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--text-2); flex-wrap: wrap; }
-.detail-buy { display: flex; gap: 12px; margin: 8px 0 16px; }
-.detail-buy .btn-lg { flex: 1; }
+/* 购买栏：左侧「加入购物车」橙色渐变块 + 中间主按钮「立即购买」共用一个胶囊，
+   右侧「收藏 / 联系」白底小按钮独立成组 —— 借鉴电商底栏的分工：
+   加购与购买是同一条转化动线上的两个强度，用同一胶囊内的深浅渐变区分主次 */
+.buy-bar { display: flex; align-items: stretch; flex-wrap: wrap; gap: 10px; margin: 12px 0 14px; }
+.buy-main {
+  flex: 1 1 220px; min-width: 0; height: 46px; display: flex; align-items: stretch;
+  border-radius: var(--radius-pill); overflow: hidden;
+  box-shadow: 0 6px 16px rgba(255, 80, 0, .22);
+}
+.buy-cart {
+  flex: 0 1 auto; min-width: 46px; display: flex; align-items: center; gap: 7px; padding: 0 18px;
+  color: #fff; font-size: 13px; font-weight: 600;
+  background: linear-gradient(135deg, #ffc93c, #ff9500);
+}
+/* 空间不够时先省略「加入购物车」文字，图标块与主按钮都不至于被压瘪 */
+.buy-cart-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buy-cart-icon {
+  width: 19px; height: 19px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.buy-now {
+  flex: 1 1 auto; min-width: 92px; color: #fff; font-size: 16px; font-weight: 600; letter-spacing: .5px;
+  background: var(--brand-grad);
+}
+.buy-cart:hover, .buy-now:hover { filter: brightness(1.06); }
+.buy-cart:active, .buy-now:active { filter: brightness(.94); }
+.buy-mini { flex: none; display: flex; gap: 8px; height: 46px; }
+.buy-icon {
+  width: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 11px; line-height: 1; color: var(--text-3);
+}
+.buy-icon-glyph { font-size: 17px; line-height: 1; color: var(--text-2); }
+.buy-icon:hover { border-color: var(--brand); color: var(--brand-ink); }
+.buy-icon:hover .buy-icon-glyph { color: var(--brand); }
+.buy-icon.on { background: #fff5f8; border-color: #f6b8cf; color: #d81b60; }
+.buy-icon.on .buy-icon-glyph { color: #d81b60; }
+/* 窄屏：购物车块只留图标（购物车形状已是通用认知），小按钮同步收窄，保证主按钮不吃亏 */
+@media (max-width: 640px) {
+  .buy-main, .buy-mini { height: 44px; }
+  .buy-bar { gap: 8px; }
+  .buy-cart { padding: 0 14px; }
+  .buy-cart-text { display: none; }
+  .buy-mini { gap: 6px; }
+  .buy-icon { width: 48px; font-size: 10px; }
+}
 .detail-service { border-top: 1px dashed var(--border); }
 
 .detail-shop {
@@ -93,9 +161,22 @@
   box-shadow: var(--shadow-sm); height: fit-content; margin-top: 12px; border: 1px solid var(--border);
 }
 .detail-shop h4 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.detail-shop .shop-score { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); padding: 9px 0; border-bottom: 1px dashed #f2f2f2; }
-.detail-shop .shop-score:last-of-type { border-bottom: none; }
-.detail-shop .shop-score b { color: var(--brand-ink); font-size: 15px; }
+/* 店铺指标：店铺评分 / 商品评分 / 粉丝，等宽三格统计行 —— 数值在上、标签在下居中，
+   格间用浅色竖线分隔，比原来「一行一项、右对齐」的四行列表更紧凑，三个数值也天然对齐 */
+.detail-shop .shop-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  padding: 12px 0; border-bottom: 1px dashed #f2f2f2;
+}
+.detail-shop .shop-stat { position: relative; text-align: center; }
+.detail-shop .shop-stat + .shop-stat::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 1px; height: 24px; background: #f0f0f0;
+}
+.detail-shop .shop-stat b {
+  display: block; font-size: 16px; font-weight: 700; line-height: 1.25;
+  color: var(--brand-ink); font-variant-numeric: tabular-nums;
+}
+.detail-shop .shop-stat span { display: block; margin-top: 2px; font-size: 12px; color: var(--text-3); }
 .detail-shop .btn { width: 100%; margin-top: 8px; }
 
 .detail-below { margin-top: 16px; display: grid; grid-template-columns: 1fr 268px; gap: 16px; }

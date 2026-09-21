@@ -16,7 +16,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
-import QM_MOCK from '../core/mock.js';
+import { CATEGORIES, bySub } from '../core/catalog.js';
 import QM_STORE from '../core/store.js';
 
 const { esc, artStyle, artHtml, sales, toast, modal, confirmDialog, openShopCreate } = QM_UI;
@@ -167,10 +167,10 @@ function openEditor(p) {
   const base = p || {};
   /* 分类 / 子类下拉：编辑取商品自身分类，新增取第一个分类
      —— 否则新增时子类下拉是空的（只能手动切一次分类才会填充） */
-  const curCat = base.category || (QM_MOCK.categories[0] || {}).id || '';
-  const cats = QM_MOCK.categories.map(c =>
+  const curCat = base.category || (CATEGORIES[0] || {}).id || '';
+  const cats = CATEGORIES.map(c =>
     `<option value="${esc(c.id)}" ${curCat === c.id ? 'selected' : ''}>${esc(c.id)}</option>`).join('');
-  const subs = (QM_MOCK.bySub(curCat) || []).map(s =>
+  const subs = (bySub(curCat) || []).map(s =>
     `<option value="${esc(s)}" ${base.sub === s ? 'selected' : ''}>${esc(s)}</option>`).join('');
   const skuGroups = (base.skus || []).map(skuGroupRowHtml).join('');
   const paramRows = (base.params || []).map(pr =>
@@ -229,7 +229,7 @@ function openEditor(p) {
   root.querySelector('#f_category').addEventListener('change', () => {
     const cat = root.querySelector('#f_category').value;
     const cur = root.querySelector('#f_sub').value;
-    root.querySelector('#f_sub').innerHTML = (QM_MOCK.bySub(cat) || [])
+    root.querySelector('#f_sub').innerHTML = (bySub(cat) || [])
       .map(s => `<option value="${esc(s)}" ${s === cur ? 'selected' : ''}>${esc(s)}</option>`).join('');
   });
 

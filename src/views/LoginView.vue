@@ -11,7 +11,6 @@ import { useRoute, useRouter } from 'vue-router';
 import QM_CFG from '../core/config.js';
 import QM_JWT from '../core/jwt.js';
 import QM_API from '../core/api.js';
-import QM_MOCK from '../core/mock.js';
 import QM_STORE from '../core/store.js';
 import QM_UI from '../core/ui.js';
 import { refreshView } from '../core/viewRefresh.js';
@@ -29,9 +28,6 @@ const win = ref(route.query.mode === 'register' ? 'register' : 'login');
 const loginMode = ref('acct');   // acct 账号登录 / phone 手机登录
 const regMode = ref('acct');     // acct 账号注册 / phone 手机注册
 const busy = ref(false);
-
-/* 演示账号列表：这些账号已开店，登录后可在「我的店铺」里打理生意（见 mock.shopOwners） */
-const demoOwners = Object.entries(QM_MOCK.shopOwners).map(([userId, o]) => ({ userId, nickname: o.nickname }));
 
 /* ---------- 登录表单 ---------- */
 const loginUserId = ref('');
@@ -223,11 +219,8 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
           </div>
           <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doAcctLogin">登 录</button>
           <div class="demo-tip">
-            <b>演示账号</b>
-            <span>未开店用户：123456 / 123456（需启动后端）</span>
-            <span v-for="a in demoOwners" :key="a.userId">已开店用户：{{ a.userId }} / 123456 · {{ a.nickname }}</span>
-            <p>全站只有一套用户账号：这些账号名下有一家店铺，登录后既能像普通用户一样购物，也能在「我的店铺」里打理生意。</p>
-            <p>登录一律由后端校验：以上账号需已存在于后端 users 表中，否则请点「注册」新建一个真实账号。</p>
+            <p>登录一律由后端校验：账号需已存在于后端 users 表中，否则请点「注册」新建一个真实账号。</p>
+            <p>账号名下若已绑定店铺，登录后在「我的店铺」里即可打理生意。</p>
           </div>
         </div>
 

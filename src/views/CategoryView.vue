@@ -5,7 +5,7 @@
    ========================================================= */
 import { computed, onMounted, ref, watch } from 'vue';
 import QM_UI from '../core/ui.js';
-import QM_MOCK from '../core/mock.js';
+import { CATEGORIES } from '../core/catalog.js';
 import QM_API from '../core/api.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
@@ -17,7 +17,7 @@ const list = ref([]);
 const total = ref(0);
 
 const catId = computed(() => route.value.params[0] || '全部');
-const cat = computed(() => QM_MOCK.categories.find(c => c.id === catId.value));
+const cat = computed(() => CATEGORIES.find(c => c.id === catId.value));
 
 const cardsHtml = computed(() => list.value.length
   ? list.value.map(p => productCard(p)).join('')
@@ -62,7 +62,7 @@ onMounted(load);
         <h3>全部分类</h3>
         <button :class="{ active: catId === '全部' }" data-action="goto-category" data-id="全部">▦ 全部好物</button>
         <button
-          v-for="c in QM_MOCK.categories"
+          v-for="c in CATEGORIES"
           :key="c.id"
           :class="{ active: c.id === catId }"
           data-action="goto-category"

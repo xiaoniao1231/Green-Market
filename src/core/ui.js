@@ -449,13 +449,13 @@ let currentLoginModal = null;
             <button type="button" class="btn btn-plain btn-sm" id="scPick">📷 上传头像</button>
           </div>
           <div class="sc-field">
-            <label for="scName">店铺名称 <em>*</em></label>
+            <label class="sc-label" for="scName"><i class="sc-num">1</i>店铺名称<em>*</em></label>
             <input id="scName" class="se-name" maxlength="20" placeholder="2-20 个字，将展示在商品与店铺主页" />
           </div>
           <div class="sc-field">
-            <label for="scIntro">店铺简介</label>
+            <label class="sc-label" for="scIntro"><i class="sc-num">2</i>店铺简介</label>
             <textarea id="scIntro" class="se-intro" rows="3" maxlength="120" placeholder="一句话介绍你的店铺，如主营类目 / 发货时效 / 售后承诺（选填）"></textarea>
-            <p class="se-count"><span id="scCount">0</span>/120</p>
+            <p class="sc-count"><span id="scCount">0</span>/120</p>
           </div>
           <div class="modal-actions sc-actions">
             <button type="button" class="btn btn-plain" data-close>取消</button>

@@ -13,7 +13,6 @@ import { computed, onActivated, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
-import QM_MOCK from '../core/mock.js';
 import QM_STORE from '../core/store.js';
 
 const { confirmDialog, toast, timeText, esc, sales, modal, avatarHtml, isImage, openShopCreate } = QM_UI;
@@ -223,11 +222,10 @@ async function saveShopEdit(introEl, nameEl) {
   }
 }
 
-/* 店铺名重名校验：本地只做「已知店铺（演示店铺 + 本地档案）」的预检，最终以后端为准
+/* 店铺名重名校验：本地只做「已拉取到的店铺档案」的预检，最终以后端为准
    （后端 /shops/profile 应自行查重并返回 code=0 + msg="店铺名称已被占用"） */
 function nameConflict(name) {
   if (!name || name === me.value.shopName) return false;
-  if (Object.keys(QM_MOCK.shopServices).includes(name)) return true;
   for (const [id, ov] of Object.entries(QM_STORE.state.shopProfile || {})) {
     if (ov && ov.name === name && id !== me.value.id) return true;
   }

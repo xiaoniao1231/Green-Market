@@ -7,7 +7,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_CFG from './core/config.js';
 import QM_JWT from './core/jwt.js';
-import QM_MOCK from './core/mock.js';
+import { CATEGORIES } from './core/catalog.js';
 import QM_API from './core/api.js';
 import QM_STORE from './core/store.js';
 import QM_UI from './core/ui.js';
@@ -60,7 +60,7 @@ function hideFlyoutNow() { clearTimeout(hideTimer); if (flyoutEl) flyoutEl.class
    既保留原有点击跳转行为，又让键盘与辅助技术可直接聚焦、访问。 */
 function buildFlyout() {
   flyoutEl.innerHTML = `<h4>☰ 全部商品分类</h4><div class="flyout-grid">
-    ${QM_MOCK.categories.map(c => `
+    ${CATEGORIES.map(c => `
       <div class="flyout-cat">
         <b><a href="#/category/${encodeURIComponent(c.id)}">${c.icon} ${esc(c.id)}</a></b>
         ${c.subs.map(s => `<a href="#/search?q=${encodeURIComponent(s)}">${esc(s)}</a>`).join('')}
@@ -320,7 +320,7 @@ onBeforeUnmount(() => {
       <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/placeholder/物流查询">物流查询</a><a href="#/placeholder/发票说明">发票说明</a></div>
       <div class="footer-col"><b>关于我们</b><a href="#/placeholder/平台介绍">平台介绍</a><a href="#/placeholder/卖家入驻">卖家入驻</a><a href="#/chat">联系我们</a></div>
     </div>
-    <p class="copyright">© 2026 青集市 · 课程演示项目 · 前后端分离，后端未启动时自动切换为本地演示数据</p>
+    <p class="copyright">© 2026 青集市 · 课程演示项目 · 前后端分离，数据全部来自后端接口</p>
   </footer>
 
   <div id="modalRoot"></div>

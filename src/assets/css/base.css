@@ -95,7 +95,8 @@ input::placeholder, textarea::placeholder { color: var(--text-4); }
 ul, ol { list-style: none; }
 img { display: block; max-width: 100%; }
 em, i { font-style: normal; }
-del { color: var(--text-3); }
+/* 划线价：默认 1px 灰线在小字号下几乎看不出「划掉」，统一加粗并加深颜色 */
+del { color: var(--text-3); text-decoration-thickness: 1.5px; text-decoration-color: #5f6875; }
 table { border-collapse: collapse; }
 
 /* 键盘可达：统一焦点环（鼠标点击不出现） */

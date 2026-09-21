@@ -40,7 +40,7 @@ const QM_CFG = {
   /** 后端 API 基础地址：默认 /api（同源，经 nginx/Vite 反代到 8080） */
   get API_BASE() { return readKey('qm_v2_api_base') || '/api'; },
   set API_BASE(url) { writeKey('qm_v2_api_base', url); },
-  /** 单次 HTTP 请求超时（毫秒），超时或后端未启动时自动切换本地演示数据 */
+  /** 单次 HTTP 请求超时（毫秒），超时或后端不可用时由页面显示空态 / 错误提示 */
   TIMEOUT: 2500,
   /** 文件上传专用超时（毫秒）：上传体积大、耗时长，不能用 2.5 秒的普通请求超时 */
   UPLOAD_TIMEOUT: 120000,
@@ -59,7 +59,8 @@ const QM_CFG = {
    * nginx.conf 的 client_max_body_size 限制，调大文件上限时三处要同步。
    */
   UPLOAD_MAX_SIZE: 1024 * 1024 * 1024,
-  /** 后端不可用时是否自动使用本地 Mock 数据 */
+  /** 后端不可用时是否允许本地离线回退（仅购物车 / 订单 / 收藏的本地存储实现；
+      项目已无任何预置演示数据，接口失败时页面一律显示空态或错误提示） */
   FALLBACK_MOCK: true,
   /** 本地存储统一前缀 */
   KEY: 'qm_v2_',

@@ -1,9 +1,10 @@
 /* =========================================================
    青集市 · store.js —— 状态管理与本地持久化
-   购物车 / 订单 / 收藏 / 地址 / 优惠券 / 聊天记录均为本地演示数据，
-   后端对应接口落地后，api.js 会自动优先使用真实接口。
+   本地只保存「用户自己的数据」与「后端下发的快照」：
+   购物车 / 订单 / 收藏 / 地址 / 优惠券 / 聊天记录 / 店铺档案。
+   商品库、店铺库、演示账号等静态演示数据已全部移除，
+   这些内容一律以后端接口为准（商品 / 订单 / 收藏接口尚未实现时页面显示空态）。
    ========================================================= */
-import QM_MOCK from './mock.js';
 
 const KEY = 'qm_v2_state';
 
@@ -46,54 +47,18 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       chatOwner: null,       // 本地聊天数据归属的账号（登录写入、退出保留；换账号登录时据此清空旧会话）
       cart: [],              // {key, productId, sku, qty, checked}
       favorites: [],         // productId[]
-      /* 演示订单种子（首次打开时展示各订单状态；下单后由真实逻辑接管） */
-      orders: [
-        {
-          id: 'o-demo-shipped', orderNo: 'QM20260820D3F9A2', status: 'shipped',
-          createTime: Date.now() - 3600e3 * 30, shipTime: Date.now() - 3600e3 * 4,
-          items: [
-            { productId: 'p09', sku: '坚果混合', qty: 2, price: 59, title: '办公室休闲零食大礼包 坚果果干混合装 网红解馋小吃 30袋' },
-            { productId: 'p24', sku: '樱花粉', qty: 1, price: 79, title: '大容量随行杯 316不锈钢 保温保冷 便携水杯 750ml' }
-          ],
-          address: { name: '小语', phone: '138****8000', region: '浙江省 杭州市 西湖区', detail: '文三路 100 号 3 幢 502 室' },
-          coupon: { id: 'c1', title: '新人专享券', amount: 30, threshold: 199 }, payMethod: '支付宝',
-          goodsAmount: 197, discount: 30, freight: 0, total: 167,
-          logistics: [
-            { text: '包裹已到达【杭州转运中心】，正在派送中', time: Date.now() - 3600e3 * 2 },
-            { text: '卖家已发货，等待揽收', time: Date.now() - 3600e3 * 20 }
-          ]
-        },
-        {
-          id: 'o-demo-done', orderNo: 'QM20260810A1B2C3', status: 'done',
-          createTime: Date.now() - 3600e3 * 240, payTime: Date.now() - 3600e3 * 239, shipTime: Date.now() - 3600e3 * 220, finishTime: Date.now() - 3600e3 * 170,
-          items: [{ productId: 'p01', sku: '曜石黑 / 标准版', qty: 1, price: 299, title: '青禾无线降噪耳机 头戴式蓝牙5.3 超长续航 重低音游戏音乐耳机' }],
-          address: { name: '小语', phone: '138****8000', region: '浙江省 杭州市 西湖区', detail: '文三路 100 号 3 幢 502 室' },
-          coupon: null, payMethod: '微信支付',
-          goodsAmount: 299, discount: 0, freight: 0, total: 299,
-          logistics: [
-            { text: '包裹已签收，感谢您使用青集市', time: Date.now() - 3600e3 * 170 },
-            { text: '包裹已到达【杭州转运中心】，正在派送中', time: Date.now() - 3600e3 * 178 },
-            { text: '卖家已发货，等待揽收', time: Date.now() - 3600e3 * 220 }
-          ]
-        }
-      ],
-      addresses: [
-        { id: 'a1', name: '小语', phone: '138****8000', region: '浙江省 杭州市 西湖区', detail: '文三路 100 号 3 幢 502 室', isDefault: true },
-        { id: 'a2', name: '小语', phone: '138****8000', region: '浙江省 杭州市 余杭区', detail: '梦想小镇 88 号（公司）', isDefault: false }
-      ],
-      coupons: [
-        { id: 'c1', title: '新人专享券', amount: 30, threshold: 199, status: 'unused', expire: '2026-12-31' },
-        { id: 'c2', title: '满 299 减 50', amount: 50, threshold: 299, status: 'unused', expire: '2026-12-31' },
-        { id: 'c3', title: '满 99 减 10', amount: 10, threshold: 99, status: 'unused', expire: '2026-10-01' },
-        { id: 'c4', title: '数码专享券', amount: 80, threshold: 999, status: 'unused', expire: '2026-11-11' }
-      ],
-      contacts: QM_MOCK.contacts.slice(),
+      /* 订单 / 地址 / 优惠券：本地不预置任何演示数据。
+         目前这三项仍由本地存储承载（后端 /orders、/favorites 等接口尚未实现），
+         用户实际产生数据后才有内容；后端接口落地后改为服务端数据源。 */
+      orders: [],
+      addresses: [],
+      coupons: [],
+      contacts: [],        // 会话联系人：由「联系卖家」创建，或从 /messages/conversations 恢复
       chats: {},
       shopFavs: [],        // 关注的店铺名（用户可关注店铺，店铺页 / 详情页使用）
-      /* 本地店铺档案：{ shopId: { id, name, avatar, color, intro, shopIntro, score, fans, founded, userId } }
-         来源：① 店家「店铺信息管理」保存的即时覆盖；② 后端店铺档案（GET /shops/profile、
-         GET /shops/{id}、POST /shops）返回的真实数据；③ 新开通店铺的档案。
-         优先级高于 mock 演示数据，供工作台 / 店铺主页 / 详情页 / 商品卡片统一读取 */
+      /* 本地店铺档案：{ shopId: { id, name, avatar, color, intro, shopIntro, score, fans, founded, ... } }
+         唯一来源是后端：GET /shops/profile、GET /shops/{id}、POST /shops 返回后由 rememberShop 写入。
+         工作台 / 店铺主页 / 详情页 / 商品卡片统一读取这里（未拉取到时页面按 profileLoaded=false 处理）。 */
       shopProfile: {}
     };
   }
@@ -131,44 +96,16 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       QM_STORE.state = saved ? Object.assign(base, saved) : base;
       // 保证聊天联系人与本地聊天记录存在
       if (!QM_STORE.state.chats) QM_STORE.state.chats = {};
-      QM_STORE.state.contacts = QM_STORE.state.contacts || QM_MOCK.contacts.slice();
+      if (!QM_STORE.state.contacts) QM_STORE.state.contacts = [];
       QM_STORE.state.shopFavs = QM_STORE.state.shopFavs || [];
       /* 独立商家账号体系已移除：清理旧版 sellerUser 会话数据（店铺绑定统一挂在 user.shopId 上） */
       if (QM_STORE.state.sellerUser) { delete QM_STORE.state.sellerUser; save(); }
-      /* 迁移：① 旧版以店铺标识（shop-qinghe）为聊天 key → 新版以开店用户 id 为 key；
-         ② 旧版「客服用户 id」（kf-xxx）→ 新版开店用户 id（owner0xx），保证老会话不丢失 */
-      Object.keys(QM_STORE.state.chats).forEach(k => {
-        const svc = QM_MOCK.serviceById(k);
-        const legacy = QM_MOCK.kfLegacyToOwner[k];
-        const target = (svc && svc.userId && svc.userId !== k) ? svc.userId : legacy;
-        const list = QM_STORE.state.chats[k];
-        /* 会话内旧「客服用户 id」发送的消息归属同步迁移为开店用户 id（幂等） */
-        list.forEach(m => {
-          const mapped = QM_MOCK.kfLegacyToOwner[m.from];
-          if (mapped) m.from = mapped;
-        });
-        if (target && target !== k) {
-          QM_STORE.state.chats[target] = list;
-          delete QM_STORE.state.chats[k];
-        }
-      });
-      /* 会话保留规则：只有「有实际聊天记录」的联系人才算会话。
-         以前无条件保留 role=shop 联系人（商品详情「联系卖家」创建但从未发消息），
-         会让从未建立过聊天的账号在消息中心看到空会话；统一以 chats 记录为准 ——
+      /* 会话保留规则：只有「有实际聊天记录」的联系人才算会话 ——
          没聊过天就不出现在会话列表（再次从商品详情进入时仍可创建，聊天后自然保留）。 */
       const chatKeys = new Set(Object.keys(QM_STORE.state.chats));
       QM_STORE.state.contacts = QM_STORE.state.contacts.filter(
           c => c && chatKeys.has(c.id)
       );
-      QM_STORE.state.contacts.forEach(c => {
-        const svc = QM_MOCK.serviceById(c.id);
-        const legacy = QM_MOCK.kfLegacyToOwner[c.id];
-        const target = (svc && svc.userId && svc.userId !== c.id) ? svc.userId : legacy;
-        if (target && target !== c.id) c.id = target;
-        /* 迁移后按新版开店用户信息刷新对端显示名（旧「客服」名一并更新为昵称） */
-        const fresh = QM_MOCK.serviceById(c.id);
-        if (fresh) { c.name = fresh.name; c.color = fresh.color; c.intro = fresh.intro; }
-      });
       const validIds = new Set(QM_STORE.state.contacts.map(c => c.id));
       Object.keys(QM_STORE.state.chats).forEach(k => {
         if (!validIds.has(k)) delete QM_STORE.state.chats[k];
@@ -204,7 +141,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         );
         if (nextId && ((prevOwner && prevOwner !== nextId) || staleLocal)) {
           QM_STORE.state.chats = {};
-          QM_STORE.state.contacts = QM_MOCK.contacts.slice();
+          QM_STORE.state.contacts = [];
         }
         QM_STORE.state.chatOwner = nextId; // 本地会话归属账号：退出登录后保留，用于下次登录识别是否换号
         QM_STORE.state.user = user ? Object.assign({}, user, { token }) : null;
@@ -232,12 +169,10 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
     /* ---------- 购物车 ---------- */
     cart: {
       list() {
-        /* product 优先取本地 mock 商品库；后端已落地时条目自带服务端下发的商品快照
-           （api.js 写入 state.cart[].product），mock 没有该商品时回退快照，保证可渲染 */
-        return QM_STORE.state.cart.map(item => {
-          const p = QM_MOCK.byId(item.productId) || item.product || null;
-          return Object.assign({}, item, { product: p });
-        }).filter(item => item.product);
+        /* 购物车条目自带服务端下发的商品快照（api.js 写入 item.product）；
+           本地只保存 productId 与数量，不复制商品库。没有快照的条目直接跳过（不渲染空壳）。 */
+        return QM_STORE.state.cart.map(item => Object.assign({}, item, { product: item.product || null }))
+          .filter(item => item.product);
       },
       add(productId, sku, qty) {
         const key = productId + '|' + (sku || '默认');
@@ -284,7 +219,9 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         save(); emit('favorites');
         return idx < 0;
       },
-      list() { return QM_STORE.state.favorites.map(QM_MOCK.byId).filter(Boolean); }
+      /* 收藏商品的完整信息由后端下发（GET /favorites）；本地只存 productId，
+         没有后端数据时返回空数组，不编造商品内容（收藏页走 QM_API.favorites.list）。 */
+      list() { return []; }
     },
 
     /* ---------- 关注店铺 ---------- */
@@ -420,7 +357,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       }
     },
 
-    /* ---------- 我的店铺（账号持有店铺 shopId 即已开店，见 mock.shopOwners；账号本身仍是普通用户） ---------- */
+    /* ---------- 我的店铺（账号持有店铺 shopId 即已开店；账号本身仍是普通用户） ---------- */
     /* 覆盖名 → shopId：店家改店名后，新店名也能定位到原店铺（找不到返回 null） */
   shopIdOf(shopName) {
     for (const [id, ov] of Object.entries(QM_STORE.state.shopProfile || {})) {
@@ -428,25 +365,22 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
     }
     return null;
   },
-  /* 店铺名展示映射：该店有改名覆盖则显示新名（商品卡片 / 各处原店名渲染统一走这里） */
+  /* 店铺名展示映射：该店有档案则显示档案里的店名（商品卡片等处的店名渲染统一走这里） */
   displayShopName(name) {
-    const s = QM_MOCK.shopServices[name];
-    const ov = s && QM_STORE.state.shopProfile[s.id];
-    return ov && ov.name ? ov.name : name;
+    const id = QM_STORE.shopIdOf(name);
+    const ov = id ? (QM_STORE.state.shopProfile || {})[id] : null;
+    return (ov && ov.name) || name;
   },
-  /* 按店铺名取店铺信息（合并本地档案，供店铺页 / 详情页浏览；
-     店家改店名后，新店名通过档案映射同样可定位到原店铺；
-     本地档案 shopProfile 同时承载「店家保存的即时覆盖」与「后端返回的真实店铺档案」，
-     新开通的店铺（演示数据里没有）也在这里，因此本地档案优先于演示数据） */
+  /* 按店铺名取店铺信息：**只依据后端店铺档案**（shopProfile，由 /shops/* 接口写入）。
+     档案里没有时返回一个最小占位对象（profileLoaded=false），调用方据此去调
+     GET /shops/{id} 把档案补齐，而不是渲染一份编造的店铺信息。 */
   shopService(shopName) {
-    const byOverride = QM_STORE.shopIdOf(shopName);
-    const demo = byOverride ? QM_MOCK.serviceById(byOverride) : QM_MOCK.shopServices[shopName];
-    const local = (byOverride && QM_STORE.state.shopProfile[byOverride]) || null;
-    if (!demo && !local) return QM_MOCK.serviceOf(shopName);   // 未知店铺：兜底平台客服信息
-    const base = Object.assign({}, demo || {}, local || {});
-    const id = base.id || byOverride;
-    const ov = id ? QM_STORE.state.shopProfile[id] : null;
-    return ov ? Object.assign({}, base, ov, { id }) : Object.assign({}, base, id ? { id } : {});
+    const id = QM_STORE.shopIdOf(shopName);
+    const local = id ? (QM_STORE.state.shopProfile || {})[id] : null;
+    if (!local) {
+      return { id: id || '', name: shopName, shopName, color: '#ff6a2b', profileLoaded: false };
+    }
+    return Object.assign({}, local, { id, shopName: local.name || shopName, profileLoaded: true });
   },
 
   /* 记住（合并）一份店铺档案：来源可以是后端返回的店铺信息，也可以是本地保存的覆盖。
@@ -473,27 +407,27 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
 
   seller: {
       /* 当前账号的店铺：返回 {username, ownerName, shopName, id, shopId, userId, name, color, intro,
-         avatar, shopIntro, score, fans, founded}；未开店（无 shopId）返回 null。
-         演示店铺（mock.shopServices）与本地档案（后端返回 / 开店结果）合并，本地档案优先——
-         因此改过的店名 / 头像 / 简介、以及新开通的店铺都能立即生效。
-         shopId 既不在演示数据、也没有本地档案时视为未开店。 */
+         avatar, shopIntro, score, fans, founded, profileLoaded}；未开店返回 null。
+
+         ⚠️ 开店判定只看服务端：登录响应带回 shopId 即视为已开店，
+         店名 / 头像 / 简介等展示字段一律来自后端店铺档案（shopProfile，由 /shops/* 写入）。
+         profileLoaded=false 表示档案还没拉到（页面应去调 GET /shops/profile），
+         此时仍算已开店，只是字段暂时为空 —— 不能据此判定"未开店"。 */
       current() {
         const u = QM_STORE.state.user;
         if (!u || !u.shopId) return null;
         const id = u.shopId;
-        const demo = QM_MOCK.serviceById(id);
-        const local = QM_STORE.state.shopProfile[id] || null;
-        if (!demo && !local) return null;
-        const base = Object.assign({}, demo || {}, local || {});
-        /* 注意：mock 店铺条目的 name 是「店主昵称」，店名要看档案里的 name 或 mock 的键名 */
-        const shopName = (local && local.name) || QM_MOCK.shopNameById(id) || base.name || '';
+        const local = (QM_STORE.state.shopProfile && QM_STORE.state.shopProfile[id]) || null;
+        const base = local || {};
         return {
           username: u.userId,
           ownerName: u.nickname,
-          shopName,
+          shopName: base.name || '',
           id,                                  // 店铺标识
           shopId: id,
-          userId: base.userId || u.userId,     // 开店用户账号，兼作聊天身份（买家就是和这位用户聊天）
+          /* 开店用户账号，兼作聊天身份（买家就是和这位用户聊天）；
+             后端 /shops/profile 返回 ownerUserId，/shops/{id} 返回 ownerUserId 或 userId */
+          userId: base.ownerUserId || base.userId || u.userId,
           name: base.name || '',
           color: base.color || '#ff6a2b',
           intro: base.intro || '',
@@ -502,7 +436,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
           founded: base.founded,
           avatar: base.avatar || '',           // OSS 地址或 emoji
           shopIntro: base.shopIntro !== undefined ? base.shopIntro : '',
-          isDemo: !local && !!demo             // 只有演示数据、没有本地/真实档案
+          profileLoaded: !!local               // 档案是否已就绪（false 时页面应去调 GET /shops/profile）
         };
       },
       /* 店铺资料保存（写入本地档案并落盘）：patch 形如 { name, avatar, shopIntro } */
@@ -510,12 +444,15 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         if (!shopId || !patch) return null;
         return QM_STORE.rememberShop(Object.assign({}, patch, { id: shopId }));
       },
-      /* 全部店铺（含开店用户映射），供开店引导 / 演示账号提示使用 */
+      /* 已从后端拉取过档案的店铺列表 */
       list() {
-        return Object.keys(QM_MOCK.shopServices).map(name => Object.assign({ shopName: name }, QM_MOCK.shopServices[name]));
+        return Object.values(QM_STORE.state.shopProfile || {});
       },
-      /* 店铺标识 / 开店用户 id → 店铺名 */
-      shopName(shopId) { return QM_MOCK.shopNameById(shopId); }
+      /* 店铺标识 / 开店用户 id → 店铺名（档案里没有返回 null） */
+      shopName(shopId) {
+        const ov = (QM_STORE.state.shopProfile || {})[shopId];
+        return (ov && ov.name) || null;
+      }
       /* 注：① 店家订单改走后端接口 QM_API.seller.orders()（原本地演示订单查询已移除）；
              ② 消息统一在「消息中心」（ChatView）处理——与任何联系人一样，
                 聊天就是对端的用户账号，不再有独立商家消息中心 */

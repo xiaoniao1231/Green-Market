@@ -5,7 +5,7 @@
    ========================================================= */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import QM_UI from '../core/ui.js';
-import QM_MOCK from '../core/mock.js';
+import { CATEGORIES } from '../core/catalog.js';
 import QM_API from '../core/api.js';
 import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
@@ -20,7 +20,7 @@ const SLIDES = [
   { tag: 'CAFE LIFE', title: '慢煮一杯<br/>好时光', sub: '手冲器具与精品豆，为生活留白', art: '☕', g: ['#8b5e3c', '#c9a06c'], link: 'p08' }
 ];
 
-const REC_CATS = ['全部'].concat(QM_MOCK.categories.slice(0, 5).map(c => c.id));
+const REC_CATS = ['全部'].concat(CATEGORIES.slice(0, 5).map(c => c.id));
 
 /* ---------- 定时器（原版 timers 数组，unmount 统一清理） ---------- */
 const timers = [];
@@ -69,11 +69,32 @@ function flashCard(p) {
     </div>`;
 }
 
+/* 秒杀结束时间：后端 /home/flash 返回 endTime 时以其为准，否则用本地计时（2 小时一轮）。
+   存 sessionStorage —— 读写都要 try/catch，浏览器禁用存储时 setItem 会直接抛异常。 */
+const FLASH_KEY = 'qm_v2_flash_end';
+const FLASH_ROUND_MS = 2 * 3600e3;
+function flashEndLocal() {
+  let end = 0;
+  try { end = Number(sessionStorage.getItem(FLASH_KEY) || 0); } catch (e) { end = 0; }
+  if (!end || end < Date.now()) end = Date.now() + FLASH_ROUND_MS;
+  flashEndSave(end);
+  return end;
+}
+function flashEndSave(end) {
+  try { sessionStorage.setItem(FLASH_KEY, String(end)); } catch (e) { /* 忽略 */ }
+}
+
 async function loadFlash() {
-  let endTime = QM_MOCK.getFlashEnd();
+  let endTime = flashEndLocal();
   try {
     const data = await QM_API.products.flash();
     flashCardsHtml.value = (data.list || []).map(p => flashCard(p)).join('');
+    /* 后端下发的场次结束时间优先（字符串 yyyy-MM-dd HH:mm:ss 或毫秒时间戳） */
+    const remote = data && data.endTime;
+    if (remote) {
+      const t = typeof remote === 'number' ? remote : Date.parse(String(remote).replace(' ', 'T'));
+      if (!isNaN(t) && t > Date.now()) { endTime = t; flashEndSave(endTime); }
+    }
   } catch (e) {
     flashCardsHtml.value = emptyState('⚡', '秒杀商品加载失败', '后端 /home/flash 接口未实现');
   }
@@ -81,17 +102,17 @@ async function loadFlash() {
   const tick = () => {
     let left = Math.max(0, endTime - Date.now());
     /* 倒计时归零：重置为本轮结束时间并继续倒数。
-       原实现只改写 localStorage、不更新闭包里的 endTime，界面会永远停在 00:00:00 */
+       原实现只改写存储、不更新闭包里的 endTime，界面会永远停在 00:00:00 */
     if (left <= 0) {
-      endTime = Date.now() + 2 * 3600e3;
-      QM_MOCK.setFlashEnd(endTime);
+      endTime = Date.now() + FLASH_ROUND_MS;
+      flashEndSave(endTime);
       left = endTime - Date.now();
     }
     const pad = v => String(v).padStart(2, '0');
     hh.value = pad(Math.floor(left / 3600e3));
     mm.value = pad(Math.floor(left % 3600e3 / 60e3));
     ss.value = pad(Math.floor(left % 60e3 / 1e3));
-    flashPct.value = Math.round((1 - left / (2 * 3600e3)) * 100);
+    flashPct.value = Math.round((1 - left / FLASH_ROUND_MS) * 100);
   };
   tick();
   timers.push(setInterval(tick, 1000));
@@ -186,7 +207,7 @@ onBeforeUnmount(() => { timers.forEach(clearInterval); });
     <div class="home-grid">
       <aside class="cat-rail">
         <h2>精选分类 <a href="#/category/全部">全部 ›</a></h2>
-        <button v-for="c in QM_MOCK.categories" :key="c.id" data-action="goto-category" :data-id="c.id">
+        <button v-for="c in CATEGORIES" :key="c.id" data-action="goto-category" :data-id="c.id">
           <span class="rail-icon">{{ c.icon }}</span>{{ c.id }}<b>›</b>
         </button>
       </aside>

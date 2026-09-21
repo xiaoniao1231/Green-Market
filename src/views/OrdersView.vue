@@ -11,7 +11,6 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
-import QM_MOCK from '../core/mock.js';
 import QM_API from '../core/api.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
@@ -51,8 +50,7 @@ function orderCard(o) {
       </div>
       <div class="order-body">
         ${o.items.map(it => {
-          const p = QM_MOCK.byId(it.productId);
-          const art = it.art || (p ? p.art : null);   // 接口条目标配 art 快照，优先使用
+          const art = it.art || null;   // 商品主图由后端随订单条目下发
           return `<div class="oi-row">
             <span class="oi-art" style="${artStyle(art)}">${artHtml(art)}</span>
             <div class="oi-info"><h4 class="ellipsis" data-action="open-product" data-id="${esc(it.productId)}">${esc(it.title)}</h4><small>规格：${esc(it.sku)} × ${it.qty}</small></div>

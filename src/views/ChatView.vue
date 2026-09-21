@@ -13,7 +13,6 @@
    ========================================================= */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import QM_UI from '../core/ui.js';
-import QM_MOCK from '../core/mock.js';
 import QM_API from '../core/api.js';
 import QM_CFG from '../core/config.js';
 import QM_STORE from '../core/store.js';
@@ -119,13 +118,9 @@ function contactRow(c, active) {
   const preview = last
     ? (last.type === 'goods' ? '[商品推荐] ' : last.from === 'me' ? '我：' : '') + (last.content || '')
     : (c.intro || '打个招呼吧');
-  /* 会话对应的店铺是自己的店铺时加「我的店铺」徽标（便于识别自己店铺收到的咨询会话） */
-  const u = QM_STORE.state.user;
-  const isMyShop = !!(u && u.shopId && (() => {
-    const svc = QM_MOCK.serviceById(c.id);
-    return svc && svc.id === u.shopId;
-  })());
-  const badge = isMyShop ? '<i class="pin">我的店铺</i>' : '';
+  /* 「我的店铺」徽标已移除：会话对端是对方的用户账号，
+     无法据此判断该会话是否属于自己店铺（原判定依赖演示店铺映射，真实数据下不成立） */
+  const badge = c.pinned ? '<i class="pin">置顶</i>' : '';
   return `
   <button class="contact-item ${active ? 'active' : ''}" data-action="chat-open" data-id="${esc(c.id)}">
     <span class="avatar" style="background:${esc(c.color || '#6b6bdf')}">
@@ -294,12 +289,13 @@ function msgHtml(m, peerObj) {
   }
   let bubble;
   if (m.type === 'goods') {
-    const p = QM_MOCK.byId(m.goods);
-    bubble = p ? `
-      <div class="bubble goods-bubble" data-action="open-product" data-id="${esc(p.id)}">
-        <div class="gb-art" style="${artStyle(p.art)}">${artHtml(p.art)}</div>
-        <div class="gb-info"><h5 class="ellipsis-2">${esc(p.title)}</h5>${price(p.price)}<br/>
-        <span class="btn btn-primary" data-action="quick-add-cart" data-id="${esc(p.id)}">加入购物车</span></div>
+    /* 商品推荐消息：商品信息随消息下发（m.content / m.goods 为商品 id）。
+       不再从本地商品库查找 —— 商品详情以服务端为准，没有快照时退化为可跳转的文本气泡。 */
+    const gid = m.goods;
+    bubble = gid ? `
+      <div class="bubble goods-bubble" data-action="open-product" data-id="${esc(gid)}">
+        <div class="gb-info"><h5 class="ellipsis-2">${esc(m.content || '商品推荐')}</h5>
+        <span class="btn btn-primary" data-action="open-product" data-id="${esc(gid)}">查看商品</span></div>
       </div>` : `<div class="bubble">${esc(m.content)}</div>`;
   } else if (m.type === 'file') {
     /* 文件消息：图片 / 视频 / 音频免下载直接预览（缩略图、内嵌播放器），其他文件维持下载入口 */
@@ -392,18 +388,11 @@ function openPeer(peerId) {
      （role=shop 仅表示这是店铺会话；聊天全程发生在两个用户账号之间） */
   let peerObj = contactById(peerId);
   if (!peerObj) {
-    const svc = QM_MOCK.serviceById(peerId);
-    /* 新联系人的初始在线状态取自已知在线集合（首屏快照 + PRESENCE 广播），
-       不再硬编码 true：对方离线时进会话不会先闪一下「在线」 */
-    if (svc) {
-      peerObj = QM_STORE.chat.ensureContact(svc.userId, svc.name, {
-        role: 'shop', online: knownOnline.has(svc.userId), color: svc.color, intro: svc.intro
-      });
-    } else {
-      peerObj = QM_STORE.chat.ensureContact(peerId, peerId, {
-        role: 'shop', online: knownOnline.has(peerId)
-      });
-    }
+    /* 联系人信息不再来自演示店铺映射：先用账号占位，
+       对方发来消息时由 senderNickname 补齐，或用后端会话列表（/messages/conversations）带回的昵称 */
+    peerObj = QM_STORE.chat.ensureContact(peerId, peerId, {
+      role: 'shop', online: knownOnline.has(peerId)
+    });
   }
   QM_STORE.chat.markRead(peerId);
   syncRead(peerId); // 打开会话即通知服务端记录已读

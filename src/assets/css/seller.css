@@ -83,12 +83,60 @@
 .shop-create .sc-owner-info b { font-size: 14px; color: var(--text); }
 .shop-create .sc-owner-info p { font-size: 12px; color: var(--text-2); margin-top: 3px; }
 .shop-create .sc-owner .btn { flex: none; }
-/* 表单字段 */
-.shop-create .sc-field { margin-bottom: 15px; }
-.shop-create .sc-field > label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px; }
-.shop-create .sc-field > label em { color: #ff4d4f; font-style: normal; }
+/* 表单字段：序号徽章标签 + 聚焦品牌光晕的输入框（店名 / 简介两区） */
+.shop-create .sc-field { margin-bottom: 16px; }
+.shop-create .sc-field:last-of-type { margin-bottom: 0; }
+.shop-create .sc-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  margin-bottom: 8px; letter-spacing: .2px;
+}
+.shop-create .sc-label .sc-num {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  background: linear-gradient(120deg, #ff6a2b, #ff8f3d);
+  color: #fff; font-size: 11px; font-style: normal; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(255, 106, 43, .28);
+}
+.shop-create .sc-label em { color: #ff4d4f; font-style: normal; font-weight: 600; margin-left: 2px; }
+.shop-create .se-name {
+  width: 100%; height: 44px; padding: 0 14px;
+  border: 1px solid #e7e9ee; border-radius: 12px;
+  font-size: 14px; background: #fafbfc; color: var(--text);
+  box-sizing: border-box; transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease);
+}
+.shop-create .se-name::placeholder { color: #b3b8c2; }
+.shop-create .se-name:hover { border-color: #d8dbe2; background: #fff; }
+.shop-create .se-name:focus {
+  outline: none; border-color: #ff6a2b; background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 106, 43, .12), 0 2px 10px rgba(255, 106, 43, .06);
+}
+.shop-create .se-intro {
+  width: 100%; padding: 11px 14px 30px 14px;
+  border: 1px solid #e7e9ee; border-radius: 12px;
+  font-size: 13.5px; line-height: 1.7; resize: none; min-height: 92px;
+  font-family: inherit; background: #fafbfc; color: var(--text);
+  box-sizing: border-box; transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease);
+}
+.shop-create .se-intro::placeholder { color: #b3b8c2; }
+.shop-create .se-intro:hover { border-color: #d8dbe2; background: #fff; }
+.shop-create .se-intro:focus {
+  outline: none; border-color: #ff6a2b; background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 106, 43, .12);
+}
+/* 字数计数：浮在简介框内右下角 */
+.shop-create .sc-field { position: relative; }
+.shop-create .sc-count {
+  position: absolute; right: 10px; bottom: 10px;
+  display: inline-flex; align-items: center; gap: 3px;
+  margin: 0; padding: 2px 10px;
+  font-size: 12px; color: var(--text-3);
+  background: rgba(255, 255, 255, .88); border-radius: 999px;
+  pointer-events: none;
+}
+.shop-create .sc-count span { color: #ff6a2b; font-weight: 700; font-size: 13px; }
 /* 底部操作 */
-.shop-create .sc-actions { margin-top: 6px; }
+.shop-create .sc-actions { margin-top: 20px; }
 .shop-create .sc-actions .btn-primary {
   background: linear-gradient(120deg, #ff6a2b, #ff8f3d);
   border: none; box-shadow: 0 4px 12px rgba(255, 106, 43, .28);

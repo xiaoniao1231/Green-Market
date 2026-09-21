@@ -16,7 +16,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
-import QM_MOCK from '../core/mock.js';
 import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
@@ -61,8 +60,16 @@ const curPrice = computed(() => priceParts(product.value.price));
 const origPrice = computed(() => priceParts(product.value.original));
 const goodRate = computed(() => Math.round((product.value.shop.score / 5) * 100));
 
-/* 店铺的开店用户 id（详情页「联系卖家」→ 对端就是这位用户，由消息中心创建会话） */
-const serviceId = computed(() => (product.value ? QM_MOCK.serviceOf(product.value.shop.name).userId : 'platform'));
+/* 店铺的开店用户 id（详情页「联系卖家」→ 对端就是这位用户，由消息中心创建会话）
+   卖家账号由后端随商品下发（shop.userId / shop.ownerUserId），
+   兜底从已拉取的店铺档案里取（商品带 shop.id 时） */
+const serviceId = computed(() => {
+  const p = product.value;
+  if (!p || !p.shop) return '';
+  const s = p.shop;
+  const fromProfile = s.id ? (QM_STORE.state.shopProfile[s.id] || {}) : {};
+  return s.userId || s.ownerUserId || fromProfile.ownerUserId || fromProfile.userId || '';
+});
 
 /* 店铺信息（店铺页 / 店铺信息弹窗共用）：{shopName, owner, avatar, color, fans, founded, shopIntro, ...} */
 const shopInfo = computed(() => {
@@ -319,8 +326,11 @@ onBeforeUnmount(() => {
             <h1>{{ product.title }}</h1>
             <p class="detail-sub">{{ product.sub }} · {{ product.shop.name }}</p>
             <div class="detail-price-card">
-              <span class="price"><i>¥</i>{{ curPrice.int }}<em v-if="curPrice.dec">{{ curPrice.dec }}</em></span
-              ><del><span class="price"><i>¥</i>{{ origPrice.int }}<em v-if="origPrice.dec">{{ origPrice.dec }}</em></span></del>
+              <div class="price-row">
+                <span class="price"><i>¥</i>{{ curPrice.int }}<em v-if="curPrice.dec">{{ curPrice.dec }}</em></span>
+                <span class="price-badge">到手价</span>
+                <del v-if="product.original > 0"><span class="price"><i>¥</i>{{ origPrice.int }}<em v-if="origPrice.dec">{{ origPrice.dec }}</em></span></del>
+              </div>
               <div class="price-meta">
                 <span>销量 {{ sales(product.sales) }}</span>
                 <span>库存 {{ product.stock }} 件</span>
@@ -356,14 +366,28 @@ onBeforeUnmount(() => {
               <span class="pill pill-gray">每人限购 5 件</span>
             </div>
 
-            <!-- 加入购物车 / 立即购买 -->
-            <div class="detail-buy">
-              <button class="btn btn-lg btn-ghost" data-action="add-cart" @click="addCart">🛒 加入购物车</button>
-              <button class="btn btn-lg btn-primary" data-action="buy-now" @click="buyNow">立即购买</button>
-            </div>
-            <div class="detail-buy" style="margin-top:-6px">
-              <button class="btn btn-plain" data-action="toggle-fav" :data-id="product.id">{{ faved ? '♥ 已收藏' : '♡ 收藏商品' }}</button>
-              <button class="btn btn-plain" data-action="goto-chat" :data-id="serviceId">◌ 联系卖家</button>
+            <!-- 购买栏：购物车图标块 + 主按钮「立即购买」+ 收藏 / 联系卖家小按钮 -->
+            <div class="buy-bar">
+              <div class="buy-main">
+                <button class="buy-cart" data-action="add-cart" @click="addCart" title="加入购物车">
+                  <svg class="buy-cart-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="9" cy="20.4" r="1.3" />
+                    <circle cx="18" cy="20.4" r="1.3" />
+                    <path d="M2.6 3h1.9l2.5 11.7a2 2 0 0 0 1.96 1.6h8.88a2 2 0 0 0 1.96-1.58L21 7.4H5.3" />
+                    <path d="M12.4 9.5v3.6M10.6 11.3h3.6" />
+                  </svg>
+                  <span class="buy-cart-text">加入购物车</span>
+                </button>
+                <button class="buy-now" data-action="buy-now" @click="buyNow">立即购买</button>
+              </div>
+              <div class="buy-mini">
+                <button class="buy-icon" :class="{ on: faved }" data-action="toggle-fav" :data-id="product.id" :title="faved ? '取消收藏' : '收藏商品'">
+                  <span class="buy-icon-glyph">{{ faved ? '♥' : '♡' }}</span><span>收藏</span>
+                </button>
+                <button class="buy-icon" data-action="goto-chat" :data-id="serviceId" title="联系卖家">
+                  <span class="buy-icon-glyph">◌</span><span>联系</span>
+                </button>
+              </div>
             </div>
             <div class="service-row detail-service"><span>正品保障</span><span>极速发货</span><span>7 天无忧退货</span></div>
           </div>
@@ -380,10 +404,11 @@ onBeforeUnmount(() => {
                 <small>点击查看店铺信息</small>
               </button>
             </div>
-            <div class="shop-score"><span>店铺评分</span><b>{{ product.shop.score }}</b></div>
-            <div class="shop-score"><span>商品描述</span><b>4.8</b></div>
-            <div class="shop-score"><span>发货速度</span><b>4.9</b></div>
-            <div class="shop-score"><span>粉丝</span><b>{{ sales(shopInfo.fans) }}</b></div>
+            <div class="shop-stats">
+              <div class="shop-stat"><b>{{ product.shop.score }}</b><span>店铺评分</span></div>
+              <div class="shop-stat"><b>4.8</b><span>商品评分</span></div>
+              <div class="shop-stat"><b>{{ sales(shopInfo.fans) }}</b><span>粉丝</span></div>
+            </div>
             <button class="btn btn-ghost" :class="{ faved: shopFaved }" @click="toggleShopFav">{{ shopFaved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
             <button class="btn btn-ghost" data-action="goto-chat" :data-id="serviceId">◌ 联系卖家</button>
             <button class="btn btn-plain" data-action="goto-shop" :data-id="product.shop.name">进店逛逛 →</button>
@@ -422,7 +447,8 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <aside class="detail-shop" style="margin-top:0">
+          <!-- 相关推荐为空时整块隐藏，避免只留一个「看了又看」空标题 -->
+          <aside v-if="relatedList.length" class="detail-shop" style="margin-top:0">
             <h4>看了又看</h4>
             <div id="relatedList" style="display:flex;flex-direction:column;gap:10px" v-html="relatedHtml"></div>
           </aside>

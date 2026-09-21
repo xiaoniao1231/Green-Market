@@ -1,5 +1,6 @@
 package org.web03.utils;
 
+
 public class CurrentHolder {
 
     private static final ThreadLocal<Integer> CURRENT_LOCAL = new ThreadLocal<>();

@@ -11,16 +11,16 @@ import java.util.Map;
  */
 @Data
 public class ProductVO {
-    private Integer id;
-    private String title;
-    private BigDecimal price;
-    private BigDecimal original;
-    private Integer sales;
-    private Integer stock;
-    private String category;
-    private String sub;
-    private String tag;
-    private Map<String, Object> art;          // 有主图 {img:url}；无图 {e,g}（前端渐变占位）
+    private Integer id;                       // 商品ID
+    private String title;                     // 标题
+    private BigDecimal price;                 // 价格
+    private BigDecimal original;              // 原价
+    private Integer sales;                    // 销量
+    private Integer stock;                    // 库存
+    private String category;                  //一级分类
+    private String sub;                       //二级分类
+    private String tag;                       //标签
+    private Map<String, Object> art;          // 有主图
     private Map<String, Object> shop;         // {name, score}
     private List<Map<String, Object>> skus;   // 规格款式
     private List<List<String>> params;        // 参数 [[键,值]]

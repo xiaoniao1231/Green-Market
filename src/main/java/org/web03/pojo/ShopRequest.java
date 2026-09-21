@@ -9,4 +9,7 @@ import lombok.Data;
 
 @Data
 public class ShopRequest {
+    private String name;        // 店铺名称
+    private String avatar;      // 店铺头像
+    private String intro;       // 店铺简介
 }

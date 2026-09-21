@@ -2,8 +2,10 @@ package org.web03.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.web03.pojo.CheckProducts;
 import org.web03.pojo.Product;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -12,4 +14,60 @@ import java.util.List;
 @Mapper
 public interface ProductMapper {
 
+    // 卖家商品列表
+    List<Product> sellerList(CheckProducts checkProducts);
+
+    // 卖家商品总数（与 sellerList 同一套 shopId/status/keyword 条件，不含「仅在售」限制）
+    long sellerCount(CheckProducts checkProducts);
+
+    // 公开商品列表（买家端：仅在售、未删除，无需登录/开店）
+    List<Product> publicList(CheckProducts checkProducts);
+
+    // 公开商品总数
+    long publicCount(CheckProducts checkProducts);
+
+    // 插入商品
+    int insert(Product p);
+
+    // 根据id获取商品
+    Product getById(Integer id);
+
+    /**
+     * 买家端按 id 获取商品：额外要求「在售」。
+     * 商品下架后详情页必须不可见，而 getById 只过滤了软删除，故单独提供本方法。
+     */
+    Product getPublicById(@Param("id") Integer id);
+
+    /**
+     * 相关推荐：同分类的在售商品优先，不足时用其他在售商品补足（排除自身）。
+     * 排序表达式 (p.category = #{category}) DESC 让同分类排在最前。
+     */
+    List<Product> related(@Param("id") Integer id, @Param("category") String category, @Param("limit") int limit);
+
+    // 删除商品
+    int softDelete(@Param("id") Integer id, @Param("shopId") String shopId);
+
+    // 根据id和shopId获取商品
+    Product getByIdAndShop(@Param("id") Integer id, @Param("shopId") String shopId);
+
+    // 更新商品
+    int update(Product product);
+
+    // 更新商品上下架状态
+    int updateStatus(@Param("id") Integer id, @Param("shopId") String shopId, @Param("onSale") int onSale);
+
+    //限时秒杀：在售按销量倒序取前 N 条
+    List<Product> flashList(int i);
+
+    //猜你喜欢：在售按创建时间倒序分页
+    List<Product> recommendList(CheckProducts checkProducts);
+
+    //猜你喜欢：在售按创建时间倒序总数
+    long recommendCount();
+
+    // 标题模糊搜索（在售）
+    List<Product> search(CheckProducts checkProducts);
+
+    // 标题模糊搜索（在售）总数
+    long searchCount(@Param("q") String q);
 }

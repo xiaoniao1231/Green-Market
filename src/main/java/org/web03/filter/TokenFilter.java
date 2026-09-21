@@ -42,6 +42,9 @@ public class TokenFilter implements Filter {
     /** 判断请求路径是否为公开接口（精确匹配白名单或以公开前缀开头） */
     private boolean isPublicPath(String path) {
         if (WHITE_LIST.contains(path)) return true;
+        /* 商品图片上传（POST /products/image）不在公开浏览范围内：未登录不可上传（避免占用 OSS 配额）；
+           排除后再按公开前缀判断，商品列表 /products、详情 /products/{id} 等浏览类请求不受影响 */
+        if (path.startsWith("/products/image")) return false;
         for (String prefix : WHITE_PREFIXES) {
             if (path.startsWith(prefix)) return true;
         }
@@ -103,6 +106,12 @@ public class TokenFilter implements Filter {
             String jwtUserId = claims.get("userId", String.class);
             if (StringUtils.hasLength(jwtUserId)) {
                 CurrentHolder.setCurrentUserId(jwtUserId);
+            } else {
+                // 旧格式令牌（只有 id、没有 userId）：无法识别当前账号，直接按未登录处理，
+                // 避免业务层拿 null 账号去查店，误报“当前账号未开店”
+                log.warn("请求 {} 令牌缺少 userId 声明（旧格式令牌）, 返回401", path);
+                writeUnauthorized(response);
+                return;
             }
         } catch (Exception e) {
             log.error("请求 {} 解析令牌失败, 返回401: {}", path, e.getMessage());

@@ -124,6 +124,9 @@ public class MessageServiceImpl implements MessageService {
         String fileUrl;
         try {
             fileUrl = aliyunOSSOperator.upload(file.getBytes(),originalName);
+        }catch (BusinessException e){
+            /* 配置类问题（例如缺少 OSS 访问凭证）直接透出原因，不要笼统改成"请稍后重试" */
+            throw e;
         }catch (Exception e){
             log.error("文件上传 OSS 失败：{}", e.getMessage(), e);
             throw new BusinessException("文件上传失败，请稍后重试");

@@ -24,8 +24,21 @@ public interface EmpMapper {
     @Select("select count(*) from users where user_id = #{userId}")
     int countByUserId(String userId);
 
-    //修改用户信息
-    @Update("update users set nickname = #{nickname}, gender = #{gender}, avatar = #{avatar},signature = #{signature} where user_id = #{userId}")
+    /**
+     * 修改用户信息（动态更新）。
+     *
+     * <p>users 表的 gender / avatar / signature 都是 NOT NULL 列，
+     * 若前端只提交部分字段（例如只改昵称），整字段 UPDATE 会把其余列写成 NULL，
+     * 触发 "Column 'xxx' cannot be null" 报 500。这里只更新非 null 字段，
+     * 并固定写入 updated_at，保证 SET 子句永不为空。
+     */
+    @Update("<script>update users <set>" +
+            "<if test='nickname != null'>nickname = #{nickname},</if>" +
+            "<if test='gender != null'>gender = #{gender},</if>" +
+            "<if test='avatar != null'>avatar = #{avatar},</if>" +
+            "<if test='signature != null'>signature = #{signature},</if>" +
+            "updated_at = now()" +
+            "</set> where user_id = #{userId}</script>")
     void updateProfile(User user);
 
     //根据用户ID查询用户信息

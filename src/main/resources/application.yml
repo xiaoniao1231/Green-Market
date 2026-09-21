@@ -48,4 +48,9 @@ aliyun:
     endpoint: https://oss-cn-beijing.aliyuncs.com
     bucketName: java---web-ai
     region: cn-beijing
+    # 访问凭证：默认从环境变量读取（不要把真实 AK/SK 提交到仓库）。
+    # 也可在此直接填写，或在 IDEA 运行配置里以环境变量注入 —— 两者取其一即可；
+    # 都缺失时上传接口会返回明确提示，而不是 SDK 的 "Access key id should not be null or empty."。
+    accessKeyId: ${OSS_ACCESS_KEY_ID:}
+    accessKeySecret: ${OSS_ACCESS_KEY_SECRET:}
 

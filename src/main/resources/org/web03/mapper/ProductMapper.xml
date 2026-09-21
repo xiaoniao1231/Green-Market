@@ -4,6 +4,172 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.web03.mapper.ProductMapper">
 
+    <!-- useGeneratedKeys: 插入后把自增主键回填到 p.id，create() 才能按 id 回查新商品 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO products (shop_id, title, price, original_price, sales, stock,
+                              category, sub, tag, art_img, skus, params, detail, description,
+                              on_sale, deleted, created_at, updated_at)
+        VALUES (#{shopId}, #{title}, #{price}, #{originalPrice}, #{sales}, #{stock},
+                #{category}, #{sub}, #{tag}, #{artImg}, #{skus}, #{params}, #{detail}, #{description},
+                #{onSale}, #{deleted}, now(), now())
+    </insert>
+
+
+    <!-- 卖家商品列表 -->
+    <select id="sellerList" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.shop_id = #{shopId} AND p.deleted = 0
+        <if test="status != null and status != ''">
+            AND p.on_sale = (CASE WHEN #{status} = 'on' THEN 1 ELSE 0 END)
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND p.title LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY p.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <!-- 卖家商品总数（卖家侧全部商品，含下架；与 sellerList 共用 shopId/status/keyword 条件） -->
+    <select id="sellerCount" resultType="long">
+        SELECT COUNT(*) FROM products p
+        WHERE p.shop_id = #{shopId} AND p.deleted = 0
+        <if test="status != null and status != ''">
+            AND p.on_sale = (CASE WHEN #{status} = 'on' THEN 1 ELSE 0 END)
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND p.title LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+    </select>
+
+    <!-- 公开商品列表（买家端：仅在售、未删除；可选按店铺/分类/子类/关键字筛选，无需登录/开店） -->
+    <select id="publicList" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.deleted = 0 AND p.on_sale = 1
+        <if test="shopId != null and shopId != ''"> AND p.shop_id = #{shopId} </if>
+        <if test="category != null and category != ''"> AND p.category = #{category} </if>
+        <if test="sub != null and sub != ''"> AND p.sub = #{sub} </if>
+        <if test="keyword != null and keyword != ''"> AND p.title LIKE CONCAT('%', #{keyword}, '%') </if>
+        <!-- 排序：前端分类页 / 搜索页的「综合 / 销量 / 价格↑ / 价格↓」，默认综合=最新上架 -->
+        <choose>
+            <when test="sort == 'sales'">ORDER BY p.sales DESC, p.created_at DESC</when>
+            <when test="sort == 'priceAsc'">ORDER BY p.price ASC, p.created_at DESC</when>
+            <when test="sort == 'priceDesc'">ORDER BY p.price DESC, p.created_at DESC</when>
+            <otherwise>ORDER BY p.created_at DESC</otherwise>
+        </choose>
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <!-- 公开商品总数 -->
+    <select id="publicCount" resultType="long">
+        SELECT COUNT(*) FROM products p
+        WHERE p.deleted = 0 AND p.on_sale = 1
+        <if test="category != null and category != ''"> AND p.category = #{category} </if>
+        <if test="sub != null and sub != ''"> AND p.sub = #{sub} </if>
+        <if test="shopId != null and shopId != ''"> AND p.shop_id = #{shopId} </if>
+        <if test="keyword != null and keyword != ''"> AND p.title LIKE CONCAT('%', #{keyword}, '%') </if>
+    </select>
+
+    <!-- 删除商品 -->
+    <update id="softDelete">
+        UPDATE products SET deleted = 1, on_sale = 0, updated_at = now()
+        WHERE id = #{id} AND shop_id = #{shopId} AND deleted = 0
+    </update>
+
+
+    <!-- 根据 id 获取商品 -->
+    <select id="getById" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.id = #{id} AND p.deleted = 0
+    </select>
+
+    <!-- 买家端按 id 获取商品：必须同时满足「未删除 + 在售」，下架后详情页即不可访问 -->
+    <select id="getPublicById" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.id = #{id} AND p.deleted = 0 AND p.on_sale = 1
+    </select>
+
+    <!-- 相关推荐：同分类优先，其余在售商品补足；排除当前商品 -->
+    <select id="related" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.deleted = 0 AND p.on_sale = 1 AND p.id != #{id}
+        ORDER BY (p.category = #{category}) DESC, p.sales DESC, p.created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 根据 id 和 shopId 获取商品 -->
+    <select id="getByIdAndShop" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.id = #{id} AND p.shop_id = #{shopId} AND p.deleted = 0
+    </select>
+
+    <!-- 更新商品 -->
+    <update id="update">
+        UPDATE products SET
+                            title = #{title}, price = #{price}, original_price = #{originalPrice},
+                            stock = #{stock}, category = #{category}, sub = #{sub}, tag = #{tag},
+                            art_img = #{artImg}, skus = #{skus}, params = #{params},
+                            detail = #{detail}, description = #{description}, updated_at = now()
+        WHERE id = #{id} AND shop_id = #{shopId} AND deleted = 0
+    </update>
+
+    <!-- 更新商品上下架状态 -->
+    <update id="updateStatus">
+        UPDATE products SET on_sale = #{onSale}, updated_at = now()
+        WHERE id = #{id} AND shop_id = #{shopId} AND deleted = 0
+    </update>
+
+    <!-- 限时秒杀：在售按销量倒序取前 N 条 -->
+    <select id="flashList" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.deleted = 0 AND p.on_sale = 1
+        ORDER BY p.sales DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 猜你喜欢：在售按创建时间倒序分页 -->
+    <select id="recommendList" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.deleted = 0 AND p.on_sale = 1
+        ORDER BY p.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <!-- 猜你喜欢：在售商品总数 -->
+    <select id="recommendCount" resultType="long">
+        SELECT COUNT(*) FROM products p
+        WHERE p.deleted = 0 AND p.on_sale = 1
+    </select>
+
+    <!-- 搜索商品 -->
+    <select id="search" resultType="org.web03.pojo.Product">
+        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.deleted = 0 AND p.on_sale = 1
+          AND p.title LIKE CONCAT('%', #{q}, '%')
+        <choose>
+            <when test="sort == 'sales'">ORDER BY p.sales DESC, p.created_at DESC</when>
+            <when test="sort == 'priceAsc'">ORDER BY p.price ASC, p.created_at DESC</when>
+            <when test="sort == 'priceDesc'">ORDER BY p.price DESC, p.created_at DESC</when>
+            <otherwise>ORDER BY p.sales DESC, p.created_at DESC</otherwise>
+        </choose>
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <!-- 搜索商品总数 -->
+    <select id="searchCount" resultType="long">
+        SELECT COUNT(*) FROM products p
+        WHERE p.deleted = 0 AND p.on_sale = 1
+          AND p.title LIKE CONCAT('%', #{q}, '%')
+    </select>
+
 
 
 </mapper>

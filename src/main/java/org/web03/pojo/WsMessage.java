@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
+@AllArgsConstructor
 public class WsMessage {
     private String msgId;           // 消息 ID
     private String senderId;        // 发送方账号

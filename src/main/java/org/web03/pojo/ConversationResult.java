@@ -15,11 +15,11 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ConversationResult {
-    private String peerId;          // 对端账号（users.user_id）
-    private String peerName;        // 对端昵称（对端已注销等查不到时回退为对端账号）
+    private String peerId;          // 对端账号
+    private String peerName;        // 对端昵称
     private String lastMsgId;       // 最后一条消息 ID
-    private String lastSenderId;    // 最后一条消息发送者账号（前端据此判断气泡归属）
-    private String lastType;        // 最后一条消息类型：COMM_MES / FILE_MES
+    private String lastSenderId;    // 最后一条消息发送者账号
+    private String lastType;        // 最后一条消息类型
     private String lastContent;     // 最后一条消息内容（文本或文件名）
     private LocalDateTime lastTime; // 最后一条消息时间
     private Boolean lastRecalled;   // 最后一条消息是否已撤回

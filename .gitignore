@@ -34,7 +34,10 @@ Thumbs.db
 # 临时文件
 新建 文本文档.txt
 
-# 文档与许可证（仓库只保留代码文件）
-README.md
+# 文档与非代码文件（仓库只保留前端代码）
+*.md
+*.txt
+*.sql
+*.pdf
 LICENSE
 docs/

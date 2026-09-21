@@ -12,3 +12,10 @@ backup_pre_fix_20260908/
 
 # 日志
 *.log
+
+# 文档与非代码文件（仓库只保留后端代码）
+*.md
+*.txt
+*.sql
+*.pdf
+docs/

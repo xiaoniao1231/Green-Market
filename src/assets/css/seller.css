@@ -311,7 +311,7 @@
 /* 主图作为「预览买家视角」链接 */
 a.sm-art { display: flex; color: inherit; }
 a.sm-art:hover { text-decoration: none; }
-.sm-flag {
+.pc-art .sm-flag {
   position: absolute; top: 9px; right: 9px; z-index: 2;
   font-size: 11px; line-height: 20px; padding: 0 9px; border-radius: var(--radius-pill);
   color: #fff; background: rgba(0, 0, 0, .55); box-shadow: 0 2px 8px rgba(0, 0, 0, .22);

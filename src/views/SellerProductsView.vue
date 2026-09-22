@@ -542,7 +542,8 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
           <a class="pc-art sm-art" :style="artStyle(p.art)" :href="'#/detail/' + encodeURIComponent(p.id)" :title="'预览：' + p.title">
             <span v-if="p.tag" class="pc-tag">{{ p.tag }}</span>
             <span v-if="p.onSale === false" class="sm-flag">已下架</span>
-            <span v-html="artHtml(p.art)"></span>
+            <img v-if="p.art && p.art.img" class="art-img" :src="p.art.img" alt="" loading="lazy" />
+            <span v-else style="font-size: inherit">{{ p.art && p.art.e ? p.art.e : '🛍️' }}</span>
           </a>
           <div class="pc-info">
             <h3 class="ellipsis-2">{{ p.title }}</h3>

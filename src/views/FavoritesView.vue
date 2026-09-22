@@ -52,7 +52,6 @@ onMounted(renderList);
     </div>
     <div class="fav-toolbar">
       <span class="pill pill-orange">收藏夹</span>
-      <span class="pill pill-gray">后端 /favorites 接口落地后自动切换真实数据</span>
     </div>
     <div id="favList" class="product-grid large" v-html="listHtml"></div>
   </div>

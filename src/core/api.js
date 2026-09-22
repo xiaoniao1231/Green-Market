@@ -216,6 +216,21 @@ function noteOnline(online) {
       items: (o.items || []).map(it => Object.assign({}, it, { art: it.art || null }))
     });
   }
+  /* 接口地址 → 本地 store 结构：字段名对齐（id/name/phone/region/detail/tag/isDefault）；
+     id 统一转字符串（后端自增主键返回数字，前端全站按字符串使用，兼容本地 nextId 生成的 'a-…'）；
+     tag 是「家 / 公司 / 学校 / 自定义」这类地址标签，可选字段，后端不返回时按空串处理 */
+  function addrFromApi(a) {
+    if (!a) return null;
+    return {
+      id: a.id !== undefined ? String(a.id) : '',
+      name: a.name || '',
+      phone: a.phone || '',
+      region: a.region || '',
+      detail: a.detail || '',
+      tag: a.tag || '',
+      isDefault: !!(a.isDefault !== undefined ? a.isDefault : a.is_default)
+    };
+  }
   /* 本地订单 → 接口订单（本地离线回退路径使用；时间 millis → 字符串） */
   function orderToApi(o) {
     if (!o) return null;
@@ -317,7 +332,7 @@ function noteOnline(online) {
     },
 
     /* ================= 购物车（后端实现后走真实接口；未实现时回退本地存储演示） =================
-       契约要点（详见 docs/商城三功能联调接口文档.md）：
+       契约要点（详见 docs/购物车接口文档.md）：
        · GET    /cart                     → data: [条目]，条目含 itemKey/productId/sku/qty/product{...}
        · POST   /cart                     → body {productId, skuText, quantity}，data: {itemKey}（合并后的条目）
        · PUT    /cart/items               → body {itemKey, quantity}（itemKey 含 '/'，故不走路径参数）
@@ -511,6 +526,73 @@ function noteOnline(online) {
         QM_STORE.saveNow();
         QM_STORE.emit('favorites');
         return { cleared: true };
+      }
+    },
+
+    /* ================= 收货地址（strict：严格走后端，不做本地回退） =================
+       契约要点（详见 docs/地址簿接口文档.md）：
+       · GET    /addresses              → data: [地址对象]，无地址返回 []
+       · POST   /addresses              → body {name, phone, region, detail, tag, isDefault}，data: 新建地址（含 id）
+       · PUT    /addresses/{id}         → body 部分字段补丁，data: 更新后的完整地址
+       · DELETE /addresses/{id}         → data: { deleted: true }
+       · PUT    /addresses/{id}/default → data: { defaultId }；其余地址默认标记由后端清空（幂等）
+       地址对象：{ id, name, phone, region, detail, tag, isDefault }
+
+       ⚠ 地址一律 strict，**不做本地离线回退**：地址会作为收货信息进入订单，属于交易关键数据。
+       接口不可达 / 404 / 500 时必须如实报错，绝不能在本地「保存成功」——历史 bug 就是
+       后端路径误写成单数 /address 返回 404，前端静默把地址写进浏览器存储并提示保存成功，
+       用户刷新或换设备后地址凭空消失，后端库里根本没有这条数据。
+       成功后仍写穿本地 store，但它只是缓存，不再承担「后端失败时兜底」的职责。 */
+    addresses: {
+      /* 地址列表：成功（code=1）后写穿本地 store 并广播 addresses 事件（store 仅作缓存） */
+      async list() {
+        const data = await call(
+          { name: '地址列表', method: 'GET', path: '/addresses', query: {}, token: tokenOf() },
+          null,
+          { strict: true }
+        );
+        const list = (Array.isArray(data) ? data : ((data && data.list) || [])).map(addrFromApi).filter(Boolean);
+        QM_STORE.state.addresses = list;
+        QM_STORE.saveNow();
+        QM_STORE.emit('addresses');
+        return QM_STORE.addr.list();
+      },
+      /* 新增地址：payload { name, phone, region, detail, tag, isDefault }，写入失败即抛错 */
+      async create(payload) {
+        await call(
+          { name: '新增地址', method: 'POST', path: '/addresses', body: payload || {}, token: tokenOf() },
+          null,
+          { strict: true }
+        );
+        return QM_API.addresses.list();
+      },
+      /* 更新地址：patch 传需要修改的字段即可；isDefault=true 时后端应清空其他默认标记 */
+      async update(id, patch) {
+        await call(
+          { name: '更新地址', method: 'PUT', path: '/addresses/' + encodeURIComponent(id), body: patch || {}, token: tokenOf() },
+          null,
+          { strict: true }
+        );
+        return QM_API.addresses.list();
+      },
+      /* 删除地址：成功与否只看 code，返回确认对象前端不消费 */
+      async remove(id) {
+        await call(
+          { name: '删除地址', method: 'DELETE', path: '/addresses/' + encodeURIComponent(id), body: {}, token: tokenOf() },
+          null,
+          { strict: true }
+        );
+        return QM_API.addresses.list();
+      },
+      /* 设默认：PUT /addresses/{id}/default（幂等；其余地址默认标记由后端清空）。
+         返回值 defaultId 前端不消费，成功即重新拉列表 */
+      async setDefault(id) {
+        await call(
+          { name: '设置默认地址', method: 'PUT', path: '/addresses/' + encodeURIComponent(id) + '/default', body: {}, token: tokenOf() },
+          null,
+          { strict: true }
+        );
+        return QM_API.addresses.list();
       }
     },
 

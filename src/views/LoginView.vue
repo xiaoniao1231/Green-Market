@@ -218,10 +218,6 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
             <input v-model="loginPassword" type="password" maxlength="15" placeholder="请输入密码" @keyup.enter="doAcctLogin" />
           </div>
           <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doAcctLogin">登 录</button>
-          <div class="demo-tip">
-            <p>登录一律由后端校验：账号需已存在于后端 users 表中，否则请点「注册」新建一个真实账号。</p>
-            <p>账号名下若已绑定店铺，登录后在「我的店铺」里即可打理生意。</p>
-          </div>
         </div>
 
         <div v-else>

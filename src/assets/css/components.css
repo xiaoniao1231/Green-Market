@@ -48,7 +48,7 @@
     radial-gradient(circle at 26% 16%, rgba(255, 255, 255, .42), transparent 58%),
     linear-gradient(180deg, transparent 62%, rgba(0, 0, 0, .06));
 }
-.pc-tag {
+.pc-art .pc-tag {
   position: absolute; top: 9px; left: 9px; z-index: 2;
   font-size: 11px; line-height: 20px; padding: 0 9px; border-radius: var(--radius-pill);
   color: #fff; background: linear-gradient(90deg, #ff7a18, #ff5000);
@@ -130,6 +130,20 @@ img.art-img {
 .form-row input:focus, .form-row select:focus, .form-row textarea:focus { border-color: var(--brand); box-shadow: var(--ring); }
 .form-row .input-flex { display: flex; gap: 8px; }
 .form-row .input-flex input { flex: 1; min-width: 0; }
+/* 省 / 市 / 区三级下拉：三等分并排，箭头留给浏览器原生样式，禁用态弱化 */
+.form-row .region-selects { display: flex; gap: 8px; }
+.form-row .region-selects select { flex: 1 1 0; min-width: 0; padding-right: 8px; }
+.form-row .region-selects select:disabled { color: var(--text-4); background: var(--fill); cursor: not-allowed; }
+/* 地址标签：单选 chip，选中后品牌橙描边；再点一次取消（对应 ProfileView 的标签选择） */
+.form-row .tag-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.form-row .tag-chip {
+  display: inline-flex; align-items: center; height: 32px; padding: 0 15px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  background: #fff; font-size: 13px; color: var(--text-2);
+  transition: all var(--dur) var(--ease);
+}
+.form-row .tag-chip:hover { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-softer); }
+.form-row .tag-chip.active { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; box-shadow: 0 0 0 2px rgba(255, 80, 0, .12); }
 .form-row .hint { font-size: 12px; color: var(--text-3); margin-top: 5px; min-height: 18px; }
 
 /* 行内文字按钮（替代无 href 的 <a>，保证键盘可聚焦） */

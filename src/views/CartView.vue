@@ -85,8 +85,18 @@ async function renderList() {
 }
 
 /* 结算弹窗（地址 / 优惠券 / 支付方式选择，QM_UI.modal） */
-function openCheckout(items) {
-  const addresses = QM_STORE.addr.list();
+async function openCheckout(items) {
+  /* 地址一律以服务端为准（QM_API.addresses 是 strict 接口，不做本地回退）：
+     拉取失败就把地址区置空并给出明确原因，绝不用浏览器缓存冒充后端地址 ——
+     否则用户可能把订单发到一个后端并不存在的「假地址」上 */
+  let addresses = [];
+  let addrError = '';
+  try {
+    await QM_API.addresses.list();
+    addresses = QM_STORE.addr.list();
+  } catch (e) {
+    addrError = (e && e.message) || '收货地址加载失败';
+  }
   const coupons = QM_STORE.coupon.list().filter(c => c.status === 'unused');
   const goodsAmount = items.reduce((s, i) => s + i.product.price * i.qty, 0);
   const usableCoupons = coupons.filter(c => goodsAmount >= c.threshold);
@@ -104,10 +114,12 @@ function openCheckout(items) {
           <div id="addrList">
             ${addresses.map(a => `
               <div class="addr-option ${a === chosenAddr ? 'active' : ''}" data-action="pick-addr" data-id="${esc(a.id)}">
-                <b>${esc(a.name)} ${esc(a.phone)}${a.isDefault ? ' <span class="pill pill-orange">默认</span>' : ''}</b>
+                <b>${esc(a.name)} ${esc(a.phone)}${a.isDefault ? ' <span class="pill pill-orange">默认</span>' : ''}${a.tag ? ` <span class="pill pill-gray">${esc(a.tag)}</span>` : ''}</b>
                 <small>${esc(a.region)} ${esc(a.detail)}</small>
               </div>`).join('')}
-            ${addresses.length ? '' : '<p class="hint">暂无地址，请先到「个人中心 → 收货地址」添加</p>'}
+            ${addresses.length ? '' : (addrError
+              ? `<p class="hint" style="color:var(--accent-ink)">收货地址加载失败：${esc(addrError)}</p>`
+              : '<p class="hint">暂无地址，请先到「个人中心 → 收货地址」添加</p>')}
           </div>
         </div>
         <div class="form-row">

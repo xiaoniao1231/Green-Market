@@ -7,10 +7,10 @@
     <!-- useGeneratedKeys: 插入后把自增主键回填到 p.id，create() 才能按 id 回查新商品 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO products (shop_id, title, price, original_price, sales, stock,
-                              category, sub, tag, art_img, skus, params, detail, description,
+                              category, sub, tag, skus, params, detail, description,
                               on_sale, deleted, created_at, updated_at)
         VALUES (#{shopId}, #{title}, #{price}, #{originalPrice}, #{sales}, #{stock},
-                #{category}, #{sub}, #{tag}, #{artImg}, #{skus}, #{params}, #{detail}, #{description},
+                #{category}, #{sub}, #{tag}, #{skus}, #{params}, #{detail}, #{description},
                 #{onSale}, #{deleted}, now(), now())
     </insert>
 
@@ -113,7 +113,7 @@
         UPDATE products SET
                             title = #{title}, price = #{price}, original_price = #{originalPrice},
                             stock = #{stock}, category = #{category}, sub = #{sub}, tag = #{tag},
-                            art_img = #{artImg}, skus = #{skus}, params = #{params},
+                            skus = #{skus}, params = #{params},
                             detail = #{detail}, description = #{description}, updated_at = now()
         WHERE id = #{id} AND shop_id = #{shopId} AND deleted = 0
     </update>

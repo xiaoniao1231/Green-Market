@@ -24,8 +24,7 @@ public class Product {
     private String category;        // 一级分类
     private String sub;             // 二级分类
     private String tag;             // 标签
-    private String artImg;          // 商品主图 OSS 地址
-    private String skus;            // 规格款式
+    private String skus;            // 规格款式（主图取第一个带图的款式值，见 ProductServiceImpl.toVO）
     private String params;          // 参数
     private String detail;          // 图文详情
     private String description;     // 商品简介

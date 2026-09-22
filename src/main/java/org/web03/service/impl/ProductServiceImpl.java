@@ -24,6 +24,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -44,6 +45,9 @@ public class ProductServiceImpl implements ProductService {
     private AliyunOSSOperator aliyunOSSOperator;
 
     private static final ObjectMapper OM = new ObjectMapper();
+
+    /** 款式价上限（与商品售价一致：1-99999 元） */
+    private static final BigDecimal SKU_PRICE_MAX = new BigDecimal("99999");
 
     //商品列表
     @Override
@@ -97,10 +101,7 @@ public class ProductServiceImpl implements ProductService {
         p.setCategory(productRequest.getCategory());
         p.setSub(productRequest.getSub());
         p.setTag(productRequest.getTag());
-        if (productRequest.getArt() != null && productRequest.getArt().get("img") != null) {
-            p.setArtImg(String.valueOf(productRequest.getArt().get("img")));
-        }
-        p.setSkus(toJson(productRequest.getSkus()));
+        p.setSkus(toJson(normalizeSkus(productRequest.getSkus())));
         p.setParams(toJson(productRequest.getParams()));
         p.setDetail(toJson(productRequest.getDetail()));
         p.setDescription(resolveDesc(productRequest.getDesc(), productRequest.getDetail()));
@@ -142,11 +143,7 @@ public class ProductServiceImpl implements ProductService {
         if (req.getCategory() != null) exist.setCategory(req.getCategory());
         if (req.getSub() != null) exist.setSub(req.getSub());
         if (req.getTag() != null) exist.setTag(req.getTag());
-        if (req.getArt() != null) {
-            Object img = req.getArt().get("img");
-            exist.setArtImg(img == null ? null : String.valueOf(img));
-        }
-        if (req.getSkus() != null) exist.setSkus(toJson(req.getSkus()));
+        if (req.getSkus() != null) exist.setSkus(toJson(normalizeSkus(req.getSkus())));
         if (req.getParams() != null) exist.setParams(toJson(req.getParams()));
         if (req.getDetail() != null) exist.setDetail(toJson(req.getDetail()));
         if (req.getDesc() != null) exist.setDescription(req.getDesc());
@@ -271,13 +268,18 @@ public class ProductServiceImpl implements ProductService {
         vo.setSub(p.getSub());
         vo.setTag(p.getTag());
 
-        // art：有图返回 {img}；无图返回渐变占位
+        // skus：主图由「第一个带图的款式值」推导（前端已删除独立主图上传，口径见 SellerProductsView.collect）
+        List<Map<String, Object>> skus = parseList(p.getSkus());
+        vo.setSkus(skus);
+
+        // art：取第一个带图的 SKU 款式图；无图返回渐变占位
         Map<String, Object> art = new HashMap<>();
-        if (StringUtils.hasLength(p.getArtImg())) {
-            art.put("img", p.getArtImg());
+        String firstImg = firstSkuImg(skus);
+        if (StringUtils.hasLength(firstImg)) {
+            art.put("img", firstImg);
         } else {
             art.put("e", "🛍️");
-            art.put("g", Arrays.asList("#e8e8e8", "#f5f5f5"));
+            art.put("g", Arrays.asList("#ffe4d3", "#ffb88c"));
         }
         vo.setArt(art);
 
@@ -286,8 +288,29 @@ public class ProductServiceImpl implements ProductService {
         shop.put("name", p.getShopName());
         shop.put("score", p.getShopScore());
         vo.setShop(shop);
-
-        vo.setSkus(parseList(p.getSkus()));
+        /* 款式价 → 价格区间：默认价与所有款式价一起取 min / max。
+           卡片列表用区间（如「¥299 - ¥399」），详情页按选中款式取具体价。 */
+        BigDecimal min = p.getPrice();
+        BigDecimal max = p.getPrice();
+        for (Map<String, Object> g : skus) {
+            Object valuesObj = g.get("values");
+            if (!(valuesObj instanceof List)) continue;
+            for (Object item : (List<?>) valuesObj) {
+                if (!(item instanceof Map)) continue;
+                Object priceObj = ((Map<?, ?>) item).get("price");
+                if (priceObj == null) continue;
+                BigDecimal sp;
+                try {
+                    sp = new BigDecimal(String.valueOf(priceObj).trim());
+                } catch (NumberFormatException e) {
+                    continue;   // 脏数据（非数字）忽略，不影响列表展示
+                }
+                if (min == null || sp.compareTo(min) < 0) min = sp;
+                if (max == null || sp.compareTo(max) > 0) max = sp;
+            }
+        }
+        vo.setPriceMin(min);
+        vo.setPriceMax(max);
         vo.setParams(parseParams(p.getParams()));
         vo.setDetail(parseList(p.getDetail()));
         vo.setDesc(p.getDescription());
@@ -304,6 +327,23 @@ public class ProductServiceImpl implements ProductService {
             log.error("json解析失败，json:{}", json, e);
             return new ArrayList<>();
         }
+    }
+
+    //主图：取第一个带 img 的 SKU 款式值（与前端 collect() 推导一致）；无图返回 null
+    private String firstSkuImg(List<Map<String, Object>> skus) {
+        if (skus == null) return null;
+        for (Map<String, Object> g : skus) {
+            Object valuesObj = g.get("values");
+            if (!(valuesObj instanceof List)) continue;
+            for (Object item : (List<?>) valuesObj) {
+                if (!(item instanceof Map)) continue;
+                Object img = ((Map<?, ?>) item).get("img");
+                if (img != null && StringUtils.hasLength(String.valueOf(img))) {
+                    return String.valueOf(img);
+                }
+            }
+        }
+        return null;
     }
 
     //JSON 字符串 → List<List<String>>，异常则返回空列表
@@ -323,6 +363,67 @@ public class ProductServiceImpl implements ProductService {
         return original;
     }
 
+
+    //规范化规格款式（SKU）：入口统一清洗，保证入库 JSON 结构稳定。
+    private List<Map<String, Object>> normalizeSkus(List<Map<String, Object>> skus) {
+        if (skus == null) return null;
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Map<String, Object> g : skus) {
+            if (g == null) continue;
+            String name = g.get("name") == null ? "" : String.valueOf(g.get("name")).trim();
+            Object rawValues = g.get("values");
+            if (!(rawValues instanceof List)) continue;
+
+            List<Map<String, Object>> values = new ArrayList<>();
+            for (Object item : (List<?>) rawValues) {
+                String text;
+                Object img = null;
+                Object price = null;
+                if (item instanceof Map) {
+                    Map<?, ?> m = (Map<?, ?>) item;
+                    text = m.get("v") == null ? "" : String.valueOf(m.get("v")).trim();
+                    img = m.get("img");
+                    price = m.get("price");
+                } else {
+                    text = item == null ? "" : String.valueOf(item).trim();
+                }
+                if (text.isEmpty()) continue;
+
+                Map<String, Object> v = new LinkedHashMap<>();
+                v.put("v", text);
+                if (img != null && StringUtils.hasLength(String.valueOf(img))) {
+                    v.put("img", String.valueOf(img));
+                }
+                BigDecimal p = parseSkuPrice(price, text);
+                if (p != null) v.put("price", p);
+                values.add(v);
+            }
+            if (values.isEmpty()) continue;
+
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("name", name.isEmpty() ? "规格" : name);
+            group.put("values", values);
+            groups.add(group);
+        }
+        return groups.isEmpty() ? null : groups;
+    }
+
+    //款式价解析：未填（null / 空串）→ null（沿用商品默认价）；非法 → 抛业务异常
+    private BigDecimal parseSkuPrice(Object price, String valueText) {
+        if (price == null) return null;
+        String raw = String.valueOf(price).trim();
+        if (raw.isEmpty()) return null;
+        BigDecimal p;
+        try {
+            p = new BigDecimal(raw);
+        } catch (NumberFormatException e) {
+            throw new BusinessException("款式「" + valueText + "」的价格不合法");
+        }
+        if (p.compareTo(BigDecimal.ONE) < 0 || p.compareTo(SKU_PRICE_MAX) > 0) {
+            throw new BusinessException("款式「" + valueText + "」的价格需在 1-99999 元之间");
+        }
+        return p.setScale(2, RoundingMode.HALF_UP);
+    }
 
     //obj → JSON 字符串，异常则抛业务异常
     private String toJson(Object obj) {

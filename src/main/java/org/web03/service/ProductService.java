@@ -15,7 +15,7 @@ public interface ProductService {
 
     CheckProducts sellerList(CheckProducts checkProducts);
 
-    /** 公开商品列表（买家端：仅在售、未删除，无需登录/开店） */
+    //公开商品列表（买家端：仅在售、未删除，无需登录/开店)
     CheckProducts publicList(CheckProducts checkProducts);
 
     ProductVO create(ProductRequest productRequest);
@@ -32,7 +32,7 @@ public interface ProductService {
 
     ProductVO getDetail(Integer id);
 
-    /** 相关推荐：同分类在售商品优先，不足时由其他在售商品补足（详情页「相关推荐」用） */
+    //相关推荐：同分类在售商品优先，不足时由其他在售商品补足（详情页「相关推荐」用）
     List<ProductVO> related(Integer id, Integer size);
 
     Map<String, Object> flash();

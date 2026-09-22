@@ -34,12 +34,6 @@ public class  MessagesController {
     // 发送私聊消息
     @PostMapping("/private")
     public Result sendPrivate(@RequestBody PrivateMessageRequest req){
-/*        if (req == null || !StringUtils.hasLength(req.getReceiverId())) {
-            return Result.error("接收方账号不能为空");
-        }
-        if (!StringUtils.hasLength(req.getContent())) {//判断前端传过来的消息内容是否为空
-            return Result.error("消息内容为空");
-        }*/
         SendPrivateResult date = messageService.sendPrivate(CurrentHolder.getCurrentUserId(),req);
         return Result.success(date);
     }
@@ -49,9 +43,6 @@ public class  MessagesController {
     public Result sendFile(@RequestParam("file") MultipartFile file,
                            @RequestParam("receiverId") String receiverId)
     {
-/*        if (file == null || file.isEmpty()) {
-            return Result.error("上传文件不能为空");
-        }*/
         MessagesFile data = messageService.sendFile(CurrentHolder.getCurrentUserId(), file, receiverId);
         return Result.success(data);
     }
@@ -61,9 +52,6 @@ public class  MessagesController {
     public Result history(@RequestParam(required = false) String peerId,
                           @RequestParam(defaultValue = "1") Integer page,
                           @RequestParam(defaultValue = "10") Integer size){
-/*        if (!StringUtils.hasLength(peeerId)) {//判断前端传过来的 peerId 是否为空
-            return Result.error("接收方账号不能为空");
-        }*/
         return Result.success(messageService.history(CurrentHolder.getCurrentUserId(), peerId, page, size));
     }
 

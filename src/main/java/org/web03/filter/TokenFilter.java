@@ -119,7 +119,6 @@ public class TokenFilter implements Filter {
             return;
         }
 
-        CurrentHolder.setCurrentId(userId);
         try {
             chain.doFilter(request, response);
         } finally {

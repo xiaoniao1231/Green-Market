@@ -9,17 +9,11 @@ import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
 import org.web03.mapper.MessageMapper;
 import org.web03.pojo.*;
-//import org.web03.pojo.HistoryResult;
+
 import org.web03.service.MessageService;
 import org.web03.utils.AliyunOSSOperator;
 import org.web03.websocket.ChatWebSocketHandler;
-import org.web03.websocket.WsHandshakeInterceptor;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -28,6 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 消息模块业务逻辑实现类
+ */
 
 @Slf4j
 @Service
@@ -42,15 +39,15 @@ public class MessageServiceImpl implements MessageService {
     @Autowired
     private AliyunOSSOperator aliyunOSSOperator;
 
-    /** 文本消息长度上限：最长 10000 字 */
+    //文本消息长度上限：最长 10000 字
     private static final int MAX_CONTENT_LENGTH = 10000;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /** 文件消息大小上限：1 GB */
+    //文件消息大小上限：1 GB
     private static final long MAX_FILE_SIZE = 1024L * 1024 * 1024;
 
-    /** 发送私聊消息 */
+    //发送私聊消息
     @Override
     public SendPrivateResult sendPrivate(String myUserId, PrivateMessageRequest req) {
         requireSender(myUserId);
@@ -99,7 +96,7 @@ public class MessageServiceImpl implements MessageService {
         return new SendPrivateResult(m.getMsgId(), sendTime, delivered);
     }
 
-    /** 发送文件消息 */
+    //发送文件消息
     @Override
     public MessagesFile sendFile(String myUserId, MultipartFile file, String receiverId) {
         requireSender(myUserId);
@@ -167,7 +164,7 @@ public class MessageServiceImpl implements MessageService {
         return new MessagesFile(m.getMsgId(), originalName, fileUrl, file.getSize(), sendTime, delivered);
     }
 
-    /** 历史消息 */
+    //历史消息
     @Override
     public HistoryResult history(String myUserId, String peerId, Integer page, Integer size) {
         if (!StringUtils.hasLength(peerId)){
@@ -182,7 +179,7 @@ public class MessageServiceImpl implements MessageService {
     }
 
 
-    /** 个人会话列表 */
+    //个人会话列表
     @Override
     public List<ConversationResult> conversations(String myUserId) {
         requireSender(myUserId);
@@ -205,6 +202,7 @@ public class MessageServiceImpl implements MessageService {
         return result;
     }
 
+    //标记会话已读
     @Override
     public void markRead(String myUserId, String peerId) {
         if (!StringUtils.hasLength(myUserId) || !StringUtils.hasLength(peerId)) {
@@ -214,7 +212,7 @@ public class MessageServiceImpl implements MessageService {
     }
 
 
-    /** 发送者上下文校验 */
+    //发送者上下文校验
     public void requireSender(String myUserId) {
         //调用Spring工具类：字符串不为 null，并且去掉首尾空白后长度 > 0 → 返回 true 否者返回 false
         if (!StringUtils.hasLength(myUserId)) {
@@ -222,7 +220,7 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-    /** 接收方校验：接收方账号不能为空+不能发给自己 + 账号必须存在 */
+    // 接收方校验：接收方账号不能为空+不能发给自己 + 账号必须存在
     public void checkReceiver(String myUserId, String receiverId){
         if (!StringUtils.hasLength(receiverId)) {
             throw new BusinessException("接收方账号不能为空");
@@ -235,7 +233,7 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-    /** 推送消息给接收方 */
+    //推送消息给接收方
     public boolean pushTo(String receiverId, String type, WsMessage message){
         if(!chatWebSocketHandler.isOnline(receiverId)){
             return false;

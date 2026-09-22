@@ -10,6 +10,9 @@ import org.web03.service.RegisterService;
 import org.web03.service.SmsVerificationCodeService;
 
 import java.time.LocalDateTime;
+/*
+ * 注册
+ */
 
 @Service
 public class RegisterServiceImpl implements RegisterService {
@@ -19,6 +22,7 @@ public class RegisterServiceImpl implements RegisterService {
     @Autowired
     private SmsVerificationCodeService smsVerificationCodeService;
 
+    // 手机号注册
     @Override
     public void phoneRegister(PhoneRegisterRequest prr) {
         // 参数校验
@@ -55,6 +59,7 @@ public class RegisterServiceImpl implements RegisterService {
         smsVerificationCodeService.clearCode(prr.getPhone(), "register");
     }
 
+    // 账号注册
     @Override
     public void register(User user) {
         // 参数校验

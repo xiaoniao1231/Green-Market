@@ -14,6 +14,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 
+/**
+ * 长连接服务实现类
+ */
+
 @Service
 public class LongServiceImpl implements LongService {
 
@@ -26,6 +30,7 @@ public class LongServiceImpl implements LongService {
     @Autowired
     private ShopMapper shopMapper;
 
+    //    手机号登录
     @Override
     public LoginInfo longinPhone(PhoneRegisterRequest prr) {
         if (prr.getPhone() == null || !prr.getPhone().matches("^1[3-9]\\d{9}$")) {
@@ -44,6 +49,7 @@ public class LongServiceImpl implements LongService {
         return getLoginInfo(phone);
     }
 
+    //    用户名密码登录
     @Override
     public LoginInfo login(User user) {
         User login = empMapper.login(user);

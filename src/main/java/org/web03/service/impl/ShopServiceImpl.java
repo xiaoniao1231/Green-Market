@@ -23,6 +23,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+/**
+ * 店铺业务逻辑实现类
+ */
+
+
 @Slf4j
 @Service
 public class ShopServiceImpl implements ShopService {
@@ -34,27 +39,21 @@ public class ShopServiceImpl implements ShopService {
     @Autowired
     private AliyunOSSOperator aliyunOSSOperator;
 
-    /**
-     * 将Shop对象转换为ShopInformation对象
-     */
+    //将Shop对象转换为ShopInformation对象
     private ShopInformation toVo(Shop shop){
         return new ShopInformation(shop.getShopId(),shop.getName(),shop.getOwnerUserId(),
                 empMapper.findNicknameByUserId(shop.getOwnerUserId()),shop.getAvatar(),shop.getIntro(),
                 shop.getScore(),shop.getFans(),shop.getFounded() == null?null:shop.getFounded().toString());
     }
 
-    /**
-     * 获取当前登录用户
-     */
+    //获取当前登录用户
     private String currentOwner(){
         String userId = CurrentHolder.getCurrentUserId();
         if(!StringUtils.hasLength(userId)) throw new BusinessException("未登录或登录已失效");
         return userId;
     }
 
-    /**
-     * 创建店铺
-     */
+    //创建店铺
     @Override
     public ShopInformation createShop(ShopRequest shopRequest) {
         String ownerId = currentOwner();
@@ -85,9 +84,7 @@ public class ShopServiceImpl implements ShopService {
         return toVo(shop);
     }
 
-    /**
-     * 上传店铺头像
-     */
+    //上传店铺头像
     @Override
     public Map<String, Object> uploadAvatar(MultipartFile file) {
         if (file.getSize() > 10 * 1024 * 1024) throw new BusinessException("图片不能超过 10MB");
@@ -105,9 +102,7 @@ public class ShopServiceImpl implements ShopService {
         }
     }
 
-    /**
-     * 获取我的店铺
-     */
+    //获取我的店铺
     @Override
     public ShopInformation getMyShop() {
         Shop shop = shopMapper.findByOwnerUserId(currentOwner());
@@ -116,9 +111,7 @@ public class ShopServiceImpl implements ShopService {
         return toVo(shop);
     }
 
-    /**
-     * 更新店铺信息
-     */
+    //更新店铺信息
     @Override
     public ShopInformation updateShop(ShopRequest shopRequest) {
         Shop shop = shopMapper.findByOwnerUserId(currentOwner());
@@ -147,9 +140,7 @@ public class ShopServiceImpl implements ShopService {
         return toVo(shop);
     }
 
-    /**
-     * 获取公开店铺信息
-     */
+    //获取公开店铺信息
     @Override
     public ShopInformation getPublicShop(String shopId) {
         if (!StringUtils.hasLength(shopId)) throw new BusinessException("店铺不存在");

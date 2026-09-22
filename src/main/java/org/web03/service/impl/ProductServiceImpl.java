@@ -45,7 +45,7 @@ public class ProductServiceImpl implements ProductService {
 
     private static final ObjectMapper OM = new ObjectMapper();
 
-    /**商品列表*/
+    //商品列表
     @Override
     public CheckProducts sellerList(CheckProducts checkProducts) {
         checkProducts.setShopId(requireShopId());
@@ -62,7 +62,7 @@ public class ProductServiceImpl implements ProductService {
 
     }
 
-    /**公开商品列表（买家端：不要求登录/开店，只返回在售商品）*/
+    //公开商品列表（买家端：不要求登录/开店，只返回在售商品）
     @Override
     public CheckProducts publicList(CheckProducts checkProducts) {
         Integer page = checkProducts.getPage();
@@ -77,7 +77,7 @@ public class ProductServiceImpl implements ProductService {
         return new CheckProducts(total, page, size, list);
     }
 
-    /**创建商品*/
+    //创建商品
     @Override
     public ProductVO create(ProductRequest productRequest) {
         if(productRequest == null) throw new BusinessException("请填写商品信息");
@@ -112,7 +112,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
 
-    /**删除商品*/
+    //删除商品
     @Override
     public Map<String, Object> delete(Integer id) {
         String shopId = requireShopId();
@@ -121,7 +121,7 @@ public class ProductServiceImpl implements ProductService {
         return Collections.singletonMap("deleted", true);
     }
 
-    /**更新商品*/
+    //更新商品
     @Override
     public ProductVO update(Integer id, ProductRequest req) {
         if (req == null) throw new BusinessException("请填写要修改的内容");
@@ -156,7 +156,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
 
-    /**更新商品上架/下架状态*/
+    //更新商品上架/下架状态
     @Override
     public Map<String, Object> setStatus(Integer id, Boolean onSale) {
         String shopId = requireShopId();
@@ -168,7 +168,7 @@ public class ProductServiceImpl implements ProductService {
         return data;
     }
 
-    /**获取商品详情（用于编辑商品时回填表单）*/
+    //获取商品详情（用于编辑商品时回填表单）
     @Override
     public ProductVO getForEdit(Integer id) {
         String shopId = requireShopId();
@@ -177,7 +177,7 @@ public class ProductServiceImpl implements ProductService {
         return toVO(p);
     }
 
-    /**获取商品详情（用于商品详情页面；下架 / 已删除商品对买家不可见）*/
+    //获取商品详情（用于商品详情页面；下架 / 已删除商品对买家不可见）
     @Override
     public ProductVO getDetail(Integer id) {
         Product p = productMapper.getPublicById(id);
@@ -185,7 +185,7 @@ public class ProductServiceImpl implements ProductService {
         return toVO(p);
     }
 
-    /**相关推荐：同分类优先，再用其他在售商品补足；排除当前商品*/
+    //相关推荐：同分类优先，再用其他在售商品补足；排除当前商品
     @Override
     public List<ProductVO> related(Integer id, Integer size) {
         Product self = productMapper.getPublicById(id);
@@ -195,7 +195,7 @@ public class ProductServiceImpl implements ProductService {
                 .stream().map(this::toVO).collect(Collectors.toList());
     }
 
-    /**限时秒杀*/
+    //限时秒杀
     @Override
     public Map<String, Object> flash() {
         Map<String, Object> data = new HashMap<>();
@@ -204,7 +204,7 @@ public class ProductServiceImpl implements ProductService {
         return data;
     }
 
-    /**推荐商品*/
+    //推荐商品
     @Override
     public CheckProducts recommend(CheckProducts checkProducts) {
         checkProducts.setOffset((checkProducts.getPage() - 1) * checkProducts.getSize());
@@ -216,7 +216,7 @@ public class ProductServiceImpl implements ProductService {
         return new CheckProducts(total, checkProducts.getPage(), checkProducts.getSize(), list);
     }
 
-    /**搜索商品*/
+    //搜索商品
     @Override
     public CheckProducts search(CheckProducts checkProducts) {
         if (!StringUtils.hasLength(checkProducts.getQ())) {
@@ -230,7 +230,7 @@ public class ProductServiceImpl implements ProductService {
         return new CheckProducts(total, checkProducts.getPage(), checkProducts.getSize(), list);
     }
 
-    /**上传图片*/
+    //上传图片
     @Override
     public String uploadImage(MultipartFile file) {
         if (file == null || file.isEmpty()) throw new BusinessException("请选择要上传的图片");
@@ -246,7 +246,7 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    /**从登录态账号取本店 id；未登录抛“未登录”，已登录但未开店才抛“当前账号未开店”*/
+    //从登录态账号取本店 id；未登录抛“未登录”，已登录但未开店才抛“当前账号未开店”
     private String requireShopId() {
         String userId = CurrentHolder.getCurrentUserId();
         if (!StringUtils.hasLength(userId)) {
@@ -258,7 +258,7 @@ public class ProductServiceImpl implements ProductService {
         }
         return shopId;
     }
-    /**Product（DB 行）→ ProductVO（前端契约对象）*/
+    //Product（DB 行）→ ProductVO（前端契约对象）
     private ProductVO toVO(Product p) {
         ProductVO vo = new ProductVO();
         vo.setId(p.getId());
@@ -295,7 +295,7 @@ public class ProductServiceImpl implements ProductService {
         return vo;
     }
 
-    /**JSON 字符串 → List<Map>，异常则返回空列表*/
+    //JSON 字符串 → List<Map>，异常则返回空列表
     private List<Map<String, Object>> parseList(String json) {
         if (!StringUtils.hasLength(json)) return new ArrayList<>();
         try {
@@ -306,7 +306,7 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    /**JSON 字符串 → List<List<String>>，异常则返回空列表*/
+    //JSON 字符串 → List<List<String>>，异常则返回空列表
     private List<List<String>> parseParams(String json) {
         if (!StringUtils.hasLength(json)) return new ArrayList<>();
         try {
@@ -317,14 +317,14 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    /** original 传 0 / 负数按空处理 */
+    //original 传 0 / 负数按空处理
     private BigDecimal normalizeOriginal(BigDecimal original) {
         if (original == null || original.compareTo(BigDecimal.ZERO) <= 0) return null;
         return original;
     }
 
 
-    /** obj → JSON 字符串，异常则抛业务异常 */
+    //obj → JSON 字符串，异常则抛业务异常
     private String toJson(Object obj) {
         if (obj == null) return null;
         try {
@@ -334,7 +334,7 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    /** desc 为空时从 detail 首段文字截取 120 字 */
+    //desc 为空时从 detail 首段文字截取 120 字
     private String resolveDesc(String desc, List<Map<String, Object>> detail) {
         if (StringUtils.hasLength(desc)) return desc;
         if (detail != null && !detail.isEmpty()) {
@@ -347,7 +347,7 @@ public class ProductServiceImpl implements ProductService {
         return null;
     }
 
-    /** 构造空分页结果 */
+    //构造空分页结果
     private CheckProducts emptyPage(Integer page, Integer size) {
 
         return new CheckProducts(0L, page == null || page < 1 ? 1 : page, size == null || size < 1 ? 10 : size, new ArrayList<>());

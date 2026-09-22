@@ -11,6 +11,11 @@ import org.web03.service.SmsVerificationCodeService;
 import java.time.Duration;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+
+/**
+ * 短信验证码服务实现
+ */
+
 @Slf4j
 @Service
 public class SmsVerificationCodeImpl implements SmsVerificationCodeService {
@@ -22,16 +27,17 @@ public class SmsVerificationCodeImpl implements SmsVerificationCodeService {
     private StringRedisTemplate stringRedisTemplate;
 
 
-    /** 验证码 key：sms:code:{scene}:{phone} */
+    //验证码 key：sms:code:{scene}:{phone}
     private String codeKey(String phone, String scene) {
         return "sms:code:" + scene + ":" + phone;
     }
 
-    /** 防重发 key：sms:limit:{scene}:{phone} */
+    //防重发 key：sms:limit:{scene}:{phone}
     private String limitKey(String phone, String scene) {
         return "sms:limit:" + scene + ":" + phone;
     }
 
+    //发送短信验证码
     @Override
     public String sendSmsCode(PhoneRegisterRequest phoneRegisterRequest) {
         String phone = phoneRegisterRequest.getPhone();
@@ -50,6 +56,7 @@ public class SmsVerificationCodeImpl implements SmsVerificationCodeService {
         return code;
     }
 
+    //验证短信验证码
     @Override
     public boolean verifyCode(String phone, String scene, String code) {
         // key 过期后 GET 返回 null，自动判定为"验证码错误或已过期"
@@ -57,6 +64,7 @@ public class SmsVerificationCodeImpl implements SmsVerificationCodeService {
         return code != null && code.equals(cached);
     }
 
+    //删除短信验证码
     @Override
     public void clearCode(String phone, String scene) {
         // 注册成功后删除验证码，保证一次性使用

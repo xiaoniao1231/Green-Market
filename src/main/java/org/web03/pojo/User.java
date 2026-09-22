@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 /**
- * 用户（与库 `网页通信`.users 表一一对应）
+ * 用户
  */
 
 @Data

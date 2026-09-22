@@ -2,10 +2,9 @@ package org.web03.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.web03.pojo.CheckProducts;
-import org.web03.pojo.Product;
+import org.web03.pojo.Product.ProductsCheck;
+import org.web03.pojo.Product.Product;
 
-import java.util.Collection;
 import java.util.List;
 
 /**
@@ -15,16 +14,16 @@ import java.util.List;
 public interface ProductMapper {
 
     // 卖家商品列表
-    List<Product> sellerList(CheckProducts checkProducts);
+    List<Product> sellerList(ProductsCheck productsCheck);
 
     // 卖家商品总数（与 sellerList 同一套 shopId/status/keyword 条件，不含「仅在售」限制）
-    long sellerCount(CheckProducts checkProducts);
+    long sellerCount(ProductsCheck productsCheck);
 
     // 公开商品列表（买家端：仅在售、未删除，无需登录/开店）
-    List<Product> publicList(CheckProducts checkProducts);
+    List<Product> publicList(ProductsCheck productsCheck);
 
     // 公开商品总数
-    long publicCount(CheckProducts checkProducts);
+    long publicCount(ProductsCheck productsCheck);
 
     // 插入商品
     int insert(Product p);
@@ -60,13 +59,13 @@ public interface ProductMapper {
     List<Product> flashList(int i);
 
     //猜你喜欢：在售按创建时间倒序分页
-    List<Product> recommendList(CheckProducts checkProducts);
+    List<Product> recommendList(ProductsCheck productsCheck);
 
     //猜你喜欢：在售按创建时间倒序总数
     long recommendCount();
 
     // 标题模糊搜索（在售）
-    List<Product> search(CheckProducts checkProducts);
+    List<Product> search(ProductsCheck productsCheck);
 
     // 标题模糊搜索（在售）总数
     long searchCount(@Param("q") String q);

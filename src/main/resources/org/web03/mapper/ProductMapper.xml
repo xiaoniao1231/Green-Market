@@ -16,7 +16,7 @@
 
 
     <!-- 卖家商品列表 -->
-    <select id="sellerList" resultType="org.web03.pojo.Product">
+    <select id="sellerList" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.shop_id = #{shopId} AND p.deleted = 0
@@ -43,7 +43,7 @@
     </select>
 
     <!-- 公开商品列表（买家端：仅在售、未删除；可选按店铺/分类/子类/关键字筛选，无需登录/开店） -->
-    <select id="publicList" resultType="org.web03.pojo.Product">
+    <select id="publicList" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1
@@ -79,21 +79,21 @@
 
 
     <!-- 根据 id 获取商品 -->
-    <select id="getById" resultType="org.web03.pojo.Product">
+    <select id="getById" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.id = #{id} AND p.deleted = 0
     </select>
 
     <!-- 买家端按 id 获取商品：必须同时满足「未删除 + 在售」，下架后详情页即不可访问 -->
-    <select id="getPublicById" resultType="org.web03.pojo.Product">
+    <select id="getPublicById" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.id = #{id} AND p.deleted = 0 AND p.on_sale = 1
     </select>
 
     <!-- 相关推荐：同分类优先，其余在售商品补足；排除当前商品 -->
-    <select id="related" resultType="org.web03.pojo.Product">
+    <select id="related" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1 AND p.id != #{id}
@@ -102,7 +102,7 @@
     </select>
 
     <!-- 根据 id 和 shopId 获取商品 -->
-    <select id="getByIdAndShop" resultType="org.web03.pojo.Product">
+    <select id="getByIdAndShop" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.id = #{id} AND p.shop_id = #{shopId} AND p.deleted = 0
@@ -125,7 +125,7 @@
     </update>
 
     <!-- 限时秒杀：在售按销量倒序取前 N 条 -->
-    <select id="flashList" resultType="org.web03.pojo.Product">
+    <select id="flashList" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1
@@ -134,7 +134,7 @@
     </select>
 
     <!-- 猜你喜欢：在售按创建时间倒序分页 -->
-    <select id="recommendList" resultType="org.web03.pojo.Product">
+    <select id="recommendList" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1
@@ -149,7 +149,7 @@
     </select>
 
     <!-- 搜索商品 -->
-    <select id="search" resultType="org.web03.pojo.Product">
+    <select id="search" resultType="org.web03.pojo.Product.Product">
         SELECT p.*, s.name AS shop_name, s.score AS shop_score
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1

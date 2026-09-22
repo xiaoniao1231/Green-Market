@@ -1,4 +1,4 @@
-package org.web03.pojo;
+package org.web03.pojo.Product;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,7 +12,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class CheckProducts {
+public class ProductsCheck {
     private String shopId;       // 店铺ID
     private Integer page = 1;   // 当前页码
     private Integer size = 100; // 每页大小
@@ -27,7 +27,7 @@ public class CheckProducts {
     /** 排序：default/综合（最新上架）、sales（销量）、priceAsc（价格升）、priceDesc（价格降） */
     private String sort;
 
-    public CheckProducts(long total, Integer page, Integer size, List<ProductVO> list) {
+    public ProductsCheck(long total, Integer page, Integer size, List<ProductVO> list) {
         this.total = total;
         this.page = page;
         this.size = size;

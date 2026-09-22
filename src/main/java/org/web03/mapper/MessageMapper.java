@@ -2,7 +2,7 @@ package org.web03.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.web03.pojo.Messages;
+import org.web03.pojo.Messages.Messages;
 
 import java.util.List;
 import java.util.Map;

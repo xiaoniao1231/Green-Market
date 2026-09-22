@@ -1,7 +1,7 @@
 package org.web03.service;
 
-import org.web03.pojo.Address;
-import org.web03.pojo.AddressRequest;
+import org.web03.pojo.Address.Address;
+import org.web03.pojo.Address.AddressRequest;
 
 import java.util.List;
 

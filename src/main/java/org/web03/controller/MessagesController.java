@@ -10,10 +10,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import org.web03.pojo.MessagesFile;
-import org.web03.pojo.PrivateMessageRequest;
+import org.web03.pojo.Messages.MessagesFile;
+import org.web03.pojo.Messages.PrivateMessageRequest;
 import org.web03.pojo.Result;
-import org.web03.pojo.SendPrivateResult;
+import org.web03.pojo.Messages.SendPrivateResult;
 import org.web03.service.MessageService;
 import org.web03.utils.CurrentHolder;
 

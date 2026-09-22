@@ -8,8 +8,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
 import org.web03.mapper.MessageMapper;
-import org.web03.pojo.*;
 
+import org.web03.pojo.Messages.*;
 import org.web03.service.MessageService;
 import org.web03.utils.AliyunOSSOperator;
 import org.web03.websocket.ChatWebSocketHandler;

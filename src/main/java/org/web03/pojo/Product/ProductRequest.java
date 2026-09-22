@@ -1,4 +1,4 @@
-package org.web03.pojo;
+package org.web03.pojo.Product;
 
 import lombok.Data;
 

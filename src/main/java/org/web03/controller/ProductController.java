@@ -1,11 +1,10 @@
 package org.web03.controller;
 
-import lombok.experimental.PackagePrivate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.web03.pojo.CheckProducts;
+import org.web03.pojo.Product.ProductsCheck;
 import org.web03.pojo.Result;
 import org.web03.service.ProductService;
 
@@ -23,8 +22,8 @@ public class ProductController {
 
     // 获取商品列表
     @GetMapping("/products")
-    public Result getProducts(CheckProducts checkProducts){
-        return Result.success(productService.publicList(checkProducts));
+    public Result getProducts(ProductsCheck productsCheck){
+        return Result.success(productService.publicList(productsCheck));
     }
 
 
@@ -55,13 +54,13 @@ public class ProductController {
 
     //猜你喜欢
     @GetMapping("/home/recommend")
-    public Result recommend(CheckProducts checkProducts){
-        return Result.success(productService.recommend(checkProducts));
+    public Result recommend(ProductsCheck productsCheck){
+        return Result.success(productService.recommend(productsCheck));
     }
 
     //商品模糊查询
     @GetMapping("/products/search")
-    public Result search(CheckProducts checkProducts) {
-        return Result.success(productService.search(checkProducts));
+    public Result search(ProductsCheck productsCheck) {
+        return Result.success(productService.search(productsCheck));
     }
 }

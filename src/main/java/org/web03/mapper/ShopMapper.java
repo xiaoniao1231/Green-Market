@@ -1,7 +1,7 @@
 package org.web03.mapper;
 
 import org.apache.ibatis.annotations.*;
-import org.web03.pojo.Shop;
+import org.web03.pojo.Shop.Shop;
 
 @Mapper
 public interface ShopMapper {

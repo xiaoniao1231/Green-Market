@@ -11,22 +11,19 @@ import org.springframework.web.multipart.MultipartFile;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.ProductMapper;
 import org.web03.mapper.ShopMapper;
-import org.web03.pojo.CheckProducts;
-import org.web03.pojo.Product;
-import org.web03.pojo.ProductRequest;
-import org.web03.pojo.ProductVO;
+import org.web03.pojo.Product.ProductsCheck;
+import org.web03.pojo.Product.Product;
+import org.web03.pojo.Product.ProductRequest;
+import org.web03.pojo.Product.ProductVO;
 import org.web03.service.ProductService;
 import org.web03.utils.AliyunOSSOperator;
-import org.web03.utils.AliyunOSSProperties;
 import org.web03.utils.CurrentHolder;
-import tools.jackson.core.ObjectReadContext;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 
@@ -51,34 +48,34 @@ public class ProductServiceImpl implements ProductService {
 
     //商品列表
     @Override
-    public CheckProducts sellerList(CheckProducts checkProducts) {
-        checkProducts.setShopId(requireShopId());
-        Integer page = checkProducts.getPage();
-        Integer size = checkProducts.getSize();
-        checkProducts.setOffset((page - 1) * size);
+    public ProductsCheck sellerList(ProductsCheck productsCheck) {
+        productsCheck.setShopId(requireShopId());
+        Integer page = productsCheck.getPage();
+        Integer size = productsCheck.getSize();
+        productsCheck.setOffset((page - 1) * size);
 
-        List<ProductVO> list = productMapper.sellerList(checkProducts)
+        List<ProductVO> list = productMapper.sellerList(productsCheck)
                 .stream().map(this::toVO).collect(Collectors.toList());
 
-        long total = productMapper.sellerCount(checkProducts);
+        long total = productMapper.sellerCount(productsCheck);
 
-        return new CheckProducts(total, page, size, list);
+        return new ProductsCheck(total, page, size, list);
 
     }
 
     //公开商品列表（买家端：不要求登录/开店，只返回在售商品）
     @Override
-    public CheckProducts publicList(CheckProducts checkProducts) {
-        Integer page = checkProducts.getPage();
-        Integer size = checkProducts.getSize();
-        checkProducts.setOffset((page - 1) * size);
+    public ProductsCheck publicList(ProductsCheck productsCheck) {
+        Integer page = productsCheck.getPage();
+        Integer size = productsCheck.getSize();
+        productsCheck.setOffset((page - 1) * size);
 
-        List<ProductVO> list = productMapper.publicList(checkProducts)
+        List<ProductVO> list = productMapper.publicList(productsCheck)
                 .stream().map(this::toVO).collect(Collectors.toList());
 
-        long total = productMapper.publicCount(checkProducts);
+        long total = productMapper.publicCount(productsCheck);
 
-        return new CheckProducts(total, page, size, list);
+        return new ProductsCheck(total, page, size, list);
     }
 
     //创建商品
@@ -203,28 +200,28 @@ public class ProductServiceImpl implements ProductService {
 
     //推荐商品
     @Override
-    public CheckProducts recommend(CheckProducts checkProducts) {
-        checkProducts.setOffset((checkProducts.getPage() - 1) * checkProducts.getSize());
+    public ProductsCheck recommend(ProductsCheck productsCheck) {
+        productsCheck.setOffset((productsCheck.getPage() - 1) * productsCheck.getSize());
 
-        List<ProductVO> list = productMapper.recommendList(checkProducts)
+        List<ProductVO> list = productMapper.recommendList(productsCheck)
                 .stream().map(this::toVO).collect(Collectors.toList());
         long total = productMapper.recommendCount();
 
-        return new CheckProducts(total, checkProducts.getPage(), checkProducts.getSize(), list);
+        return new ProductsCheck(total, productsCheck.getPage(), productsCheck.getSize(), list);
     }
 
     //搜索商品
     @Override
-    public CheckProducts search(CheckProducts checkProducts) {
-        if (!StringUtils.hasLength(checkProducts.getQ())) {
-            return emptyPage(checkProducts.getPage(), checkProducts.getSize());
+    public ProductsCheck search(ProductsCheck productsCheck) {
+        if (!StringUtils.hasLength(productsCheck.getQ())) {
+            return emptyPage(productsCheck.getPage(), productsCheck.getSize());
         }
-        checkProducts.setOffset((checkProducts.getPage() - 1) * checkProducts.getSize());
+        productsCheck.setOffset((productsCheck.getPage() - 1) * productsCheck.getSize());
 
-        List<ProductVO> list = productMapper.search(checkProducts)
+        List<ProductVO> list = productMapper.search(productsCheck)
                 .stream().map(this::toVO).collect(Collectors.toList());
-        long total = productMapper.searchCount(checkProducts.getQ().trim());
-        return new CheckProducts(total, checkProducts.getPage(), checkProducts.getSize(), list);
+        long total = productMapper.searchCount(productsCheck.getQ().trim());
+        return new ProductsCheck(total, productsCheck.getPage(), productsCheck.getSize(), list);
     }
 
     //上传图片
@@ -449,9 +446,9 @@ public class ProductServiceImpl implements ProductService {
     }
 
     //构造空分页结果
-    private CheckProducts emptyPage(Integer page, Integer size) {
+    private ProductsCheck emptyPage(Integer page, Integer size) {
 
-        return new CheckProducts(0L, page == null || page < 1 ? 1 : page, size == null || size < 1 ? 10 : size, new ArrayList<>());
+        return new ProductsCheck(0L, page == null || page < 1 ? 1 : page, size == null || size < 1 ? 10 : size, new ArrayList<>());
     }
 
 }

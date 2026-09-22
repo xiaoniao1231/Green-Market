@@ -6,8 +6,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.AddressMapper;
-import org.web03.pojo.Address;
-import org.web03.pojo.AddressRequest;
+import org.web03.pojo.Address.Address;
+import org.web03.pojo.Address.AddressRequest;
 import org.web03.service.AddressService;
 import org.web03.utils.CurrentHolder;
 

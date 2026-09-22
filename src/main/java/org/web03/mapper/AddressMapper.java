@@ -1,8 +1,7 @@
 package org.web03.mapper;
 
 import org.apache.ibatis.annotations.*;
-import org.web03.pojo.Address;
-import org.web03.pojo.AddressRequest;
+import org.web03.pojo.Address.Address;
 
 import java.util.List;
 

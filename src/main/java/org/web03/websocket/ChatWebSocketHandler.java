@@ -8,7 +8,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
-import org.web03.pojo.WsMessage;
+import org.web03.pojo.Messages.WsMessage;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.*;

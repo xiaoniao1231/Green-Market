@@ -1,4 +1,4 @@
-package org.web03.pojo;
+package org.web03.pojo.Messages;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

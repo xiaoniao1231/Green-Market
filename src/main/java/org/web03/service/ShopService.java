@@ -1,8 +1,8 @@
 package org.web03.service;
 
 import org.springframework.web.multipart.MultipartFile;
-import org.web03.pojo.ShopInformation;
-import org.web03.pojo.ShopRequest;
+import org.web03.pojo.Shop.ShopInformation;
+import org.web03.pojo.Shop.ShopRequest;
 
 import java.util.Map;
 

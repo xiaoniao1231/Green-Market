@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.web03.pojo.Result;
-import org.web03.pojo.ShopRequest;
+import org.web03.pojo.Shop.ShopRequest;
 import org.web03.service.ShopService;
 
 @Slf4j

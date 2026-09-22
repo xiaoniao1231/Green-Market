@@ -88,9 +88,10 @@ function noteOnline(online) {
   /**
    * 通用调用：把后端的 Result 结构统一转成业务数据 / 业务错误。
    *
-   * mockFn 是**本地离线回退**：只用于后端尚未实现的购物车 / 订单 / 收藏等接口，
+   * mockFn 是**本地离线回退**：只用于后端尚未实现的购物车 / 订单等接口，
    * 让用户在不接后端时仍能把数据存到本地（存的是用户自己的操作，不是预置假数据）。
-   * 后端已实现的接口一律 strict=true，出错就如实抛出，不再有任何演示数据兜底。
+   * 后端已实现的接口一律 strict=true，出错就如实抛出，不再有任何演示数据兜底
+   * —— 收藏、地址这类「服务端才是唯一真相」的数据尤其如此，静默回退只会造成假成功。
    */
   async function call(entry, mockFn, { strict = false } = {}) {
     let res;
@@ -163,8 +164,9 @@ function noteOnline(online) {
        orders.order { 同上，但 createTime/payTime/shipTime/finishTime 为 'yyyy-MM-dd HH:mm:ss' 字符串，
                       items 额外携带 art 快照 }
        favorites    { total, page, size, list: [商品对象] }
-     说明：真实接口成功（code=1）后同步本地 store（写穿缓存），
-     后端未实现时 call() 自动回退本地演示数据，两路径共用同一套映射，页面无感切换。
+     说明：真实接口成功（code=1）后同步本地 store（写穿缓存）；
+      购物车 / 订单在后端未实现时仍可由 call() 回退本地存储，
+      收藏已改为 strict（服务端是唯一数据源，不做本地回退）。
      ========================================================= */
   function fullTime(ts) {
     const d = new Date(ts);
@@ -177,7 +179,8 @@ function noteOnline(online) {
     const t = Date.parse(v);
     return isNaN(t) ? null : t;
   }
-  /* 本地购物车条目 → 接口条目（本地离线回退路径使用；商品信息取条目自带的快照） */
+  /* 本地购物车条目 → 接口条目（本地离线回退路径使用；商品信息取条目自带的快照）
+     price = 加购时选中款式的成交价（无款式价则为 null，服务端按商品默认价处理） */
   function cartItemToApi(item) {
     const p = item.product || null;
     return {
@@ -185,12 +188,14 @@ function noteOnline(online) {
       productId: item.productId,
       sku: item.sku,
       qty: item.qty,
+      price: (item.price === undefined || item.price === null) ? null : Number(item.price),
       product: p ? { id: p.id, title: p.title, price: p.price, original: p.original, art: p.art, sales: p.sales, stock: p.stock, tag: p.tag, shop: p.shop } : null
     };
   }
   /* 接口购物车列表 → 本地 store：
      checked 属前端态（勾选不落库）——刷新后对已存在条目保持原勾选，新条目默认不勾选（由用户手动勾选）；
-     product 存服务端下发的商品快照，供页面渲染（不依赖 mock 商品库是否有该商品） */
+     product 存服务端下发的商品快照，供页面渲染（不依赖 mock 商品库是否有该商品）；
+     price 为款式价（服务端按加入时的选款快照存，用于结算计价） */
   function syncCartFromApi(apiList) {
     const prev = {};
     QM_STORE.state.cart.forEach(i => { prev[i.key] = i.checked; });
@@ -200,6 +205,7 @@ function noteOnline(online) {
       sku: it.sku || '默认',
       qty: it.qty,
       checked: prev[it.itemKey] !== undefined ? prev[it.itemKey] : false,
+      price: (it.price === undefined || it.price === null) ? null : Number(it.price),
       product: it.product || null
     }));
     QM_STORE.saveNow();
@@ -348,10 +354,11 @@ function noteOnline(online) {
         syncCartFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
         return QM_STORE.cart.list();
       },
-      async add(productId, skuText, qty) {
+      async add(productId, skuText, qty, price) {
+        const skuPrice = (price === undefined || price === null || price === '') ? null : Number(price);
         await call(
-          { name: '加入购物车', method: 'POST', path: '/cart', body: { productId, skuText, quantity: qty }, token: tokenOf() },
-          () => { QM_STORE.cart.add(productId, skuText, qty); return { itemKey: productId + '|' + (skuText || '默认') }; }
+          { name: '加入购物车', method: 'POST', path: '/cart', body: { productId, skuText, quantity: qty, price: skuPrice }, token: tokenOf() },
+          () => { QM_STORE.cart.add(productId, skuText, qty, skuPrice); return { itemKey: productId + '|' + (skuText || '默认') }; }
         );
         return QM_API.cart.list();
       },
@@ -481,51 +488,62 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 收藏（后端实现后走真实接口；未实现时回退本地存储演示） =================
-       契约要点（详见 docs/商城三功能联调接口文档.md）：
-       · GET    /favorites?page=&size= → {total,page,size,list:[商品对象]}（商品对象含收藏页渲染所需字段）
-       · POST   /favorites             → body {productId}，收藏/取消切换，data: {favorited}
-       · DELETE /favorites             → 清空全部收藏
-       成功响应后同步本地收藏 id 列表（驱动详情页收藏按钮状态）。 */
+    /* ================= 收藏（strict：严格走后端，不做本地回退） =================
+       契约要点（详见 docs/收藏夹接口文档.md）：
+       · GET    /favorites?page=&size=         → {total,page,size,list:[商品对象]}（商品对象含收藏页渲染所需字段）
+       · POST   /favorites                     → body {productId}，添加收藏
+       · DELETE /favorites/{productId}         → 取消收藏
+       · DELETE /favorites                     → 清空全部收藏
+       三个写接口成功后均无业务数据（data 为空），前端只按成败提示；
+       成功响应后同步本地收藏 id 列表（驱动详情页收藏按钮状态）。
+
+       ⚠ 收藏一律 strict，**不做本地离线回退**：收藏是服务端数据（收藏页 / 收藏数都来自后端）。
+       历史 bug 与此前地址模块如出一辙 —— 后端 POST /favorites 参数绑定失败返回 400，
+       前端因存在 mockFn 而静默把收藏写进浏览器存储并提示「已收藏」，数据库里根本没有这条记录，
+       刷新后收藏凭空消失。接口出错必须如实抛出，绝不能假成功。 */
     favorites: {
       async list(page = 1, size = 100) {
         const data = await call(
           { name: '收藏列表', method: 'GET', path: '/favorites', query: { page, size }, token: tokenOf() },
-          () => {
-            const all = QM_STORE.fav.list();
-            const start = (page - 1) * size;
-            return { total: all.length, page, size, list: all.slice(start, start + size) };
-          }
+          null, { strict: true }
         );
         const list = (data && data.list) || [];
-        QM_STORE.state.favorites = list.map(p => (p && p.id) || p);
+        QM_STORE.state.favorites = list.map(p => String((p && p.id) || p));
         QM_STORE.saveNow();
         QM_STORE.emit('favorites');
         return { total: (data && data.total) || list.length, page: (data && data.page) || page, size: (data && data.size) || size, list };
       },
-      async toggle(productId) {
-        const data = await call(
-          { name: '收藏/取消收藏', method: 'POST', path: '/favorites', body: { productId }, token: tokenOf() },
-          () => ({ favorited: QM_STORE.fav.toggle(productId) })
+      async add(productId) {
+        productId = String(productId);
+        await call(
+          { name: '添加收藏', method: 'POST', path: '/favorites', body: { productId }, token: tokenOf() },
+          null, { strict: true }
         );
-        const favorited = !!(data && data.favorited);
         const list = QM_STORE.state.favorites;
-        const idx = list.indexOf(productId);
-        if (favorited && idx < 0) list.unshift(productId);
-        if (!favorited && idx >= 0) list.splice(idx, 1);
+        if (list.indexOf(productId) < 0) list.unshift(productId);
         QM_STORE.saveNow();
         QM_STORE.emit('favorites');
-        return { favorited };
+      },
+      async remove(productId) {
+        productId = String(productId);
+        await call(
+          { name: '取消收藏', method: 'DELETE', path: '/favorites/' + encodeURIComponent(productId), token: tokenOf() },
+          null, { strict: true }
+        );
+        const list = QM_STORE.state.favorites;
+        const idx = list.indexOf(productId);
+        if (idx >= 0) list.splice(idx, 1);
+        QM_STORE.saveNow();
+        QM_STORE.emit('favorites');
       },
       async clear() {
         await call(
           { name: '清空收藏', method: 'DELETE', path: '/favorites', body: {}, token: tokenOf() },
-          () => { QM_STORE.state.favorites.length = 0; QM_STORE.saveNow(); QM_STORE.emit('favorites'); return { cleared: true }; }
+          null, { strict: true }
         );
         QM_STORE.state.favorites.length = 0;
         QM_STORE.saveNow();
         QM_STORE.emit('favorites');
-        return { cleared: true };
       }
     },
 

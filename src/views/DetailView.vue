@@ -32,9 +32,15 @@ const VARIANTS = [
 
 const id = computed(() => route.value.params[0] || 'p01');
 
-/* ---------- SKU 值兼容两种形态：字符串（旧数据）或 { v, img }（新数据，款式带图） ---------- */
+/* ---------- SKU 值兼容三种形态：字符串（旧数据）、{ v, img }（款式带图）、{ v, img, price }（款式带价） ---------- */
 const valOf = v => (typeof v === 'string' ? v : (v && v.v) || '');
 const valImg = v => (typeof v === 'string' ? '' : (v && v.img) || '');
+/** 款式价：未设置（旧数据 / 留空）返回 null，表示沿用商品默认价 */
+const valPrice = v => {
+  const n = Number(typeof v === 'object' && v ? v.price : NaN);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const moneyText = n => (Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2));
 
 /* ---------- 页面状态（对应原版 render + mount 阶段性输出） ---------- */
 const phase = ref('loading');   // loading 加载中 / missing 商品不存在 / ready 已就绪
@@ -56,8 +62,37 @@ function priceParts(n) {
   return { int, dec: dec !== undefined ? '.' + dec : '' };
 }
 
-const curPrice = computed(() => priceParts(product.value.price));
+/* 成交价：按当前选中的款式取价 —— 多个规格组都有款式价时，**靠后的组覆盖靠前的组**
+   （即「最后一个设置了价格的已选款式」生效）；都没设款式价 → 用商品默认价。
+   该规则与商品管理页、后端 priceMin / priceMax 计算保持一致，详见 docs/店家中心商品管理接口文档.md 1.3 */
+const curUnitPrice = computed(() => {
+  const p = product.value;
+  if (!p) return 0;
+  let unit = Number(p.price) || 0;
+  (p.skus || []).forEach((g, gi) => {
+    const sp = valPrice((g.values || [])[selected.value[gi]]);
+    if (sp !== null) unit = sp;
+  });
+  return unit;
+});
+const curPrice = computed(() => priceParts(curUnitPrice.value));
 const origPrice = computed(() => priceParts(product.value.original));
+/* 款式价区间：只用于提示「不同款式价格不同」，成交价仍以 curPrice 为准 */
+const skuPriceRange = computed(() => {
+  const p = product.value;
+  if (!p) return null;
+  let min = Number(p.price) || 0;
+  let max = Number(p.price) || 0;
+  let hasSkuPrice = false;
+  (p.skus || []).forEach(g => (g.values || []).forEach(v => {
+    const sp = valPrice(v);
+    if (sp === null) return;
+    hasSkuPrice = true;
+    if (sp < min) min = sp;
+    if (sp > max) max = sp;
+  }));
+  return { min, max, hasSkuPrice };
+});
 const goodRate = computed(() => Math.round((product.value.shop.score / 5) * 100));
 
 /* 店铺的开店用户 id（详情页「联系卖家」→ 对端就是这位用户，由消息中心创建会话）
@@ -76,7 +111,7 @@ const shopInfo = computed(() => {
   const p = product.value;
   if (!p) return null;
   const s = QM_STORE.shopService(p.shop.name);
-  return Object.assign({ shopName: p.shop.name, score: p.shop.score }, s);
+  return Object.assign({ shopName: p.shop.name, score: p.shop.score, fans: 0, founded: '' }, p.shop, s);
 });
 /* 关注店铺按钮文案：订阅 shopFavs 事件驱动重算 */
 const shopFavTick = ref(0);
@@ -132,51 +167,59 @@ const thumbArtOf = v => {
   return v.g ? { e: p.art.e, g: v.g } : p.art;
 };
 
-/* 有图商品：主图跟随款式 —— 最近点击的 SKU 组选中值有图则显示该图，否则回退商品主图；
-   无图商品：保持原「原色 / 暖色 / 冷色」外观变体切换 */
+/* 主图：跟随最近点击的 SKU 款式；未点击时显示第一个 SKU 的图 */
 const mainArt = computed(() => {
   const p = product.value;
   if (!p) return null;
-  if (p.art.img) {
-    const g = lastSkuGroup.value;
-    if (g !== null && p.skus[g]) {
-      const v = p.skus[g].values[selected.value[g]];
-      const img = v && valImg(v);
-      if (img) return { img };
-    }
-    return p.art;
+  /* 找所有 SKU 图 */
+  const allImgs = [];
+  p.skus.forEach((g, gi) => (g.values || []).forEach((v, vi) => {
+    const img = valImg(v);
+    if (img) allImgs.push({ kind: 'sku', group: gi, vi, img });
+  }));
+  if (!allImgs.length) {
+    /* 无 SKU 图时回退渐变外观变体 */
+    return thumbArtOf(VARIANTS[variant.value]);
   }
-  return thumbArtOf(VARIANTS[variant.value]);
+  /* 最近点击的 SKU 有图就用，否则用第一个 */
+  const g = lastSkuGroup.value;
+  if (g !== null && p.skus[g]) {
+    const v = p.skus[g].values[selected.value[g]];
+    const img = v && valImg(v);
+    if (img) return { img };
+  }
+  return { img: allImgs[0].img };
 });
 
-/* 缩略图列表：
-   · 无图商品 → 3 个渐变外观变体（原行为）；
-   · 有图商品 → 商品主图 + 各 SKU 值图（去重），点击即选中对应款式 */
+/* 缩略图列表：只显示 SKU 图，无 SKU 图时显示渐变外观变体 */
 const thumbs = computed(() => {
   const p = product.value;
   if (!p) return [];
-  if (!p.art.img) return VARIANTS.map((v, i) => ({ kind: 'variant', i }));
-  const list = [{ kind: 'main' }];
+  const list = [];
   const seen = new Set();
   p.skus.forEach((g, gi) => (g.values || []).forEach((v, vi) => {
     const img = valImg(v);
     if (img && !seen.has(img)) { seen.add(img); list.push({ kind: 'sku', group: gi, vi, img }); }
   }));
+  if (!list.length) return VARIANTS.map((v, i) => ({ kind: 'variant', i }));
   return list;
 });
-/* 当前高亮缩略图：有图商品按最近点击款式定位，否则主图 */
+/* 当前高亮缩略图：有 SKU 图时按最近点击款式定位，否则第一个；无 SKU 图时按变体 */
 const currentThumb = computed(() => {
   const p = product.value;
-  if (!p) return { kind: 'main' };
-  if (p.art.img) {
-    const g = lastSkuGroup.value;
-    if (g !== null && p.skus[g]) {
-      const v = p.skus[g].values[selected.value[g]];
-      if (v && valImg(v)) return { kind: 'sku', group: g, vi: selected.value[g] };
-    }
-    return { kind: 'main' };
+  if (!p) return { kind: 'variant', i: 0 };
+  const allImgs = [];
+  p.skus.forEach((g, gi) => (g.values || []).forEach((v, vi) => {
+    const img = valImg(v);
+    if (img) allImgs.push({ kind: 'sku', group: gi, vi });
+  }));
+  if (!allImgs.length) return { kind: 'variant', i: variant.value };
+  const g = lastSkuGroup.value;
+  if (g !== null && p.skus[g]) {
+    const v = p.skus[g].values[selected.value[g]];
+    if (v && valImg(v)) return { kind: 'sku', group: g, vi: selected.value[g] };
   }
-  return { kind: 'variant', i: variant.value };
+  return allImgs[0];
 });
 
 /* 图文详情段落：新数据为 detail 段落数组（text/img 混合），旧数据仅有 desc 字符串 */
@@ -251,11 +294,12 @@ function stepQty(dir) { setQty(qty.value + dir); }
 function onQtyInput(e) { setQty(parseInt(e.target.value, 10) || 1); }
 
 async function addCart() {
-  await QM_API.cart.add(product.value.id, skuText(), qty.value);
+  /* 第 4 个参数是「当前选中款式的成交价」：购物车按它计价（留空 / 无款式价时用商品默认价） */
+  await QM_API.cart.add(product.value.id, skuText(), qty.value, curUnitPrice.value);
   toast('已加入购物车 🛒', 'success');
 }
 async function buyNow() {
-  await QM_API.cart.add(product.value.id, skuText(), qty.value);
+  await QM_API.cart.add(product.value.id, skuText(), qty.value, curUnitPrice.value);
   /* 记录「本次立即购买」的目标商品：购物车页据此精确结算，
      避免结算到购物车里最后一条（可能是无关的旧商品） */
   try {
@@ -315,8 +359,6 @@ onBeforeUnmount(() => {
                 <div v-if="t.kind === 'variant'" class="g-thumb" :class="{ active: currentThumb.kind === 'variant' && currentThumb.i === t.i }" data-action="thumb" :data-i="t.i" :style="artStyle(thumbArtOf(VARIANTS[t.i]))" v-html="artHtml(thumbArtOf(VARIANTS[t.i]))" @click="pickThumb(t)"></div>
                 <!-- 有图商品：款式图缩略图 -->
                 <div v-else-if="t.kind === 'sku'" class="g-thumb" :class="{ active: currentThumb.kind === 'sku' && currentThumb.group === t.group && currentThumb.vi === t.vi }" :title="valOf(product.skus[t.group].values[t.vi])" @click="pickThumb(t)"><img class="thumb-img" :src="t.img" alt="" loading="lazy" /></div>
-                <!-- 有图商品：主图缩略图 -->
-                <div v-else class="g-thumb" :class="{ active: currentThumb.kind === 'main' }" title="商品主图" @click="pickThumb(t)"><span :style="artStyle(product.art)" v-html="artHtml(product.art)"></span></div>
               </template>
             </div>
           </div>
@@ -336,6 +378,11 @@ onBeforeUnmount(() => {
                 <span>库存 {{ product.stock }} 件</span>
                 <span>好评率 {{ goodRate }}%</span>
               </div>
+              <!-- 款式价提示：该商品存在「同款不同价」时提示区间，成交价随上方选中的款式实时变化 -->
+              <div v-if="skuPriceRange && skuPriceRange.hasSkuPrice" class="price-sku-tip">
+                不同款式价格不同：¥{{ moneyText(skuPriceRange.min) }}<template v-if="skuPriceRange.max !== skuPriceRange.min"> - ¥{{ moneyText(skuPriceRange.max) }}</template>
+                <span class="price-sku-hint">（切换下方款式可查看对应价格）</span>
+              </div>
             </div>
 
             <!-- 规格选择 -->
@@ -351,7 +398,7 @@ onBeforeUnmount(() => {
                   :data-group="gi"
                   :data-value="v"
                   @click="pickSku(gi, vi)"
-                >{{ valOf(v) }}</button>
+                >{{ valOf(v) }}<em v-if="valPrice(v)" class="sku-chip-price">¥{{ moneyText(valPrice(v)) }}</em></button>
               </div>
             </div>
 

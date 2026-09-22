@@ -105,6 +105,13 @@
   pointer-events: none;
 }
 .detail-price-card .price-meta { display: flex; gap: 20px; margin-top: 8px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+/* 款式价提示：同款不同价时显示价格区间（成交价由当前选中的款式决定） */
+.detail-price-card .price-sku-tip {
+  margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--brand-ink);
+  background: var(--brand-softer); border: 1px solid var(--brand-soft);
+  border-radius: var(--radius); padding: 6px 10px;
+}
+.detail-price-card .price-sku-tip .price-sku-hint { font-weight: 400; color: var(--text-2); margin-left: 4px; }
 .detail-skus { border-top: 1px dashed var(--border); padding-top: 15px; }
 .detail-qty { border-top: 1px dashed var(--border); padding: 15px 0; display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--text-2); flex-wrap: wrap; }
 /* 购买栏：左侧「加入购物车」橙色渐变块 + 中间主按钮「立即购买」共用一个胶囊，

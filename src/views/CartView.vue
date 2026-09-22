@@ -29,13 +29,13 @@ function cartRow(item) {
           <span class="ci-sku">规格：${esc(item.sku)}</span>
         </div>
       </div>
-      <span>${price(p.price)}</span>
+      <span>${price(QM_STORE.cart.unitPrice(item))}</span>
       <span class="stepper">
         <button data-action="cart-qty" data-dir="-1" data-key="${esc(item.key)}">−</button>
         <input value="${item.qty}" data-action="cart-qty-input" data-key="${esc(item.key)}" />
         <button data-action="cart-qty" data-dir="1" data-key="${esc(item.key)}">＋</button>
       </span>
-      <span>${price(p.price * item.qty)}</span>
+      <span>${price(QM_STORE.cart.subTotal(item))}</span>
       <button class="ci-del" data-action="cart-del" data-key="${esc(item.key)}">删除</button>
     </div>`;
 }
@@ -58,7 +58,7 @@ async function renderList() {
   const items = QM_STORE.cart.list();
   const allChecked = items.length > 0 && items.every(i => i.checked);
   const selected = items.filter(i => i.checked);
-  const total = selected.reduce((s, i) => s + i.product.price * i.qty, 0);
+  const total = selected.reduce((s, i) => s + QM_STORE.cart.subTotal(i), 0);
   cartTitle.value = `${items.length} 种商品`;
   const root = cartRootEl.value;
   if (!root) return;
@@ -98,7 +98,7 @@ async function openCheckout(items) {
     addrError = (e && e.message) || '收货地址加载失败';
   }
   const coupons = QM_STORE.coupon.list().filter(c => c.status === 'unused');
-  const goodsAmount = items.reduce((s, i) => s + i.product.price * i.qty, 0);
+  const goodsAmount = items.reduce((s, i) => s + QM_STORE.cart.subTotal(i), 0);
   const usableCoupons = coupons.filter(c => goodsAmount >= c.threshold);
   const freight = goodsAmount >= 99 ? 0 : 8;
   let chosenCoupon = null;
@@ -175,7 +175,7 @@ async function openCheckout(items) {
     if (!chosenAddr) return toast('请先选择收货地址', 'error');
     const coupon = coupons.find(c => c.id === chosenCoupon) || null;
     const payload = {
-      items: items.map(i => ({ productId: i.productId, sku: i.sku, qty: i.qty, price: i.product.price, title: i.product.title })),
+      items: items.map(i => ({ productId: i.productId, sku: i.sku, qty: i.qty, price: QM_STORE.cart.unitPrice(i), title: i.product.title })),
       address: { name: chosenAddr.name, phone: chosenAddr.phone, region: chosenAddr.region, detail: chosenAddr.detail },
       coupon, payMethod, remark: m.root.querySelector('#orderRemark').value.trim()
     };

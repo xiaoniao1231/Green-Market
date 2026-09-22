@@ -2,8 +2,7 @@
 /* =========================================================
    青集市 · views/FavoritesView.vue —— 我的收藏
    移植自 mall-web/js/pages/favorites.js（页面结构 / 交互逻辑不变）
-   数据来源：QM_API.favorites.list()（后端实现后为真实数据；
-   未实现时 api.js 自动回退本地演示数据，页面无感切换）。
+   数据来源：QM_API.favorites.list()（严格走后端，不做本地离线回退）。
    商品卡由 productCard() 生成（data-action 走 App.vue 全局代理），
    页面自身实现「清空收藏」（confirmDialog 确认后调接口清空并重渲染）。
    ========================================================= */
@@ -20,20 +19,26 @@ const listHtml = computed(() => favList.value.length
   ? favList.value.map(p => productCard(p)).join('')
   : '<div class="empty-state"><div class="empty-icon">♡</div><h3>还没有收藏的商品</h3><p>点击商品详情页的「收藏」按钮，喜欢的商品会出现在这里</p><a class="btn btn-primary" href="#/home">去逛逛</a></div>');
 
-/* 原版 renderList()：按接口返回重渲染列表 / 计数（接口失败时兜底本地收藏） */
+/* 原版 renderList()：按接口返回重渲染列表 / 计数。
+   接口失败时如实提示并保持空态 —— 收藏是服务端数据，不能静默假装「没有收藏」。 */
 async function renderList() {
   try {
     const data = await QM_API.favorites.list();
     favList.value = (data && data.list) || [];
   } catch (e) {
     favList.value = [];
+    toast((e && e.message) || '收藏列表加载失败', 'error');
   }
 }
 
 async function clearAll() {
   if (await confirmDialog('清空收藏', '确定清空所有收藏商品吗？', '清空', true)) {
-    await QM_API.favorites.clear();
-    toast('收藏已清空');
+    try {
+      await QM_API.favorites.clear();
+      toast('收藏已清空');
+    } catch (e) {
+      toast((e && e.message) || '清空收藏失败，请稍后重试', 'error');
+    }
     renderList();
   }
 }

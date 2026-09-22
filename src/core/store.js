@@ -3,7 +3,9 @@
    本地只保存「用户自己的数据」与「后端下发的快照」：
    购物车 / 订单 / 收藏 / 地址 / 优惠券 / 聊天记录 / 店铺档案。
    商品库、店铺库、演示账号等静态演示数据已全部移除，
-   这些内容一律以后端接口为准（商品 / 订单 / 收藏接口尚未实现时页面显示空态）。
+   这些内容一律以后端接口为准（商品 / 订单接口尚未实现时页面显示空态）。
+   注意：favorites 只是「后端收藏列表的本地缓存」，写入一律先成功后同步，
+   接口失败时不会本地假成功（详见 api.js 的 favorites 段）。
    ========================================================= */
 
 const KEY = 'qm_v2_state';
@@ -48,7 +50,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       cart: [],              // {key, productId, sku, qty, checked}
       favorites: [],         // productId[]
       /* 订单 / 地址 / 优惠券：本地不预置任何演示数据。
-         目前这三项仍由本地存储承载（后端 /orders、/favorites 等接口尚未实现），
+         目前这三项仍由本地存储承载（后端 /orders 等接口尚未实现），
          用户实际产生数据后才有内容；后端接口落地后改为服务端数据源。 */
       orders: [],
       addresses: [],
@@ -174,15 +176,30 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         return QM_STORE.state.cart.map(item => Object.assign({}, item, { product: item.product || null }))
           .filter(item => item.product);
       },
-      add(productId, sku, qty) {
+      add(productId, sku, qty, price) {
         const key = productId + '|' + (sku || '默认');
+        /* price = 加购时选中款式的成交价（详情页算好传入）；null = 该商品/款式没有款式价 */
+        const skuPrice = (price === undefined || price === null || price === '') ? null : Number(price);
         const found = QM_STORE.state.cart.find(i => i.key === key);
-        if (found) found.qty = Math.min(999, found.qty + qty);
+        if (found) {
+          found.qty = Math.min(999, found.qty + qty);
+          if (skuPrice !== null) found.price = skuPrice;   // 店家改价 / 换款式后，以最新一次加购价为准
+        }
         /* 新加入的商品默认不勾选：由用户手动勾选后再结算 */
-        else QM_STORE.state.cart.unshift({ key, productId, sku: sku || '默认', qty, checked: false });
+        else QM_STORE.state.cart.unshift({ key, productId, sku: sku || '默认', qty, checked: false, price: skuPrice });
         save(); emit('cart');
         return found || QM_STORE.state.cart[0];
       },
+      /* 条目单价：加购时选中的**款式价**优先，没有款式价才用商品当前默认价。
+         购物车页 / 结算弹窗的单价与小计统一走这里，避免出现「卡片显示款式价、合计按默认价」的错账。 */
+      unitPrice(item) {
+        const skuPrice = Number(item && item.price);
+        if (Number.isFinite(skuPrice) && skuPrice > 0) return skuPrice;
+        const p = item && item.product;
+        return (p && Number(p.price)) || 0;
+      },
+      /* 条目小计 = 单价 × 数量 */
+      subTotal(item) { return QM_STORE.cart.unitPrice(item) * ((item && item.qty) || 0); },
       setQty(key, qty) {
         const item = QM_STORE.state.cart.find(i => i.key === key);
         if (item) { item.qty = Math.max(1, Math.min(999, qty)); save(); emit('cart'); }
@@ -205,19 +222,36 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         return QM_STORE.cart.list().filter(i => i.checked);
       },
       total() {
-        return QM_STORE.cart.selected().reduce((sum, i) => sum + i.product.price * i.qty, 0);
+        return QM_STORE.cart.selected().reduce((sum, i) => sum + QM_STORE.cart.subTotal(i), 0);
       }
     },
 
-    /* ---------- 收藏 ---------- */
+    /* ---------- 收藏 ----------
+       productId 统一按「字符串」比较：后端商品 id 是数字（详情页 product.id 来自 /products/{id}），
+       而收藏列表由 /favorites 下发后统一 String 化。历史 bug 正是 has(数字) 在字符串数组里
+       永远为 false —— 后端已写入收藏，详情页爱心却始终空心，再点一次还会走「取消收藏」分支。
+       这里用 String(v) 归一化比较，同时兼容本地存储里残留的旧格式。 */
     fav: {
-      has(id) { return QM_STORE.state.favorites.includes(id); },
-      toggle(id) {
+      has(id) {
+        const key = String(id);
+        return QM_STORE.state.favorites.some(v => String(v) === key);
+      },
+      add(id) {
+        const key = String(id);
         const list = QM_STORE.state.favorites;
-        const idx = list.indexOf(id);
-        if (idx >= 0) list.splice(idx, 1); else list.unshift(id);
+        if (!list.some(v => String(v) === key)) list.unshift(key);
         save(); emit('favorites');
-        return idx < 0;
+      },
+      remove(id) {
+        const key = String(id);
+        const list = QM_STORE.state.favorites;
+        const idx = list.findIndex(v => String(v) === key);
+        if (idx >= 0) list.splice(idx, 1);
+        save(); emit('favorites');
+      },
+      clear() {
+        QM_STORE.state.favorites.length = 0;
+        save(); emit('favorites');
       },
       /* 收藏商品的完整信息由后端下发（GET /favorites）；本地只存 productId，
          没有后端数据时返回空数组，不编造商品内容（收藏页走 QM_API.favorites.list）。 */

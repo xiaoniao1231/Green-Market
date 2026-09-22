@@ -6,7 +6,7 @@
    · 数据走 QM_API.seller.*（strict 严格直连后端，契约见 docs/店家中心商品管理接口文档.md）：
      后端未实现（404 / 网络不可达）时提示错误 + 空态，不回退本地演示数据；
    · 分类 / 子类下拉取 mock.js 的 categories（与后端 category / sub 同一套取值）；
-   · 主图为店家上传图片（art.img），无图时用「表情 + 渐变」占位外观；
+   · 主图自动取第一个带图的 SKU 值，不再单独上传主图；无图时用「表情 + 渐变」占位外观；
    · 规格 SKU 每个款式值可配一张图，详情页点击款式主图跟随切换；
    · 图文详情（多段落文字 + 图片）独立弹窗编辑，不占用编辑表单；
    · 编辑 / 图文详情先拉 GET /seller/products/{id} 取全量字段（列表接口不含 detail，
@@ -101,6 +101,32 @@ function priceParts(n) {
 const pPrice = p => priceParts(p.price);
 const pOrig = p => priceParts(p.original);
 
+/* ---------- 款式价区间 ----------
+   后端列表/详情会返回 priceMin / priceMax（按「商品默认价 + 全部款式价」计算），
+   老数据或本地计算缺失时，这里从 skus 兜底算一遍。 */
+function moneyText(n) {
+  const v = Number(n);
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+function skuRange(p) {
+  const hasServerRange = p.priceMin !== undefined && p.priceMin !== null
+    && p.priceMax !== undefined && p.priceMax !== null;
+  let min = hasServerRange ? Number(p.priceMin) : Number(p.price);
+  let max = hasServerRange ? Number(p.priceMax) : Number(p.price);
+  if (!hasServerRange) {
+    (p.skus || []).forEach(g => (g.values || []).forEach(v => {
+      const sp = Number(v && v.price);
+      if (!Number.isFinite(sp) || sp <= 0) return;
+      if (!Number.isFinite(min) || sp < min) min = sp;
+      if (!Number.isFinite(max) || sp > max) max = sp;
+    }));
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max };
+}
+const pHasRange = p => { const r = skuRange(p); return !!r && r.max > r.min; };
+const pRangeText = p => { const r = skuRange(p); return r ? moneyText(r.min) + ' - ' + moneyText(r.max) : ''; };
+
 /* ---------- 图片上传（POST /products/image → OSS 地址；strict：失败只提示，图片不落本地） ---------- */
 function pickImage(fileInput, done) {
   const file = fileInput && fileInput.files && fileInput.files[0];
@@ -118,9 +144,12 @@ function pickImage(fileInput, done) {
 function skuValueRowHtml(v) {
   const text = typeof v === 'string' ? v : ((v && v.v) || '');
   const img = (v && v.img) || '';
+  /* 款式价：选填；留空 = 沿用商品售价（后端同样接受空值，不做强制） */
+  const price = (v && typeof v === 'object' && v.price !== undefined && v.price !== null) ? v.price : '';
   return `
   <div class="sku-value-row">
     <input class="sku-val" placeholder="款式名，如 曜石黑" value="${esc(text)}" />
+    <span class="sku-price-box" title="选填：该款式单独定价，留空沿用商品售价"><i>¥</i><input class="sku-price" type="number" min="1" max="99999" step="0.01" placeholder="款式价" value="${esc(price)}" /></span>
     <span class="sku-img-box">${img ? `<img class="sku-img" src="${esc(img)}" alt="" />` : '<span class="sku-img-placeholder">图</span>'}</span>
     <button type="button" class="btn btn-plain btn-sm" data-pick-sku-img>${img ? '换图' : '传图'}</button>
     <input type="file" class="hidden" accept="image/*" />
@@ -198,18 +227,7 @@ function openEditor(p) {
       <div class="form-row"><label>子类</label><select id="f_sub">${subs}</select></div>
     </div>
 
-    <h4 class="editor-sec">商品主图 <small>上传实拍图 / 效果图，买家端卡片与详情页展示</small></h4>
-    <div class="art-upload-row">
-      <span class="art-upload-box" id="artPreview">${artImg ? `<img src="${esc(artImg)}" alt="" />` : '<span class="art-upload-placeholder">暂未上传图片<br />（可保留演示渐变主图）</span>'}</span>
-      <span class="art-upload-actions">
-        <button type="button" class="btn btn-plain btn-sm" data-pick-art>${artImg ? '更换图片' : '上传图片'}</button>
-        <button type="button" class="btn btn-plain btn-sm hidden" data-clear-art>移除图片</button>
-        <small class="art-upload-hint">支持 jpg / png / webp，建议 1:1 方图</small>
-      </span>
-      <input id="artFile" type="file" class="hidden" accept="image/*" />
-    </div>
-
-    <h4 class="editor-sec">规格 SKU <small>每个款式可配一张图，买家点击款式时主图跟随切换</small></h4>
+    <h4 class="editor-sec">规格 SKU <small>每个款式可单独配图与定价；款式价留空 = 沿用商品售价</small></h4>
     <div id="skuRows">${skuGroups}</div>
     <button type="button" class="btn btn-plain btn-sm" data-add-sku>＋ 添加规格组</button>
 
@@ -258,14 +276,6 @@ function openEditor(p) {
       return;
     }
     if (t.closest('[data-rm-param]')) { const r = t.closest('.param-row'); if (r) r.remove(); return; }
-    /* 主图上传 / 移除 */
-    if (t.closest('[data-pick-art]')) { root.querySelector('#artFile').click(); return; }
-    if (t.closest('[data-clear-art]')) {
-      root.querySelector('#artPreview').innerHTML = '<span class="art-upload-placeholder">暂未上传图片<br />（可保留演示渐变主图）</span>';
-      root.querySelector('[data-clear-art]').classList.add('hidden');
-      root.querySelector('[data-pick-art]').textContent = '上传图片';
-      return;
-    }
     /* 规格值图上传 */
     if (t.closest('[data-pick-sku-img]')) {
       const row = t.closest('.sku-value-row');
@@ -281,22 +291,14 @@ function openEditor(p) {
   root.addEventListener('change', e => {
     const input = e.target;
     if (!input || input.type !== 'file') return;
-    if (input.id === 'artFile') {
-      pickImage(input, url => {
-        root.querySelector('#artPreview').innerHTML = `<img src="${esc(url)}" alt="" />`;
-        root.querySelector('[data-clear-art]').classList.remove('hidden');
-        root.querySelector('[data-pick-art]').textContent = '更换图片';
-      });
-    } else {
-      const row = input.closest('.sku-value-row');
-      pickImage(input, url => {
-        if (row) {
-          row.querySelector('.sku-img-box').innerHTML = `<img class="sku-img" src="${esc(url)}" alt="" />`;
-          const btn = row.querySelector('[data-pick-sku-img]');
-          if (btn) btn.textContent = '换图';
-        }
-      });
-    }
+    const row = input.closest('.sku-value-row');
+    pickImage(input, url => {
+      if (row) {
+        row.querySelector('.sku-img-box').innerHTML = `<img class="sku-img" src="${esc(url)}" alt="" />`;
+        const btn = row.querySelector('[data-pick-sku-img]');
+        if (btn) btn.textContent = '换图';
+      }
+    });
     input.value = '';
   });
 
@@ -304,18 +306,29 @@ function openEditor(p) {
   function collect() {
     const $v = sel => { const el = root.querySelector(sel); return el ? el.value.trim() : ''; };
     const price = Number($v('#f_price'));
-    /* 主图：上传了新图用 { img }，否则保留原 art（演示渐变或旧图） */
-    const artPreviewImg = root.querySelector('#artPreview img');
-    const art = artPreviewImg ? { img: artPreviewImg.src }
-      : (base.art || { e: '🛍️', g: ['#ffe4d3', '#ffb88c'] });
     const skus = [...root.querySelectorAll('#skuRows .sku-group-row')].map(g => ({
       name: g.querySelector('.sku-name').value.trim(),
       values: [...g.querySelectorAll('.sku-value-row')].map(r => {
         const v = r.querySelector('.sku-val').value.trim();
         const imgEl = r.querySelector('.sku-img');
-        return (imgEl && imgEl.src) ? { v, img: imgEl.src } : v;
-      }).filter(v => (typeof v === 'string' ? v : v.v))
+        const priceEl = r.querySelector('.sku-price');
+        const rawPrice = priceEl ? String(priceEl.value).trim() : '';
+        /* 统一输出对象形态 { v, img?, price? }：后端 normalizeSkus 也按这个结构入库 */
+        const out = { v };
+        if (imgEl && imgEl.src) out.img = imgEl.src;
+        if (rawPrice !== '') out.price = Number(rawPrice);
+        return out;
+      }).filter(v => v.v)
     })).filter(s => s.name && s.values.length);
+    /* 主图自动取第一个带图的 SKU 值，不再单独上传主图 */
+    let firstImg = '';
+    outer: for (const g of skus) {
+      for (const val of g.values) {
+        if (val.img) { firstImg = val.img; break outer; }
+      }
+    }
+    const art = firstImg ? { img: firstImg }
+      : (base.art || { e: '🛍️', g: ['#ffe4d3', '#ffb88c'] });
     const params = [...root.querySelectorAll('#paramRows .param-row')]
       .map(r => [r.querySelector('.param-name').value.trim(), r.querySelector('.param-value').value.trim()])
       .filter(pr => pr[0] && pr[1]);
@@ -336,6 +349,16 @@ function openEditor(p) {
     if (!payload.title) return toast('请填写商品标题', 'error');
     if (!payload.category || !payload.sub) return toast('请选择商品分类与子类', 'error');
     if (!payload.price || payload.price < 1 || payload.price > 99999) return toast('请输入有效售价（1-99999）', 'error');
+    /* 款式价：留空 = 沿用商品售价；一旦填写就必须合法（后端 ProductServiceImpl 同样会拒绝） */
+    for (const g of payload.skus) {
+      for (const v of g.values) {
+        if (v.price === undefined) continue;
+        if (!isFinite(v.price) || v.price < 1 || v.price > 99999) {
+          return toast('款式「' + v.v + '」的价格需在 1-99999 元之间（留空则沿用商品售价）', 'error');
+        }
+        v.price = Math.round(v.price * 100) / 100;
+      }
+    }
     const btn = root.querySelector('#saveProduct');
     btn.disabled = true;
     try {
@@ -548,7 +571,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
           <div class="pc-info">
             <h3 class="ellipsis-2">{{ p.title }}</h3>
             <div class="pc-price-row">
-              <span class="price"><i>¥</i>{{ pPrice(p).int }}<em v-if="pPrice(p).dec">{{ pPrice(p).dec }}</em></span>
+              <span class="price" :title="pHasRange(p) ? '款式价区间 ¥' + pRangeText(p) : ''"><i>¥</i>{{ pPrice(p).int }}<em v-if="pPrice(p).dec">{{ pPrice(p).dec }}</em><small v-if="pHasRange(p)" class="price-from">起</small></span>
               <del v-if="p.original"><span class="price"><i>¥</i>{{ pOrig(p).int }}<em v-if="pOrig(p).dec">{{ pOrig(p).dec }}</em></span></del>
             </div>
             <div class="pc-meta"><span>销量 {{ sales(p.sales) }}</span><span>库存 {{ p.stock }} 件</span></div>
@@ -556,6 +579,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
               <span>{{ p.category }} · {{ p.sub }}</span>
               <span class="sm-status" :class="p.onSale === false ? 'off' : 'on'">{{ p.onSale === false ? '已下架' : '在售' }}</span>
             </div>
+            <div v-if="pHasRange(p)" class="sm-sku-range">款式价 ¥{{ pRangeText(p) }}</div>
             <div class="sm-ops">
               <span class="sm-price-box"><i>¥</i><input class="sm-price-input" type="number" :value="p.price" min="1" max="99999" step="0.01" @change="onPrice(p, $event)" title="点击修改售价" /></span>
               <button class="btn btn-sm btn-plain" @click="openDetail(p)">详情</button>

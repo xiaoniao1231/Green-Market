@@ -109,6 +109,29 @@ let currentLoginModal = null;
   };
 
   /* ---------- 商品卡 ---------- */
+  /* 款式价区间：优先用服务端返回的 priceMin / priceMax（= 默认价与全部款式价的最小 / 最大值），
+     老数据缺失时从 skus[].values[].price 兜底计算；不构成区间（max <= min）时返回 null */
+  function skuRange(p) {
+    if (!p) return null;
+    const hasServer = p.priceMin !== undefined && p.priceMin !== null
+      && p.priceMax !== undefined && p.priceMax !== null;
+    let min = hasServer ? Number(p.priceMin) : Number(p.price);
+    let max = hasServer ? Number(p.priceMax) : Number(p.price);
+    if (!hasServer) {
+      (p.skus || []).forEach(g => (g.values || []).forEach(v => {
+        const sp = Number(v && v.price);
+        if (!Number.isFinite(sp) || sp <= 0) return;
+        if (!Number.isFinite(min) || sp < min) min = sp;
+        if (!Number.isFinite(max) || sp > max) max = sp;
+      }));
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+    return { min, max };
+  }
+  /** 卡片主价：有款式价区间时展示最低价（起价），否则为商品默认价 */
+  const cardPrice = p => { const r = skuRange(p); return r ? r.min : Number((p && p.price) || 0); };
+  const hasSkuRange = p => !!skuRange(p);
+
   function productCard(p, extra) {
     return `
     <div class="product-card" data-action="open-product" data-id="${esc(p.id)}">
@@ -118,7 +141,7 @@ let currentLoginModal = null;
       </div>
       <div class="pc-info">
         <h3 class="ellipsis-2">${esc(p.title)}</h3>
-        <div class="pc-price-row">${price(p.price)}<del>${price(p.original)}</del></div>
+        <div class="pc-price-row">${price(cardPrice(p))}<small class="price-from">${hasSkuRange(p) ? '起' : ''}</small><del>${price(p.original)}</del></div>
         <div class="pc-meta"><span>${sales(p.sales)}人付款</span><span>好评 ${p.shop.score}</span></div>
         <div class="pc-shop"><b class="ellipsis">${esc(QM_STORE.displayShopName(p.shop.name))}</b><span class="btn btn-plain" data-action="quick-add-cart" data-id="${esc(p.id)}">＋购物车</span></div>
       </div>

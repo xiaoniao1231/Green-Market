@@ -199,6 +199,9 @@ img.art-img {
 }
 .sku-chip:hover { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-softer); }
 .sku-chip.active { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; box-shadow: 0 0 0 2px rgba(255, 80, 0, .12); }
+/* 款式价角标：该款式单独定价时在款式名后显示（同一款式不同价格一眼可见） */
+.sku-chip .sku-chip-price { font-style: normal; font-size: 12px; font-weight: 600; margin-left: 6px; color: var(--brand); }
+.sku-chip.active .sku-chip-price { color: var(--brand-ink); }
 
 /* ---------- 数量步进器 ---------- */
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); overflow: hidden; background: #fff; }

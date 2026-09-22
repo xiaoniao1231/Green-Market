@@ -144,8 +144,20 @@ async function onGlobalClick(e) {
       break;
     case 'toggle-fav': {
       if (!requireLogin()) return;
-      const res = await QM_API.favorites.toggle(t.dataset.id);
-      toast(res && res.favorited ? '已收藏 ♥' : '已取消收藏', res && res.favorited ? 'success' : '');
+      const id = t.dataset.id;
+      /* 收藏接口已改为 strict（不做本地离线回退）：失败必须如实提示。
+         旧行为是后端报错时静默写进浏览器存储并提示「已收藏」，数据库里却没有记录。 */
+      try {
+        if (QM_STORE.fav.has(id)) {
+          await QM_API.favorites.remove(id);
+          toast('已取消收藏');
+        } else {
+          await QM_API.favorites.add(id);
+          toast('已收藏 ♥', 'success');
+        }
+      } catch (e) {
+        toast((e && e.message) || '收藏操作失败，请稍后重试', 'error');
+      }
       break;
     }
     case 'goto-category': router.push('/category/' + encodeURIComponent(t.dataset.id)); break;

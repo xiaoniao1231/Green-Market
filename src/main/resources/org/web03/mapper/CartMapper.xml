@@ -8,7 +8,7 @@
     <select id="listByUserId" resultType="org.web03.pojo.CartItem.CartItem">
         select ci.*, p.title, p.price
             as product_price, p.original_price, p.sales, p.stock, p.tag, p.skus,
-            p.on_sale, p.deleted, s.name
+            p.on_sale, p.deleted, p.shop_id, s.name
             as shop_name, s.score as shop_score from cart_items ci
             join products p on p.id = ci.product_id and p.deleted = 0
             left join shops s on s.shop_id = p.shop_id

@@ -10,6 +10,7 @@ import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
 import org.web03.mapper.ShopMapper;
 import org.web03.pojo.Shop.Shop;
+import org.web03.pojo.Shop.ShopFollowResult;
 import org.web03.pojo.Shop.ShopInformation;
 import org.web03.pojo.Shop.ShopRequest;
 import org.web03.service.ShopService;
@@ -148,5 +149,52 @@ public class ShopServiceImpl implements ShopService {
         Shop shop = shopMapper.findById(shopId);
         if (shop == null) throw new BusinessException("店铺不存在");
         return toVo(shop);
+    }
+
+    //关注店铺
+    @Override
+    @Transactional
+    public ShopFollowResult follow(String shopId) {
+        String userId = currentOwner();
+        Shop shop = requireShop(shopId);
+        //已关注（或并发重复点击）时影响 0 行，此时不再给粉丝数 +1，保证接口幂等 —— 反复点关注不会把粉丝数越点越多
+        int rows = shopMapper.insertFollow(userId, shop.getShopId());
+        if (rows > 0) {
+            shopMapper.increaseFans(shop.getShopId());
+            log.info("{} 关注店铺 {} (粉丝数 +1)", userId, shop.getShopId());
+        } else {
+            log.info("{} 已关注店铺 {}, 粉丝数不变", userId, shop.getShopId());
+        }
+        return new ShopFollowResult(shop.getShopId(), latestFans(shop.getShopId()), true);
+    }
+
+    //取消关注店铺
+    @Override
+    @Transactional
+    public ShopFollowResult unfollow(String shopId) {
+        String userId = currentOwner();
+        Shop shop = requireShop(shopId);
+        int rows = shopMapper.deleteFollow(userId, shop.getShopId());
+        if (rows > 0) {
+            shopMapper.decreaseFans(shop.getShopId());
+            log.info("{} 取消关注店铺 {} (粉丝数 -1)", userId, shop.getShopId());
+        } else {
+            log.info("{} 未关注店铺 {}, 粉丝数不变", userId, shop.getShopId());
+        }
+        return new ShopFollowResult(shop.getShopId(), latestFans(shop.getShopId()), false);
+    }
+
+    //店铺存在性校验（关注 / 取关共用）
+    private Shop requireShop(String shopId) {
+        if (!StringUtils.hasLength(shopId)) throw new BusinessException("店铺不存在");
+        Shop shop = shopMapper.findById(shopId);
+        if (shop == null) throw new BusinessException("店铺不存在");
+        return shop;
+    }
+
+    //读取操作后的最新粉丝数，回显给前端（店铺刚被删除时回退 0）
+    private Integer latestFans(String shopId) {
+        Shop latest = shopMapper.findById(shopId);
+        return (latest == null || latest.getFans() == null) ? 0 : latest.getFans();
     }
 }

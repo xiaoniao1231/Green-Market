@@ -46,4 +46,16 @@ public class ShopController {
         return Result.success(shopService.getPublicShop(shopId));
     }
 
+    // 关注店铺
+    @PostMapping("/{shopId}/follow")
+    public Result follow(@PathVariable String shopId) {
+        return Result.success(shopService.follow(shopId));
+    }
+
+    // 取消关注店铺
+    @DeleteMapping("/{shopId}/follow")
+    public Result unfollow(@PathVariable String shopId) {
+        return Result.success(shopService.unfollow(shopId));
+    }
+
 }

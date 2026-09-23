@@ -189,6 +189,7 @@ public class CartServiceImpl implements CartService {
         p.setArt(buildArt(row.getSkus()));
         p.setShopScore(row.getShopScore());
         Map<String, Object> shop = new HashMap<>();
+        shop.put("id", row.getShopId());
         shop.put("name", row.getShopName());
         shop.put("score", row.getShopScore());
         p.setShop(shop);

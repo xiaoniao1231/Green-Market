@@ -9,6 +9,7 @@ import org.web03.pojo.PhoneRegisterRequest;
 import org.web03.pojo.User;
 import org.web03.service.RegisterService;
 import org.web03.service.SmsVerificationCodeService;
+import org.web03.utils.PasswordUtils;
 
 import java.time.LocalDateTime;
 /*
@@ -52,7 +53,8 @@ public class RegisterServiceImpl implements RegisterService {
         User user = new User();
         user.setUserId(prr.getPhone());
         user.setPhoneNumber(prr.getPhone());
-        user.setPassword(prr.getPassword());
+        /* 只存哈希：明文密码到这里为止，既不落库也不写日志（BCrypt 自带随机盐，每次结果不同） */
+        user.setPassword(PasswordUtils.encode(prr.getPassword()));
         user.setNickname(prr.getNickname());
         user.setCreatedAt(LocalDateTime.now());
         registerMapper.registerByPhone(user);
@@ -78,6 +80,8 @@ public class RegisterServiceImpl implements RegisterService {
         if (registerMapper.existsByUserId(user.getUserId()) > 0) {
             throw new BusinessException("账号已存在");
         }
+        /* 只存哈希：上面的长度校验用明文，入库前替换为 BCrypt 哈希（明文不落库、不写日志） */
+        user.setPassword(PasswordUtils.encode(user.getPassword()));
         user.setCreatedAt(LocalDateTime.now());
         registerMapper.register(user);
     }

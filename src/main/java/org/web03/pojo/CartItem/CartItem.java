@@ -36,5 +36,6 @@ public class CartItem {
     private Integer onSale;             // 是否在售：1 在售 / 0 已下架
     private Integer deleted;            // 软删除：1 已删除 / 0 正常
     private String shopName;            // 店铺名
+    private String shopId;              // 店铺标识
     private BigDecimal shopScore;       // 店铺评分
 }

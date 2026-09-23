@@ -37,9 +37,14 @@ public class UsersController {
     @GetMapping("/online")
     public Result online() {
         List<String> users = new ArrayList<>(chatWebSocketHandler.onlineUsers());
+        List<String> away = new ArrayList<>(chatWebSocketHandler.awayUsers());
         HashMap<String, Object> data = new HashMap<>();
         data.put("onlineCount", users.size());
         data.put("onlineUsers", users);
+        data.put("awayCount", away.size());
+        data.put("awayUsers", away);
+        // 账号 → ONLINE / AWAY，前端一次拿全状态，不必自己拼两个集合
+        data.put("userStatus", chatWebSocketHandler.userStatusMap());
         return Result.success(data);
     }
 

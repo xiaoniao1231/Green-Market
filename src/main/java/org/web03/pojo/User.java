@@ -25,4 +25,5 @@ public class User {
     private LocalDateTime createdAt;//创建时间
     private String phoneNumber;//手机号
     private LocalDateTime updatedAt;//资料更新时间
+    private Integer pwdVersion;//密码版本号：每次改密/重置 +1，令此前签发的 JWT 立即失效（见 TokenFilter）
 }

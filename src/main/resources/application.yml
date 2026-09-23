@@ -54,3 +54,10 @@ aliyun:
     accessKeyId: ${OSS_ACCESS_KEY_ID:}
     accessKeySecret: ${OSS_ACCESS_KEY_SECRET:}
 
+# 在线状态
+app:
+  presence:
+    away-timeout-ms: 300000      # 离开：毫秒，默认 5 分钟
+    heartbeat-timeout-ms: 90000  # 断开：毫秒，默认 90 秒
+    sweep-interval-ms: 30000     # 状态巡检间隔（毫秒，默认 30 秒）：检测「在线 ↔ 离开」变化并广播
+

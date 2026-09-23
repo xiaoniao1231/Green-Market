@@ -14,6 +14,7 @@
         SELECT f.id,f.user_id,f.product_id,f.created_at,
                p.title,p.price,p.original_price,p.sales,p.stock,p.tag,p.skus,
                p.on_sale,p.deleted,
+               p.shop_id,
                s.name shop_name, s.score shop_score
         FROM favorites f
                  LEFT JOIN products p ON p.id = f.product_id

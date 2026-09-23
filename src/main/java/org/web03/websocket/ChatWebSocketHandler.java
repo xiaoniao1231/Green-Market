@@ -1,6 +1,7 @@
 package org.web03.websocket;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -32,18 +33,30 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      */
     private static final class OnlineSession{
         final WebSocketSession session;
-        // 最后活跃时间
+        // 最后收到任意客户端帧的时间（含自动心跳）—— 用于判断连接是否还活着
         volatile long lastActiveAt;
+        /* 最后一次「真实用户操作」的时间（前端监听鼠标 / 键盘等交互，节流后上报 ACTIVE 帧）。
+           「在线 / 离开」的判定只看这个值：心跳照常、页面还开着，但人很久没动了 → 离开 */
+        volatile long lastUserActiveAt;
         // 是否收到客户端心跳
         volatile boolean heartbeatSeen;
+        // 当前状态缓存（只会是 ONLINE / AWAY；离线即从表中移除），用于检测状态迁移并广播
+        volatile String status = STATUS_ONLINE;
 
         OnlineSession(WebSocketSession session) {
             this.session = session;
-            this.lastActiveAt = System.currentTimeMillis();
+            long now = System.currentTimeMillis();
+            this.lastActiveAt = now;
+            this.lastUserActiveAt = now;
         }
 
         void touch() {
             this.lastActiveAt = System.currentTimeMillis();
+        }
+
+        /** 用户真实操作：刷新「离开」判定的基准时间 */
+        void markUserActive() {
+            this.lastUserActiveAt = System.currentTimeMillis();
         }
     }
 
@@ -56,10 +69,22 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private static final int SEND_TIME_LIMIT = 5000;
     private static final int BUFFER_SIZE_LIMIT = 512 * 1024;
 
-    //心跳超时阈值（毫秒）
-    private static final long HEARTBEAT_TIMEOUT_MS = 90_000L;
-    //清理任务执行间隔
-    private static final long SWEEP_INTERVAL_MS = 30_000L;
+    /* 心跳超时（毫秒）：超过该时长没收到任何客户端帧 → 连接判定已死，主动断开（离线）。
+       可用 application.yml 的 app.presence.heartbeat-timeout-ms 覆盖。 */
+    @Value("${app.presence.heartbeat-timeout-ms:90000}")
+    private long heartbeatTimeoutMs;
+
+    /* 离开阈值（毫秒）：连接还活着（心跳正常、既没退出页面也没退出登录），
+       但这么久都没有任何「用户操作」→ 状态由 ONLINE 变为 AWAY（离开）。
+       注意与心跳的区别：心跳只能证明页面还开着，证明不了人还在。
+       默认 5 分钟；联调时可临时调小（例如 6000）快速验证状态流转。 */
+    @Value("${app.presence.away-timeout-ms:300000}")
+    private long awayTimeoutMs;
+
+    /** 在线状态取值：ONLINE 在线 / AWAY 离开 / OFFLINE 离线（离线即已不在线表里，不缓存） */
+    public static final String STATUS_ONLINE = "ONLINE";
+    public static final String STATUS_AWAY = "AWAY";
+    public static final String STATUS_OFFLINE = "OFFLINE";
     //业务自定义关闭码（4000-4999 为应用保留区间）
     private static final CloseStatus HEARTBEAT_TIMEOUT_STATUS = new CloseStatus(4000, "heartbeat timeout");
 
@@ -80,9 +105,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (old != null && old.session.isOpen()){
             old.session.close(CloseStatus.NORMAL);//同一个账户登录，关闭旧连接
         }
-        log.info("用户 [{}] 上线，当前在线 {} 人", userId, ONLINE_SESSIONS.size());
+        log.info("用户 [{}] 上线（状态 ONLINE），在线表 {} 人", userId, ONLINE_SESSIONS.size());
         // 入表之后再广播
-        broadcastPresence(userId, true);
+        broadcastPresence(userId, STATUS_ONLINE);
     }
 
     //下线广播
@@ -100,10 +125,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             }
             return v;
         });
-        log.info("用户 [{}] 下线（{}），当前在线 {} 人", userId, status, ONLINE_SESSIONS.size());
+        log.info("用户 [{}] 下线（{}，状态 OFFLINE），在线表 {} 人", userId, status, ONLINE_SESSIONS.size());
         if (wentOffline[0]) {
             // 出表之后再广播
-            broadcastPresence(userId, false);
+            broadcastPresence(userId, STATUS_OFFLINE);
         }
     }
 
@@ -115,30 +140,60 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (entry != null) {
             entry.touch();
         }
-        // 心跳：{"type":"PING"} → {"type":"PONG"}；其余客户端帧暂不处理
+        /* 客户端两种帧：
+           · PING   —— 保活心跳（前端每 30s 自动发）：只证明「页面还开着」，不刷新用户活动时间；
+           · ACTIVE —— 用户真实操作（前端监听鼠标 / 键盘等交互，节流 20s 上报一次）：刷新离开判定基准。
+           其余客户端帧暂不处理。 */
         try {
             Map<?, ?> payload = OBJECT_MAPPER.readValue(message.getPayload(), Map.class);
-            if ("PING".equals(payload.get("type"))) {
+            String type = payload.get("type") == null ? "" : String.valueOf(payload.get("type"));
+            if ("PING".equals(type)) {
                 if (entry != null) {
                     entry.heartbeatSeen = true; // 首次收到心跳后才对该连接启用超时判定
                 }
                 sendRaw(session, "{\"type\":\"PONG\"}");
+            } else if ("ACTIVE".equals(type)) {
+                if (entry != null) {
+                    entry.markUserActive();
+                }
             }
         } catch (Exception e) {
             log.debug("忽略无法解析的客户端帧: {}", e.getMessage());
         }
     }
 
-    //清理僵死连接
-    @Scheduled(fixedDelay = SWEEP_INTERVAL_MS)
+    //清理僵死连接 + 检测「在线 / 离开」状态迁移（巡检间隔可用 app.presence.sweep-interval-ms 覆盖）
+    @Scheduled(fixedDelayString = "${app.presence.sweep-interval-ms:30000}")
     public void sweepDeadSessions() {
         long now = System.currentTimeMillis();
+
+        /* 1) 状态迁移：连接还活着，但用户超过 AWAY_TIMEOUT_MS 没操作 → 在线变离开；
+              这期间又操作了 → 离开变回在线。变化的账号先收集，再统一广播一次快照
+              （逐个广播会让每次变化都推一遍完整名单，人数一多纯属浪费）。 */
+        List<String> changed = new ArrayList<>();
+        ONLINE_SESSIONS.forEach((userId, entry) -> {
+            String next = statusOf(entry, now);
+            if (!next.equals(entry.status)) {
+                String prev = entry.status;
+                entry.status = next;
+                changed.add(userId);
+                log.info("用户 [{}] 状态变化: {} → {}（已 {}s 无用户操作）",
+                        userId, prev, next, (now - entry.lastUserActiveAt) / 1000);
+            }
+        });
+        if (!changed.isEmpty()) {
+            String first = changed.get(0);
+            OnlineSession firstEntry = ONLINE_SESSIONS.get(first);
+            broadcastPresence(first, firstEntry == null ? STATUS_OFFLINE : firstEntry.status, changed);
+        }
+
+        /* 2) 心跳超时回收：连接层面的清理，与上面的在线 / 离开状态无关 */
         ONLINE_SESSIONS.forEach((userId, entry) -> {
             if (!entry.heartbeatSeen) {
                 return;
             }
             long idle = now - entry.lastActiveAt;
-            if (idle <= HEARTBEAT_TIMEOUT_MS) {
+            if (idle <= heartbeatTimeoutMs) {
                 return;
             }
             log.warn("用户 [{}] 心跳超时（{}s 未收到客户端帧），主动断开连接", userId, idle / 1000);
@@ -160,7 +215,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             } catch (Exception e) {
                 log.debug("关闭超时连接失败（可能已断开）: {}", e.getMessage());
             }
-            broadcastPresence(userId, false);
+            broadcastPresence(userId, STATUS_OFFLINE);
         });
     }
 
@@ -174,36 +229,98 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return (entry != null && entry.session.getId().equals(session.getId())) ? entry : null;
     }
 
-    /** 在线账号集合快照（GET /users/online 使用） */
+    /** 计算某个会话当前的状态：连接活着且近期有用户操作 → ONLINE，否则 AWAY */
+    private String statusOf(OnlineSession entry, long now) {
+        return (now - entry.lastUserActiveAt <= awayTimeoutMs) ? STATUS_ONLINE : STATUS_AWAY;
+    }
+
+    /** 在线账号集合快照（GET /users/online 使用）：只含「近期有用户操作」的账号 */
     public Set<String> onlineUsers() {
         Set<String> users = new LinkedHashSet<>();
+        long now = System.currentTimeMillis();
         ONLINE_SESSIONS.forEach((userId, entry) -> {
-            if (entry.session.isOpen()) {
+            if (entry.session.isOpen() && STATUS_ONLINE.equals(statusOf(entry, now))) {
                 users.add(userId);
             }
         });
         return users;
     }
 
-    /** 用户是否在线 */
+    /** 离开账号集合快照：连接还在（没退出页面、没退出登录），但已长时间没有任何用户操作 */
+    public Set<String> awayUsers() {
+        Set<String> users = new LinkedHashSet<>();
+        long now = System.currentTimeMillis();
+        ONLINE_SESSIONS.forEach((userId, entry) -> {
+            if (entry.session.isOpen() && STATUS_AWAY.equals(statusOf(entry, now))) {
+                users.add(userId);
+            }
+        });
+        return users;
+    }
+
+    /**
+     * 账号 → 在线状态映射（只含当前有连接的账号，值为 ONLINE / AWAY）。
+     *
+     * <p>状态按「当前时间」实时计算，而不是读 {@code entry.status} 缓存：
+     * 缓存由 sweep 每 30 秒刷新一次，读缓存最坏会晚 30 秒才反映出「离开」。
+     */
+    public Map<String, String> userStatusMap() {
+        Map<String, String> statusMap = new LinkedHashMap<>();
+        long now = System.currentTimeMillis();
+        ONLINE_SESSIONS.forEach((userId, entry) -> {
+            if (entry.session.isOpen()) {
+                statusMap.put(userId, statusOf(entry, now));
+            }
+        });
+        return statusMap;
+    }
+
+    /** 用户是否「在线」（含离开：只要连接还在，就仍属于在线表成员） */
     public boolean isOnline(String userId) {
         OnlineSession entry = ONLINE_SESSIONS.get(userId);
         return entry != null && entry.session.isOpen();
     }
 
     /**
-     * 在线状态广播（接口文档 5.4）：{type:"PRESENCE", message:{onlineUsers, onlineCount, changedUserId, changedOnline}}
+     * 在线状态广播（接口文档 5.4）：
+     * {type:"PRESENCE", message:{onlineUsers, awayUsers, onlineCount, awayCount, userStatus,
+     *                            changedUserId, changedStatus, changedOnline}}
      *
-     * <p>推的是<b>全量</b>在线账号快照而非增量：丢一帧也能被下一次广播自动纠正，
-     * 前端只需用 Set 覆盖本地状态，无需维护增删。
+     * <p>推的是<b>全量</b>快照而非增量：丢一帧也能被下一次广播自动纠正，
+     * 前端只需用快照覆盖本地状态，无需维护增删。
+     *
+     * @param changedUserId 本次状态发生变化的账号（定时刷新快照时传列表里的第一个）
+     * @param changedStatus 变化后的状态：ONLINE / AWAY / OFFLINE
      */
-    public void broadcastPresence(String changedUserId, boolean changedOnline) {
-        List<String> users = new ArrayList<>(onlineUsers());
+    public void broadcastPresence(String changedUserId, String changedStatus) {
+        broadcastPresence(changedUserId, changedStatus, null);
+    }
+
+    /**
+     * 同上，额外带上本次一起变化的账号列表（「在线 ↔ 离开」迁移可能一次涉及多人）。
+     *
+     * @param changedUsers 本次发生状态变化的账号列表；只用于前端提示 / 排错，可为 null
+     */
+    public void broadcastPresence(String changedUserId, String changedStatus, List<String> changedUsers) {
+        Map<String, String> statusMap = userStatusMap();
+        List<String> users = new ArrayList<>();
+        List<String> away = new ArrayList<>();
+        statusMap.forEach((id, status) -> {
+            if (STATUS_AWAY.equals(status)) away.add(id);
+            else users.add(id);
+        });
         Map<String, Object> message = new HashMap<>();
         message.put("onlineUsers", users);
         message.put("onlineCount", users.size());
+        /* 离开：页面还开着、心跳正常，但已长时间没有任何用户操作 */
+        message.put("awayUsers", away);
+        message.put("awayCount", away.size());
+        message.put("userStatus", statusMap);
         message.put("changedUserId", changedUserId);
-        message.put("changedOnline", changedOnline);
+        message.put("changedStatus", changedStatus);
+        // 兼容旧字段：只有真正在线才算 true（离开不算在线）
+        message.put("changedOnline", STATUS_ONLINE.equals(changedStatus));
+        if (changedUsers != null) message.put("changedUsers", changedUsers);
         try {
             String frame = OBJECT_MAPPER.writeValueAsString(
                     Map.of("type", "PRESENCE", "message", message));
@@ -259,8 +376,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return v;
         });
         if (removed[0]) {
-            log.info("用户 [{}] 的连接发送失败，已从在线表移除，当前在线 {} 人", userId, ONLINE_SESSIONS.size());
-            broadcastPresence(userId, false);
+            log.info("用户 [{}] 的连接发送失败，已从在线表移除（状态 OFFLINE），在线表 {} 人", userId, ONLINE_SESSIONS.size());
+            broadcastPresence(userId, STATUS_OFFLINE);
         }
     }
 

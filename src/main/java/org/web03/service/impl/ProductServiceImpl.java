@@ -265,7 +265,7 @@ public class ProductServiceImpl implements ProductService {
         vo.setSub(p.getSub());
         vo.setTag(p.getTag());
 
-        // skus：主图由「第一个带图的款式值」推导（前端已删除独立主图上传，口径见 SellerProductsView.collect）
+        // skus：展示图由「第一个带图的款式值」推导（前端已删除独立展示图上传，口径见 SellerProductsView.collect）
         List<Map<String, Object>> skus = parseList(p.getSkus());
         vo.setSkus(skus);
 
@@ -282,6 +282,7 @@ public class ProductServiceImpl implements ProductService {
 
         // shop：JOIN 结果
         Map<String, Object> shop = new HashMap<>();
+        shop.put("id", p.getShopId());
         shop.put("name", p.getShopName());
         shop.put("score", p.getShopScore());
         vo.setShop(shop);
@@ -326,7 +327,7 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    //主图：取第一个带 img 的 SKU 款式值（与前端 collect() 推导一致）；无图返回 null
+    //展示图：取第一个带 img 的 SKU 款式值（与前端 collect() 推导一致）；无图返回 null
     private String firstSkuImg(List<Map<String, Object>> skus) {
         if (skus == null) return null;
         for (Map<String, Object> g : skus) {

@@ -125,13 +125,14 @@ public class FavoriteServiceImpl implements FavoriteService {
         vo.setOnSale(row.getOnSale());
         vo.setDeleted(row.getDeleted());
         Map<String, Object> shop = new HashMap<>();
+        shop.put("id", row.getShopId());
         shop.put("name", row.getShopName());
         shop.put("score", row.getShopScore());
         vo.setShop(shop);
         return vo;
     }
 
-    // 获取主图片
+    // 构建展示图（商品第一个图片：第一个带图的 SKU 款式值；无图返回 {e, g} 占位）
     private Map<String, Object> buildArt(String skusJson) {
         Map<String, Object> art = new HashMap<>();
         String firstImg = firstSkuImg(skusJson);

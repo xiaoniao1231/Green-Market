@@ -18,7 +18,7 @@ public class ProductRequest {
     private String category;                  // 一级分类
     private String sub;                       // 二级分类
     private String tag;                       // 标签
-    private List<Map<String, Object>> skus;   // 规格款式（主图由「第一个带图的款式值」推导，不再单独上传/落库 art）
+    private List<Map<String, Object>> skus;   // 规格款式（展示图由「第一个带图的款式值」推导，不再单独上传/落库 art）
     private List<List<String>> params;        // 参数
     private List<Map<String, Object>> detail; // 图文详情
     private String desc;                      // 简介

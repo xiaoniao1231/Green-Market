@@ -33,4 +33,20 @@ public interface ShopMapper {
     //根据店铺ID查询店铺
     @Select("select * from shops where shop_id = #{shopId}")
     Shop findById(String shopId);
+
+    //新增关注关系
+    @Insert("insert ignore into shop_follows (user_id, shop_id, created_at) values (#{userId}, #{shopId}, now())")
+    int insertFollow(@Param("userId") String userId, @Param("shopId") String shopId);
+
+    //删除关注关系
+    @Delete("delete from shop_follows where user_id = #{userId} and shop_id = #{shopId}")
+    int deleteFollow(@Param("userId") String userId, @Param("shopId") String shopId);
+
+    //粉丝数 +1
+    @Update("update shops set fans = fans + 1, updated_at = now() where shop_id = #{shopId}")
+    void increaseFans(String shopId);
+
+    //粉丝数 -1
+    @Update("update shops set fans = case when fans > 0 then fans - 1 else 0 end, updated_at = now() where shop_id = #{shopId}")
+    void decreaseFans(String shopId);
 }

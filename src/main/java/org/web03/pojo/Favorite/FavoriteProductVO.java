@@ -19,7 +19,7 @@ public class FavoriteProductVO {
     private String title;                     // 标题
     private BigDecimal price;                 // 售价
     private BigDecimal original;              // 原价/划线价
-    private Map<String, Object> art;          // 主图：{img} 或占位 {e, g}
+    private Map<String, Object> art;          // 展示图：商品第一个图片，{img} 或占位 {e, g}
     private Integer sales;                    // 销量
     private Integer stock;                    // 库存
     private String tag;                       // 标签

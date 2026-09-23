@@ -28,8 +28,9 @@ public class Favorite {
     private Integer sales;              // 销量
     private Integer stock;              // 库存
     private String tag;                 // 标签
-    private String skus;                // 商品主图
+    private String skus;                // 规格款式（展示图取第一个带图的款式值）
     private String shopName;            // 店铺名
+    private String shopId;              // 店铺标识
     private BigDecimal shopScore;       // 店铺评分
     private Integer onSale;             // 是否在售：1 在售 / 0 已下架
     private Integer deleted;           // 软删除：1 已删除 / 0 正常

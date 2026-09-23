@@ -3,11 +3,13 @@ package org.web03.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.*;
-import jakarta.servlet.annotation.WebFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.web03.mapper.EmpMapper;
 import org.web03.pojo.Result;
 import org.web03.utils.CurrentHolder;
 import org.web03.utils.JwtUtils;
@@ -20,16 +22,30 @@ import java.util.Set;
  * 白名单接口（登录/注册/验证码）与 OPTIONS 预检请求直接放行；
  * 其余接口校验令牌，令牌缺失或无效时返回 401 与统一错误结构。
  * 令牌来源：优先 Authorization: Bearer <jwt>，兼容旧版 token 头。
+ *
+ * <p>注册方式：交给 Spring 管理（{@code @Component}），不再用 {@code @WebFilter} 让 Servlet 容器扫描 ——
+ * 只有成为 Spring 组件才能注入 {@link EmpMapper} 做「密码版本号」校验。
+ * 两者不能并存：同时标注会导致同一个过滤器被注册两次、鉴权逻辑重复执行。
+ *
+ * <p>密码版本校验：token 里的 {@code pv} 声明必须与 users.pwd_version 一致。
+ * 用户改密 / 忘记密码重置时 pwd_version 会 +1，于是此前签发的所有 token 立即失效
+ * （无状态 JWT 天生没有「登出」能力，这是让旧令牌作废的最小代价方案）。
  */
 @Slf4j
-@WebFilter(urlPatterns = "/*")
+@Component
 public class TokenFilter implements Filter {
+
+    /** 密码版本校验要读 users.pwd_version，因此本过滤器必须是 Spring 组件才能注入 Mapper */
+    @Autowired
+    private EmpMapper empMapper;
 
     /** 无需登录即可访问的接口路径白名单（与控制器 @RequestMapping 精确对应） */
     private static final Set<String> WHITE_LIST = Set.of(
             "/login", "/login/phone",
             "/register", "/register/phone",
-            "/sms-code"
+            "/sms-code",
+            /* 忘记密码：未登录状态下的短信验证码重置，身份凭证是短信验证码而非 JWT */
+            "/password/reset"
     );
 
     /** 公开浏览类接口前缀（首页/分类/搜索的商品列表与详情，浏览无需登录） */
@@ -91,8 +107,10 @@ public class TokenFilter implements Filter {
             return;
         }
 
-        // 4. 解析令牌，失败 → 401；成功则存入 ThreadLocal 后放行
+        // 4. 解析令牌，失败 → 401
         int userId;
+        int tokenPwdVersion;   // 令牌里携带的密码版本号（旧格式令牌没有 pv 声明，按 0 处理）
+        String jwtUserId;
         try {
             Claims claims = JwtUtils.parseToken(jwt);
             Object idObj = claims.get("id");
@@ -102,23 +120,48 @@ public class TokenFilter implements Filter {
                 return;
             }
             userId = Integer.parseInt(idObj.toString());
-            // 新增：把账号（userId 声明）一并写入上下文，业务层发消息时作为 senderId 使用
-            String jwtUserId = claims.get("userId", String.class);
-            if (StringUtils.hasLength(jwtUserId)) {
-                CurrentHolder.setCurrentUserId(jwtUserId);
-            } else {
+            // 账号（userId 声明）在下面的密码版本校验通过后，才写入上下文供业务层使用
+            jwtUserId = claims.get("userId", String.class);
+            if (!StringUtils.hasLength(jwtUserId)) {
                 // 旧格式令牌（只有 id、没有 userId）：无法识别当前账号，直接按未登录处理，
                 // 避免业务层拿 null 账号去查店，误报“当前账号未开店”
                 log.warn("请求 {} 令牌缺少 userId 声明（旧格式令牌）, 返回401", path);
                 writeUnauthorized(response);
                 return;
             }
+            Object pvObj = claims.get("pv");
+            tokenPwdVersion = (pvObj instanceof Number) ? ((Number) pvObj).intValue() : 0;
         } catch (Exception e) {
             log.error("请求 {} 解析令牌失败, 返回401: {}", path, e.getMessage());
             writeUnauthorized(response);
             return;
         }
 
+        /* 5. 密码版本校验：改密 / 忘记密码重置后，此前签发的令牌立即失效。
+              这是本过滤器唯一的查库动作（按 user_id 点查，走唯一索引）；
+              查库失败时 fail-closed（同样拒绝），宁可让用户重新登录，
+              也不放行一个可能已被作废的令牌。 */
+        try {
+            Integer currentPwdVersion = empMapper.findPwdVersion(jwtUserId);
+            if (currentPwdVersion == null) {
+                log.warn("请求 {} 令牌对应的账号 {} 不存在, 返回401", path, jwtUserId);
+                writeUnauthorized(response);
+                return;
+            }
+            if (tokenPwdVersion != currentPwdVersion) {
+                log.info("请求 {} 的令牌已作废（账号 {} 密码已变更：令牌 pv={}, 当前 pv={}）, 返回401",
+                        path, jwtUserId, tokenPwdVersion, currentPwdVersion);
+                writeUnauthorized(response, "登录状态已失效，请重新登录");
+                return;
+            }
+        } catch (Exception e) {
+            log.error("请求 {} 校验密码版本失败, 返回401: {}", path, e.getMessage());
+            writeUnauthorized(response);
+            return;
+        }
+
+        // 6. 全部校验通过：写入 ThreadLocal，放行到业务链
+        CurrentHolder.setCurrentUserId(jwtUserId);
         try {
             chain.doFilter(request, response);
         } finally {
@@ -138,9 +181,19 @@ public class TokenFilter implements Filter {
 
     /** 返回 401 及统一错误结构 */
     private void writeUnauthorized(HttpServletResponse response) throws IOException {
+        writeUnauthorized(response, "未登录或登录已失效");
+    }
+
+    /**
+     * 返回 401 及统一错误结构（自定义提示）。
+     *
+     * <p>密码变更导致的令牌作废用「登录状态已失效，请重新登录」：前端 `api.js` 的
+     * `isAuthFailure` 会按「登录状态」等关键词识别为会话失效，自动清除本地登录态并引导重新登录。
+     */
+    private void writeUnauthorized(HttpServletResponse response, String msg) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
-        OBJECT_MAPPER.writeValue(response.getWriter(), Result.error("未登录或登录已失效"));
+        OBJECT_MAPPER.writeValue(response.getWriter(), Result.error(msg));
     }
 
     /**

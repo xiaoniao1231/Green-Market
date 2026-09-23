@@ -80,6 +80,9 @@ async function load() {
     if (remote) {
       const saved = QM_STORE.rememberShop(Object.assign({}, remote, { id: remote.id || remote.shopId || remote.shop_id || sid })) || remote;
       hit = Object.assign({}, hit, saved, { id: sid, shopName: saved.name || remote.name || shopName.value });
+      /* 关注态以服务端下发为准（本地 shopFavs 只是镜像）：否则换设备 / 清缓存 / 新标签页后
+         已关注的店铺会显示成「未关注」，粉丝数却不为 0 */
+      if (typeof remote.followed === 'boolean') QM_STORE.shopFav.set(shopName.value, remote.followed);
     }
   } catch (e) {
     /* 后端店铺档案接口不可达：沿用本地已有档案 */

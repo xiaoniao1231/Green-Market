@@ -241,29 +241,32 @@
 .cart-body { display: grid; grid-template-columns: 1fr 328px; gap: 16px; align-items: start; }
 .cart-list { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--border); overflow: hidden; }
 .cart-head {
-  display: grid; grid-template-columns: 44px 1fr 110px 118px 110px 72px; align-items: center;
+  display: grid; grid-template-columns: 44px 80px minmax(0, 1fr) 176px 110px 112px 52px; gap: 14px; align-items: center;
   padding: 13px 18px; border-bottom: 2px solid var(--brand); font-size: 13px; color: var(--text-2);
   background: linear-gradient(180deg, #fff8f3, #fff4ec); font-weight: 600;
 }
-/* 按店铺分组：组头显示店名与件数，组与组之间用分隔线，条目行样式沿用 .cart-item */
+/* 按店铺分组：组头 = 整店勾选框 + 店名 + 件数（右对齐），组间用分隔线 */
 .cart-shop-group { border-top: 1px solid #f4f4f4; }
 .cart-shop-group + .cart-shop-group { border-top: 2px solid var(--border); }
 .cart-shop-head {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 18px; background: #fafafa; font-size: 13px; font-weight: 600; color: var(--text-1);
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 18px; background: #fafafa; font-size: 13px; font-weight: 600; color: var(--text);
   border-bottom: 1px solid #f4f4f4;
 }
-.cart-shop-head small { font-weight: 400; color: var(--text-3); font-size: 12px; }
-/* 批量操作栏：显示已选件数 + 批量删除（未选中时禁用） */
+/* 店铺名：纯文字链接，字号加大加粗更显眼，可点进店铺主页 */
+.cart-shop-head .cart-shop-name { color: var(--text); font-size: 14px; font-weight: 700; letter-spacing: .2px; }
+.cart-shop-head .cart-shop-name:hover { color: var(--brand-ink); text-decoration: underline; }
+.cart-shop-head small { margin-left: auto; font-weight: 400; color: var(--text-3); font-size: 12px; }
+/* 批量操作栏：现在只显示「已选 N 种」（批量删除按钮已移到右侧结算栏） */
 .cart-batch-bar {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; align-items: center;
   padding: 10px 18px; background: #fcfcfd; border-bottom: 1px solid #f4f4f4;
   font-size: 13px; color: var(--text-2);
 }
-.cart-batch-bar .btn-sm { padding: 5px 14px; font-size: 12px; }
-.cart-batch-bar .btn-sm:disabled { opacity: .45; cursor: not-allowed; }
+/* 购物车条目：一整行横向排列 —— 勾选 | 图片 | 商品信息 | 款式 | 价格 | 数量 | 删除。
+   图片与商品信息都可点击进入商品页 */
 .cart-item {
-  display: grid; grid-template-columns: 44px 1fr 110px 118px 110px 72px; align-items: center;
+  display: grid; grid-template-columns: 44px 80px minmax(0, 1fr) 176px 110px 112px 52px; gap: 14px; align-items: center;
   padding: 16px 18px; border-bottom: 1px solid #f4f4f4; font-size: 13px;
   transition: background-color var(--dur) var(--ease);
 }
@@ -276,8 +279,11 @@
 }
 .cart-check:hover { border-color: var(--brand); }
 .cart-check.checked { background: var(--brand); border-color: var(--brand); box-shadow: 0 0 0 3px rgba(255, 80, 0, .14); }
-.cart-item .ci-main { display: flex; gap: 13px; align-items: center; min-width: 0; }
-.ci-art { position: relative; overflow: hidden; width: 86px; height: 86px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; font-size: 38px; flex: none; }
+/* 部分选中（如店铺里只勾了部分商品）：实心底 + 一条横线 */
+.cart-check.partial { background: var(--brand); border-color: var(--brand); }
+.cart-check.partial::after { content: ""; width: 9px; height: 2px; border-radius: 1px; background: #fff; }
+.ci-art { position: relative; overflow: hidden; width: 80px; height: 80px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; font-size: 36px; flex: none; cursor: pointer; transition: box-shadow var(--dur) var(--ease); }
+.ci-art:hover { box-shadow: 0 0 0 2px rgba(255, 106, 43, .35); }
 .ci-art.is-inactive { filter: grayscale(1); }
 .ci-art.is-inactive .art-img { opacity: .55; }
 .ci-status-badge {
@@ -286,12 +292,50 @@
   color: #fff; background: rgba(0, 0, 0, .55); box-shadow: 0 1px 4px rgba(0, 0, 0, .22);
 }
 .ci-info { min-width: 0; }
-.ci-info h4 { font-size: 13px; font-weight: 400; line-height: 1.5; height: 39px; cursor: pointer; transition: color var(--dur) var(--ease); }
+/* 商品信息列的标题固定一行：超出省略，完整标题挂在 title 上（悬停可看） */
+.ci-info h4 {
+  font-size: 13px; font-weight: 400; line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer; transition: color var(--dur) var(--ease);
+}
 .ci-info h4:hover { color: var(--brand-ink); }
-.ci-sku { font-size: 12px; color: var(--text-3); margin-top: 5px; }
-/* 换款式入口（仅商品带规格时显示） */
-.ci-sku-edit { margin-left: 8px; color: var(--brand); cursor: pointer; }
-.ci-sku-edit:hover { text-decoration: underline; color: var(--brand-ink); }
+/* 款式卡片：默认无边框（悬停才显虚线框），右上角橙色「修改」角标常驻；
+   不可换款式时退化为纯文本 */
+.ci-sku-card {
+  position: relative; display: block; padding: 6px 10px;
+  border: 1px dashed transparent; border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+/* 悬停：半透明橙色虚线框 + 半透明底色，右上角「修改」角标同步淡入（默认与边框一样不可见） */
+.ci-sku-card:not(.is-static):hover {
+  border-color: rgba(255, 106, 43, .5);
+  background: rgba(255, 106, 43, .06);
+}
+.ci-sku-card.is-static { cursor: default; padding-left: 0; }
+/* 一个款式说明固定占一行：超出列宽省略（完整值挂在 title 上，悬停可看） */
+.ci-sku-line {
+  display: flex; align-items: center; gap: 2px;
+  font-size: 12px; line-height: 1.65; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ci-sku-line b { color: var(--text-2); font-weight: 400; flex: none; }
+.ci-sku-line span { overflow: hidden; text-overflow: ellipsis; }
+.ci-sku-edit-tag {
+  position: absolute; top: 0; right: 0;
+  padding: 0 7px; border-radius: 0 var(--radius-sm) 0 var(--radius-sm);
+  background: rgba(255, 80, 0, .88); color: #fff;
+  font-size: 11px; line-height: 18px; white-space: nowrap;
+  opacity: 0;                                  /* 与边框同步：默认隐藏，悬停淡入 */
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;                        /* 点击穿透到卡片，仍然触发换款式 */
+}
+.ci-sku-card:not(.is-static):hover .ci-sku-edit-tag { opacity: 1; }
+/* 价格列：小计（金额随数量走）+ 划线原价总额 */
+.ci-price { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.ci-price .price { font-size: 15px; font-weight: 700; }
+.ci-price .ci-orig { font-size: 12px; }
+.ci-price .ci-orig .price { font-size: 12px; font-weight: 400; color: var(--text-3); }
 .cart-item .price { font-size: 15px; font-weight: 700; }
 /* 点击热区 ≥ 24px：删除按钮加内边距并保持视觉轻量 */
 .cart-item .ci-del {
@@ -308,6 +352,8 @@
 .cart-summary .sum-total { border-top: 1px dashed var(--border); padding-top: 14px; margin-top: 8px; display: flex; justify-content: space-between; align-items: baseline; }
 .cart-summary .sum-total .price { font-size: 26px; }
 .cart-summary .btn-lg { width: 100%; margin-top: 16px; }
+/* 右栏按钮（批量删除 / 清空）未满足条件时的禁用态 */
+.cart-summary .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* 结算弹窗 */
 .checkout-item { display: flex; justify-content: space-between; font-size: 13px; padding: 7px 0; color: var(--text-2); }
@@ -424,6 +470,11 @@
 .placeholder-page h1 { font-size: 26px; margin-bottom: 10px; letter-spacing: -.3px; }
 .placeholder-page > p { color: var(--text-2); margin-bottom: 8px; }
 .placeholder-sub { color: var(--text-3); font-size: 13px; }
+/* 纯前端内容的预留页（如「平台介绍」）：分段卡片式文案，不走接口 */
+.placeholder-content { max-width: 640px; margin: 28px auto 0; text-align: left; }
+.placeholder-content section { background: #fff; border-radius: var(--radius-lg); padding: 18px 22px; box-shadow: var(--shadow-sm); border: 1px solid var(--border); margin-bottom: 12px; }
+.placeholder-content h4 { font-size: 14px; color: var(--text); margin-bottom: 8px; font-weight: 600; }
+.placeholder-content p { font-size: 13px; line-height: 1.85; color: var(--text-2); }
 .placeholder-actions { margin-top: 28px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .placeholder-api { max-width: 580px; margin: 28px auto 0; text-align: left; background: #fff; border-radius: var(--radius-lg); padding: 20px 24px; box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
 .placeholder-api h4 { font-size: 14px; margin-bottom: 12px; color: var(--text-2); }

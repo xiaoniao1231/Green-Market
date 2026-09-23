@@ -248,8 +248,21 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
     },
 
     /* ---------- 关注店铺 ---------- */
+    /* 关注状态以后端 POST / DELETE /shops/{shopId}/follow 为准：
+       接口成功后由页面调 set() 写入本地缓存（关注态只是展示用的镜像，
+       粉丝数本身存在后端 shops.fans，页面用接口返回的 fans 刷新）。 */
     shopFav: {
       has(name) { return QM_STORE.state.shopFavs.includes(name); },
+      /* 按后端结果设置关注状态（幂等）：on=true 加入、false 移除 */
+      set(name, on) {
+        if (!name) return false;
+        const list = QM_STORE.state.shopFavs;
+        const idx = list.indexOf(name);
+        if (on && idx < 0) list.unshift(name);
+        if (!on && idx >= 0) list.splice(idx, 1);
+        save(); emit('shopFavs');
+        return !!on;
+      },
       toggle(name) {
         const list = QM_STORE.state.shopFavs;
         const idx = list.indexOf(name);
@@ -347,11 +360,34 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       ensureContact(id, name, extra) {
         let c = QM_STORE.state.contacts.find(x => x.id === id);
         if (!c) {
-          c = Object.assign({ id, name: name || id, role: 'friend', online: false, color: '#6b6bdf' }, extra || {});
+          /* presence 三态：online 在线（页面开着且近期有操作）/ away 离开（页面开着、心跳正常，
+             但长时间没有操作）/ offline 离线（连接断开或从未上线）。
+             online 布尔字段保留，等价于 presence === 'online'，避免其它调用点失效 */
+          c = Object.assign({ id, name: name || id, role: 'friend', presence: 'offline', online: false, color: '#6b6bdf' }, extra || {});
           QM_STORE.state.contacts.unshift(c);
           save();
         }
         return c;
+      },
+      /**
+       * 在线状态快照落地（GET /users/online 的首屏快照，或 PRESENCE 广播帧里的 message）。
+       *
+       * <p>覆盖式更新：服务端推的是全量名单，本地不做增量维护，丢一帧也能被下一次快照纠正。
+       * 优先用 userStatus（{账号: 'ONLINE' | 'AWAY'}）；后端未返回该字段时回退到
+       * onlineUsers / awayUsers 两个数组（兼容旧快照）。
+       */
+      applyPresence(snapshot) {
+        const msg = snapshot || {};
+        const statusMap = msg.userStatus || null;
+        const online = new Set(msg.onlineUsers || []);
+        const away = new Set(msg.awayUsers || []);
+        (QM_STORE.state.contacts || []).forEach(c => {
+          let st = statusMap ? statusMap[c.id] : null;
+          if (!st) st = away.has(c.id) ? 'AWAY' : (online.has(c.id) ? 'ONLINE' : 'OFFLINE');
+          c.presence = st === 'ONLINE' ? 'online' : (st === 'AWAY' ? 'away' : 'offline');
+          c.online = c.presence === 'online';
+        });
+        emit('chat');
       },
       messages(id) { return QM_STORE.state.chats[id] || []; },
       push(id, msg) {

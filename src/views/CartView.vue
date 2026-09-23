@@ -32,7 +32,7 @@ function skuPriceOf(product, pick) {
   return unit;
 }
 /* 按选中款式取展示图（与详情页 mainArt 同口径：最近点击的规格组有图就用它，
-   否则第一个带图的选中组；都没有回退商品主图） */
+   否则第一个带图的选中组；都没有回退商品展示图） */
 function pickArtOf(product, pick, lastGroup) {
   const skus = (product && Array.isArray(product.skus)) ? product.skus : [];
   let first = null;
@@ -51,9 +51,33 @@ function pickArtOf(product, pick, lastGroup) {
 const cartTitle = ref('');
 const cartRootEl = ref(null);
 
+/* 换款式卡片正文：把当前已选规格按「组名：值」逐行拆出（与换款式弹层初始选中同口径） */
+function skuLinesOf(item, p) {
+  const skus = Array.isArray(p && p.skus) ? p.skus : [];
+  const parts = String(item.sku || '').split(' / ').map(s => s.trim());
+  return skus.map((g, gi) => {
+    const want = parts[gi];
+    const vs = g.values || [];
+    const idx = vs.findIndex(v => valOf(v) === want);
+    const val = idx >= 0 ? valOf(vs[idx]) : (want || '');
+    return { name: g.name || '规格', val };
+  });
+}
+/* 款式卡片：多行「组名：值」+ 右上角橙色「修改」角标（整块可点进换款式弹层）。
+   虚线边框平时隐藏，鼠标悬停才出现；不可换款式时退化为纯文本卡片（无角标、无 hover） */
+function skuLineHtml(item, p, canChangeSku) {
+  if (!canChangeSku) {
+    return `<div class="ci-sku-card is-static"><div class="ci-sku-line"><b>规格：</b><span>${esc(item.sku)}</span></div></div>`;
+  }
+  return `<div class="ci-sku-card" data-action="cart-sku" data-key="${esc(item.key)}" title="点击更换款式">
+    ${skuLinesOf(item, p).map(l => `<div class="ci-sku-line" title="${esc(l.name)}：${esc(l.val)}"><b>${esc(l.name)}：</b><span>${esc(l.val)}</span></div>`).join('')}
+    <span class="ci-sku-edit-tag">修改</span>
+  </div>`;
+}
+
 function cartRow(item) {
   const p = item.product;
-  /* 条目图片：优先显示加购时选中的款式图（item.img），没有款式图才回退商品主图 */
+  /* 条目图片：优先显示加购时选中的款式图（item.img），没有款式图才回退商品展示图 */
   const art = (item.img && { img: item.img }) || (p && p.art) || null;
   /* 商品状态：已删除(deleted=1) / 已下架(onSale=0) 时，图片灰化并叠加状态标签 */
   const isDeleted = p && p.deleted === 1;
@@ -65,23 +89,28 @@ function cartRow(item) {
     && p.skus.every(g => Array.isArray(g.values) && g.values.length > 0);
   const ciArtCls = (isDeleted || isOffShelf) ? 'ci-art is-inactive' : 'ci-art';
   const statusBadge = statusLabel ? `<span class="ci-status-badge">${statusLabel}</span>` : '';
+  const unitPrice = QM_STORE.cart.unitPrice(item);
+  const subTotal = QM_STORE.cart.subTotal(item);
+  /* 划线原价：成交价低于商品原价时才显示；金额随数量一起走（原价 × 数量） */
+  const origPrice = Number(p && p.original) || 0;
+  const origSubTotal = origPrice > unitPrice ? origPrice * item.qty : 0;
   return `
     <div class="cart-item" data-key="${esc(item.key)}">
       <span class="cart-check ${item.checked ? 'checked' : ''}" data-action="cart-check" data-key="${esc(item.key)}">${item.checked ? '✓' : ''}</span>
-      <div class="ci-main">
-        <span class="${ciArtCls}" style="${artStyle(art)}">${statusBadge}${artHtml(art)}</span>
-        <div class="ci-info">
-          <h4 class="ellipsis-2" data-action="open-product" data-id="${esc(p.id)}">${esc(p.title)}</h4>
-          <span class="ci-sku">规格：${esc(item.sku)}${canChangeSku ? `<a class="ci-sku-edit" data-action="cart-sku" data-key="${esc(item.key)}">换款式</a>` : ''}</span>
-        </div>
+      <span class="${ciArtCls}" style="${artStyle(art)}" data-action="open-product" data-id="${esc(p.id)}" title="查看商品详情">${statusBadge}${artHtml(art)}</span>
+      <div class="ci-info">
+        <h4 class="ellipsis" data-action="open-product" data-id="${esc(p.id)}" title="${esc(p.title)}">${esc(p.title)}</h4>
       </div>
-      <span>${price(QM_STORE.cart.unitPrice(item))}</span>
+      ${skuLineHtml(item, p, canChangeSku)}
+      <div class="ci-price">
+        ${price(subTotal)}
+        ${origSubTotal ? `<del class="ci-orig">${price(origSubTotal)}</del>` : ''}
+      </div>
       <span class="stepper">
         <button data-action="cart-qty" data-dir="-1" data-key="${esc(item.key)}">−</button>
         <input value="${item.qty}" data-action="cart-qty-input" data-key="${esc(item.key)}" />
         <button data-action="cart-qty" data-dir="1" data-key="${esc(item.key)}">＋</button>
       </span>
-      <span>${price(QM_STORE.cart.subTotal(item))}</span>
       <button class="ci-del" data-action="cart-del" data-key="${esc(item.key)}">删除</button>
     </div>`;
 }
@@ -131,22 +160,39 @@ async function renderList() {
   root.innerHTML = items.length ? `
         <div class="cart-body">
           <div class="cart-list">
-            <div class="cart-head">
-              <span class="cart-check ${allChecked ? 'checked' : ''}" data-action="cart-check-all">${allChecked ? '✓' : ''}</span>
-              <span>商品信息</span><span>单价</span><span>数量</span><span>小计</span><span>操作</span>
-            </div>
+            <!-- 顶部只留「已选 N 种」提示；批量删除已移到右侧结算栏 -->
             <div class="cart-batch-bar">
               <span>已选 <b style="color:var(--accent)">${selected.length}</b> 种</span>
-              <button class="btn btn-plain btn-sm" data-action="cart-batch-del" ${selected.length ? '' : 'disabled'}>批量删除</button>
             </div>
-            ${groupByShop(items).map(g => `
+            <!-- 表头紧贴商品列表（原先它上面隔着一条批量操作栏，与数据行是断开的） -->
+            <div class="cart-head">
+              <span class="cart-check ${allChecked ? 'checked' : ''}" data-action="cart-check-all">${allChecked ? '✓' : ''}</span>
+              <span></span>
+              <span>商品信息</span>
+              <span>款式</span>
+              <span>价格</span>
+              <span>数量</span>
+              <span>操作</span>
+            </div>
+            ${groupByShop(items).map(g => {
+              const shopAllChecked = g.items.length > 0 && g.items.every(i => i.checked);
+              const shopPartial = !shopAllChecked && g.items.some(i => i.checked);
+              /* 店铺标识由商品快照带出（后端在商品 / 购物车的 shop 里下发了 id）：
+                 带上它店铺页才能直接定位，不必依赖本地档案 */
+              const shopId = ((g.items[0].product || {}).shop || {}).id || '';
+              const shopHref = '#/shop/' + encodeURIComponent(g.name) + (shopId ? '?id=' + encodeURIComponent(shopId) : '');
+              return `
               <div class="cart-shop-group">
                 <div class="cart-shop-head">
-                  <span>${esc(g.name)}</span>
+                  <span class="cart-check ${shopAllChecked ? 'checked' : ''} ${shopPartial ? 'partial' : ''}"
+                        data-action="cart-shop-check" data-shop="${esc(g.name)}" title="全选本店商品">${shopAllChecked ? '✓' : ''}</span>
+                  <!-- 店铺名可点击进入店铺主页（与详情页「进店逛逛」同一路由 #/shop/:name） -->
+                  <a class="cart-shop-name" href="${shopHref}" title="进入店铺主页">${esc(g.name)}</a>
                   <small>共 ${g.items.reduce((s, i) => s + i.qty, 0)} 件</small>
                 </div>
                 ${g.items.map(cartRow).join('')}
-              </div>`).join('')}
+              </div>`;
+            }).join('')}
           </div>
           <aside class="cart-summary">
             <h3>结算明细</h3>
@@ -155,6 +201,8 @@ async function renderList() {
             <div class="sum-row"><span>运费</span><span>${total >= 99 || total === 0 ? '包邮' : price(8)}</span></div>
             <div class="sum-total"><span>合计</span>${price(total)}</div>
             <button class="btn btn-primary btn-lg" id="checkoutBtn" ${selected.length ? '' : 'disabled'}>去结算（${selected.length}）</button>
+            <!-- 批量删除：放在「去结算」下方、「清空购物车」上方；未选中任何商品时禁用 -->
+            <button class="btn btn-plain" style="width:100%;margin-top:8px" data-action="cart-batch-del" ${selected.length ? '' : 'disabled'}>批量删除（${selected.length}）</button>
             <button class="btn btn-plain" style="width:100%;margin-top:8px" data-action="cart-clear">清空购物车</button>
           </aside>
         </div>` : `<div class="cart-list"><div class="empty-state"><div class="empty-icon">🛒</div><h3>购物车还是空的</h3><p>快去挑选心仪的好物吧</p><a class="btn btn-primary" href="#/home">去逛逛</a></div></div>`;
@@ -179,7 +227,7 @@ function openSkuPicker(key) {
     const idx = vs.findIndex(v => valOf(v) === want);
     return idx >= 0 ? idx : 0;
   });
-  /* 弹层头部图：优先当前选中款式图（最近点击的规格组有图优先），无则回退商品主图 */
+  /* 弹层头部图：优先当前选中款式图（最近点击的规格组有图优先），无则回退商品展示图 */
   let lastGroup = -1;
   let pickArt = pickArtOf(p, pick, lastGroup);
 
@@ -215,7 +263,7 @@ function openSkuPicker(key) {
     lastGroup = gi;
     m.root.querySelectorAll(`[data-group="${gi}"]`).forEach(x => x.classList.toggle('active', Number(x.dataset.vi) === vi));
     m.root.querySelector('#skuPickPrice').textContent = moneyText(skuPriceOf(p, pick));
-    /* 头部图随所选款式实时切换（与详情页主图同口径） */
+    /* 头部图随所选款式实时切换（与详情页展示图同口径） */
     const artEl = m.root.querySelector('#skuPickArt');
     const art = pickArtOf(p, pick, lastGroup);
     artEl.style.cssText = artStyle(art);
@@ -355,6 +403,16 @@ async function onCartRootClick(e) {
     const items = QM_STORE.cart.list();
     const allChecked = items.every(i => i.checked);
     QM_STORE.cart.toggleAll(!allChecked); renderList();
+  } else if (action === 'cart-shop-check') {
+    /* 店铺整店勾选：按店铺名取出该店全部条目，整体切换（已全选 → 全不选） */
+    const shopName = t.dataset.shop;
+    const shopItems = QM_STORE.cart.list().filter(
+      i => ((i.product && i.product.shop && i.product.shop.name) || '其他店铺') === shopName
+    );
+    if (!shopItems.length) return;
+    const allOn = shopItems.every(i => i.checked);
+    QM_STORE.cart.toggle(shopItems.map(i => i.key), !allOn);
+    renderList();
   } else if (action === 'cart-del') {
     if (await confirmDialog('删除商品', '确定将该商品移出购物车吗？', '删除', true)) {
       try {

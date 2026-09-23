@@ -23,8 +23,11 @@ const router = useRouter();
 const rawRedirect = route.query.redirect;
 const redirect = typeof rawRedirect === 'string' && rawRedirect.startsWith('/') ? rawRedirect : '/home';
 
-/* 窗口：login / register（/login?mode=register 直达注册窗口） */
-const win = ref(route.query.mode === 'register' ? 'register' : 'login');
+/* 窗口：login / register / reset（/login?mode=register 直达注册窗口，?mode=reset 直达重置窗口） */
+const win = ref(
+  route.query.mode === 'register' ? 'register'
+    : (route.query.mode === 'reset' ? 'reset' : 'login')
+);
 const loginMode = ref('acct');   // acct 账号登录 / phone 手机登录
 const regMode = ref('acct');     // acct 账号注册 / phone 手机注册
 const busy = ref(false);
@@ -44,11 +47,17 @@ const phSmsCode = ref('');
 const phPassword = ref('');
 const phNickname = ref('');
 
-/* ---------- 短信验证码：scene 区分 login / register，各自独立倒计时 ---------- */
-const smsTimers = { login: null, register: null };
-const smsText = ref({ login: '获取验证码', register: '获取验证码' });
-const smsDisabled = ref({ login: false, register: false });
-const smsHint = ref({ login: '', register: '' });
+/* ---------- 忘记密码（短信验证码重置）表单 ---------- */
+const rsPhone = ref('');
+const rsSms = ref('');
+const rsPassword = ref('');
+const rsPassword2 = ref('');
+
+/* ---------- 短信验证码：scene 区分 login / register / reset，各自独立倒计时 ---------- */
+const smsTimers = { login: null, register: null, reset: null };
+const smsText = ref({ login: '获取验证码', register: '获取验证码', reset: '获取验证码' });
+const smsDisabled = ref({ login: false, register: false, reset: false });
+const smsHint = ref({ login: '', register: '', reset: '' });
 
 function switchWin(next) { win.value = next; }
 function pickLogin(m) { loginMode.value = m; }
@@ -145,6 +154,34 @@ async function doPhoneReg() {
   finally { busy.value = false; }
 }
 
+/* ---------- 忘记密码：短信验证码重置 ----------
+   后端只能「设置新密码」：库里存的是 BCrypt 单向哈希，原密码无法还原（这正是安全的前提）。
+   流程：手机号 + scene=reset 的验证码 → 提交新密码（新密码同样以哈希入库）。 */
+async function doResetPassword() {
+  const phone = rsPhone.value.trim();
+  const smsCode = rsSms.value.trim();
+  const password = rsPassword.value;
+  if (!/^1\d{10}$/.test(phone)) return toast('请输入正确的 11 位手机号', 'error');
+  if (!/^\d{6}$/.test(smsCode)) return toast('请输入 6 位短信验证码', 'error');
+  if (!password || password.length < 6 || password.length > 15) return toast('新密码长度需为 6-15 位', 'error');
+  if (password !== rsPassword2.value) return toast('两次输入的新密码不一致', 'error');
+  busy.value = true;
+  try {
+    await QM_API.auth.resetPassword({ phone, smsCode, password });
+    toast('密码已重置，请用新密码登录', 'success');
+    resetSmsBtn('reset');
+    /* 手机号注册的账号 user_id 就是手机号，顺手填进登录框减少输入 */
+    loginUserId.value = phone;
+    loginPassword.value = '';
+    rsSms.value = '';
+    rsPassword.value = '';
+    rsPassword2.value = '';
+    switchWin('login');
+    pickLogin('acct');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy.value = false; }
+}
+
 /* ---------- 短信验证码（后端生成 6 位数字，POST /sms-code，scene 区分业务） ---------- */
 function stopSmsTimer(scene) {
   if (smsTimers[scene]) { clearInterval(smsTimers[scene]); smsTimers[scene] = null; }
@@ -154,9 +191,12 @@ function resetSmsBtn(scene) {
   smsDisabled.value[scene] = false;
   smsText.value[scene] = '获取验证码';
 }
+/* scene → 该场景的手机号 / 验证码输入框：登录、注册、重置三处共用一套倒计时逻辑 */
+const SMS_PHONE_REF = { login: () => phlPhone, register: () => phPhone, reset: () => rsPhone };
+const SMS_CODE_REF = { login: () => phlSms, register: () => phSmsCode, reset: () => rsSms };
+
 async function requestSms(scene) {
-  const isLogin = scene === 'login';
-  const phone = (isLogin ? phlPhone.value : phPhone.value).trim();
+  const phone = (SMS_PHONE_REF[scene]().value || '').trim();
   if (!/^1\d{10}$/.test(phone)) return toast('请输入正确的 11 位手机号', 'error');
   smsDisabled.value[scene] = true;
   smsText.value[scene] = '发送中…';
@@ -172,8 +212,7 @@ async function requestSms(scene) {
     }, 1000);
     /* 演示环境：后端把验证码放在 data.smsCode 返回，自动填入便于联调 */
     if (data && data.smsCode) {
-      if (isLogin) phlSms.value = String(data.smsCode);
-      else phSmsCode.value = String(data.smsCode);
+      SMS_CODE_REF[scene]().value = String(data.smsCode);
       smsHint.value[scene] = `演示环境已自动填入验证码：${data.smsCode}（正式接入短信服务后不再返回）`;
     }
   } catch (e) {
@@ -182,7 +221,7 @@ async function requestSms(scene) {
   }
 }
 
-onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
+onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); stopSmsTimer('reset'); });
 </script>
 
 <template>
@@ -218,6 +257,7 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
             <input v-model="loginPassword" type="password" maxlength="15" placeholder="请输入密码" @keyup.enter="doAcctLogin" />
           </div>
           <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doAcctLogin">登 录</button>
+          <button type="button" class="switch-link forgot-link" @click="switchWin('reset')">忘记密码？用短信验证码重置</button>
         </div>
 
         <div v-else>
@@ -240,7 +280,7 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
       </template>
 
       <!-- ===================== 注册窗口 ===================== -->
-      <template v-else>
+      <template v-else-if="win === 'register'">
         <div class="tabs login-tabs">
           <button :class="{ active: regMode === 'acct' }" @click="pickRegister('acct')">账号注册</button>
           <button :class="{ active: regMode === 'phone' }" @click="pickRegister('phone')">手机注册</button>
@@ -287,6 +327,37 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
         </div>
 
         <button type="button" class="switch-link" @click="switchWin('login')">已有账号？立即登录</button>
+      </template>
+
+      <!-- ===================== 忘记密码窗口（短信验证码重置） ===================== -->
+      <template v-else>
+        <div class="reset-head">
+          <h2>重置密码</h2>
+          <p>验证手机号归属后设置新密码<br />（原密码无法找回，只能重置）</p>
+        </div>
+
+        <div class="form-row">
+          <label>手机号</label>
+          <input v-model="rsPhone" maxlength="11" inputmode="numeric" placeholder="注册时绑定的 11 位手机号" />
+        </div>
+        <div class="form-row">
+          <label>短信验证码</label>
+          <div class="input-flex">
+            <input v-model="rsSms" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" />
+            <button type="button" class="btn btn-plain sms-btn" :disabled="smsDisabled.reset" @click="requestSms('reset')">{{ smsText.reset }}</button>
+          </div>
+          <div class="hint">{{ smsHint.reset }}</div>
+        </div>
+        <div class="form-row">
+          <label>新密码</label>
+          <input v-model="rsPassword" type="password" maxlength="15" placeholder="6-15 位" />
+        </div>
+        <div class="form-row">
+          <label>确认新密码</label>
+          <input v-model="rsPassword2" type="password" maxlength="15" placeholder="再输入一次" @keyup.enter="doResetPassword" />
+        </div>
+        <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doResetPassword">重 置 密 码</button>
+        <button type="button" class="switch-link" @click="switchWin('login')">返回登录</button>
       </template>
     </div>
   </div>
@@ -362,6 +433,10 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); });
   border-radius: var(--radius-sm);
 }
 .switch-link:hover { text-decoration: underline; }
+.forgot-link { margin-top: 8px; }
+.reset-head { text-align: center; margin-bottom: 18px; }
+.reset-head h2 { font-size: 17px; margin-bottom: 6px; }
+.reset-head p { font-size: 12px; color: var(--text-3); line-height: 1.75; }
 .demo-tip {
   margin-top: 18px;
   padding: 13px 15px;

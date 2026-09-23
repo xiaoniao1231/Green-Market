@@ -21,9 +21,21 @@ import QM_STORE from './store.js';
    间隔 30s，服务端容忍 90s（3 次丢失）。 */
 const HEARTBEAT_INTERVAL = 30000;
 
+/* 用户活动上报：心跳只能证明「页面还开着」，服务端据此判断的是「连接是否存活」；
+   而「在线 / 离开」要看用户有没有真的在操作 —— 所以这里监听真实交互事件，
+   节流上报 {"type":"ACTIVE"}，服务端以最后一次收到 ACTIVE 的时间作为离开判定的基准。
+   间隔 20s：鼠标移动这类高频事件不会刷爆连接，服务端 5 分钟无 ACTIVE 才判定离开，
+   20s 的粒度完全够用。 */
+const ACTIVITY_REPORT_INTERVAL = 20000;
+/* 只监听「用户确实动了」的事件：鼠标移动 / 按下、键盘、滚轮、触摸、滚动。
+   不使用 focus / visibilitychange 作为活动来源，切回标签页时单独补报一次（见下）。 */
+const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+
 let socket = null;           // 当前 WebSocket 连接
 let userKey = '';            // 连接所属账号：切换账号时强制重建，避免复用上一账号的连接
 let heartbeatTimer = null;
+let lastActivityReportAt = 0;   // 上次上报 ACTIVE 的时间（节流用）
+let activityBound = false;      // 是否已挂上全局交互监听（避免重复注册）
 const messageHandlers = new Set();  // 实时帧订阅者（ChatView 等）
 const closeHandlers = new Set();    // 断线订阅者（页面内提示重连等）
 
@@ -40,6 +52,44 @@ function startHeartbeat() {
 
 function stopHeartbeat() {
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+}
+
+/* ---------- 用户活动上报（「离开」状态的判定依据） ---------- */
+
+function reportActivity() {
+  const now = Date.now();
+  if (now - lastActivityReportAt < ACTIVITY_REPORT_INTERVAL) return;  // 节流
+  lastActivityReportAt = now;
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    try {
+      socket.send(JSON.stringify({ type: 'ACTIVE' }));
+    } catch (e) { /* 发送失败交由 onclose 处理 */ }
+  }
+}
+
+/* 从后台标签页切回来：立即补报一次（把节流窗口重置，用户显然又在了） */
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    lastActivityReportAt = 0;
+    reportActivity();
+  }
+}
+
+function bindActivity() {
+  if (activityBound) return;
+  activityBound = true;
+  /* capture: true —— scroll 事件不冒泡，只有在捕获阶段才能被 window 收到，
+     这样「在消息列表里滚动」也算用户操作（否则只有 mousemove / keydown 能刷新状态） */
+  ACTIVITY_EVENTS.forEach(ev => window.addEventListener(ev, reportActivity, { passive: true, capture: true }));
+  document.addEventListener('visibilitychange', onVisibilityChange);
+}
+
+function unbindActivity() {
+  if (!activityBound) return;
+  activityBound = false;
+  // 移除时第三个参数要与添加时一致（capture 标记必须匹配），否则监听不会被摘掉
+  ACTIVITY_EVENTS.forEach(ev => window.removeEventListener(ev, reportActivity, true));
+  document.removeEventListener('visibilitychange', onVisibilityChange);
 }
 
 const chatSocket = {
@@ -97,6 +147,7 @@ const chatSocket = {
       () => {
         /* 断线：只清当前连接的引用（防止旧连接的 onclose 误清新连接），并通知订阅者 */
         stopHeartbeat();
+        unbindActivity();
         if (socket === created) socket = null;
         closeHandlers.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
       }
@@ -104,6 +155,11 @@ const chatSocket = {
     if (created) {
       socket = created;
       startHeartbeat();
+      /* 连接可用：挂上用户活动监听。登录即建连，所以登录后立刻上报一次活动
+         —— 刚登录的用户显然是在操作，不该一进来就显示「离开」 */
+      lastActivityReportAt = 0;
+      bindActivity();
+      reportActivity();
     }
     return created;
   },

@@ -463,8 +463,7 @@ function couponModal() {
         <button data-action="goto-seller"><span class="s-icon">🏪</span><b>我的店铺</b><small>{{ user && user.shopId ? '管理我的店铺' : '一个账号，既能买也能卖' }}</small></button>
         <button data-action="goto-placeholder" data-id="浏览足迹"><span class="s-icon">👣</span><b>浏览足迹</b><small>功能预留</small></button>
         <button data-action="goto-placeholder" data-id="账户设置"><span class="s-icon">⚙</span><b>账户设置</b><small>功能预留</small></button>
-        <button data-action="goto-placeholder" data-id="退款售后"><span class="s-icon">↩</span><b>退款售后</b><small>功能预留</small></button>
-        <button data-action="goto-placeholder" data-id="会员中心"><span class="s-icon">👑</span><b>会员中心</b><small>功能预留</small></button>
+        <button data-action="goto-placeholder" data-id="售后服务"><span class="s-icon">📋</span><b>售后服务</b><small>功能预留</small></button>
       </div>
     </div>
   </div>

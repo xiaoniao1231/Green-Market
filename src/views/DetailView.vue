@@ -49,7 +49,7 @@ const dTitle = ref('加载中…');
 const selected = ref([]);       // 每组 SKU 当前选中值的下标（原版 selected[group]）
 const qty = ref(1);
 const variant = ref(0);         // 无图商品的图集外观（VARIANTS 下标，仅 art.img 为空时使用）
-const lastSkuGroup = ref(null); // 最近点击的 SKU 组：有图商品主图跟随款式切换
+const lastSkuGroup = ref(null); // 最近点击的 SKU 组：有图商品展示图跟随款式切换
 const tab = ref('desc');        // desc 图文详情 / spec 规格参数 / comment 商品评价
 const relatedList = ref([]);
 const favTick = ref(0);         // QM_STORE 非响应式：用版本号驱动收藏按钮重算
@@ -126,17 +126,38 @@ function openShopInfo() {
       </div>
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-primary" data-action="goto-chat" data-id="${s.userId || s.id}">联系卖家</button>
-        <button class="btn btn-plain" data-action="goto-shop" data-id="${s.shopName}">进店逛逛</button>
+        <button class="btn btn-plain" data-action="goto-shop" data-id="${s.shopName}" data-shop-id="${s.id || ''}">进店逛逛</button>
         <button class="btn btn-plain" data-close>关闭</button>
       </div>
     </div>`, { wide: true });
 }
 
-/* 关注 / 取消关注店铺 */
-function toggleShopFav() {
+/* 关注 / 取消关注店铺：走后端 POST / DELETE /shops/{shopId}/follow，
+   粉丝数以接口返回的 fans 为准（本地 shopFavs 只是关注态镜像） */
+const shopFavBusy = ref(false);
+async function toggleShopFav() {
   if (!requireLogin()) return;
-  const faved = QM_STORE.shopFav.toggle(product.value.shop.name);
-  toast(faved ? '已关注店铺 ♥' : '已取消关注', faved ? 'success' : '');
+  if (shopFavBusy.value) return;
+  const p = product.value;
+  const sid = (p && p.shop && (p.shop.id || p.shop.shopId)) || '';
+  if (!sid) { toast('店铺信息缺失，请刷新页面后重试', 'error'); return; }
+  const wasFaved = QM_STORE.shopFav.has(p.shop.name);
+  shopFavBusy.value = true;
+  try {
+    const res = wasFaved ? await QM_API.shops.unfollow(sid) : await QM_API.shops.follow(sid);
+    QM_STORE.shopFav.set(p.shop.name, !wasFaved);
+    if (res && res.fans !== undefined && res.fans !== null) {
+      QM_STORE.rememberShop({ id: sid, fans: res.fans });
+      /* 详情页粉丝数取自 shopProfile（见 shopInfo），这里同时把 fans 落到商品自带的 shop 上，
+         触发 computed 重算，避免只更新了本地档案但页面不刷新 */
+      p.shop.fans = res.fans;
+    }
+    toast(wasFaved ? '已取消关注' : '已关注店铺 ♥', wasFaved ? '' : 'success');
+  } catch (e) {
+    toast((e && e.message) || '操作失败，请稍后重试', 'error');
+  } finally {
+    shopFavBusy.value = false;
+  }
 }
 function requireLogin() {
   if (QM_STORE.state.user) return true;
@@ -151,7 +172,7 @@ const thumbArtOf = v => {
   return v.g ? { e: p.art.e, g: v.g } : p.art;
 };
 
-/* 主图：跟随最近点击的 SKU 款式；未点击时显示第一个 SKU 的图 */
+/* 展示图：跟随最近点击的 SKU 款式；未点击时显示第一个 SKU 的图 */
 const mainArt = computed(() => {
   const p = product.value;
   if (!p) return null;
@@ -265,12 +286,12 @@ const skuText = () => product.value.skus.map((s, i) => valOf(s.values[selected.v
 
 function pickSku(group, vi) {
   selected.value[group] = vi;
-  lastSkuGroup.value = group; // 有图商品：点击款式即切换主图
+  lastSkuGroup.value = group; // 有图商品：点击款式即切换展示图
 }
 function pickThumb(t) {
   if (t.kind === 'sku') { lastSkuGroup.value = t.group; selected.value[t.group] = t.vi; }
   else if (t.kind === 'variant') { variant.value = t.i; }
-  else { lastSkuGroup.value = null; } // 点主图缩略图 → 恢复商品主图
+  else { lastSkuGroup.value = null; } // 点展示图缩略图 → 恢复商品展示图
 }
 function setTab(name) { tab.value = name; }
 /* 每人限购件数：**只以后端下发为准**（商品详情里的 limitPerUser，预留字段）。
@@ -346,7 +367,7 @@ onBeforeUnmount(() => {
 
       <template v-else>
         <div class="detail-layout">
-          <!-- 图集（店家上传主图 / 表情+渐变，缩略图随款式联动） -->
+          <!-- 图集（店家上传的展示图 / 表情+渐变，缩略图随款式联动） -->
           <div class="detail-gallery">
             <div class="g-main" id="gMain" :style="artStyle(mainArt)" v-html="artHtml(mainArt)"></div>
             <div class="g-thumbs">
@@ -447,9 +468,9 @@ onBeforeUnmount(() => {
               <div class="shop-stat"><b>4.8</b><span>商品评分</span></div>
               <div class="shop-stat"><b>{{ sales(shopInfo.fans) }}</b><span>粉丝</span></div>
             </div>
-            <button class="btn btn-ghost" :class="{ faved: shopFaved }" @click="toggleShopFav">{{ shopFaved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
+            <button class="btn btn-ghost" :class="{ faved: shopFaved }" :disabled="shopFavBusy" @click="toggleShopFav">{{ shopFaved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
             <button class="btn btn-ghost" data-action="goto-chat" :data-id="serviceId">◌ 联系卖家</button>
-            <button class="btn btn-plain" data-action="goto-shop" :data-id="product.shop.name">进店逛逛 →</button>
+            <button class="btn btn-plain" data-action="goto-shop" :data-id="product.shop.name" :data-shop-id="product.shop.id || ''">进店逛逛 →</button>
           </aside>
         </div>
 
@@ -463,7 +484,7 @@ onBeforeUnmount(() => {
             </div>
             <div id="tabDesc" class="detail-desc" :class="{ hidden: tab !== 'desc' }">
               <p v-if="product.desc">{{ product.desc }}</p>
-              <!-- 旧数据（无图文详情段落）：补一张渐变主图大图 -->
+              <!-- 旧数据（无图文详情段落）：补一张渐变展示图大图 -->
               <p v-if="!product.art.img && !detailBlocks.length" class="detail-art-big" style="margin-top:14px" v-html="artHtml(product.art, '120px')"></p>
               <!-- 图文详情段落：文字 / 图片穿插渲染 -->
               <template v-for="(b, i) in detailBlocks" :key="i">

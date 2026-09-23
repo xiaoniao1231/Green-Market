@@ -52,6 +52,8 @@
   border-radius: 50%; border: 2px solid #fff; background: #c8c8c8;
 }
 .contact-item .avatar .presence.online { background: #2fd371; }
+/* 离开：连接还在（没退出页面、没退出登录），只是长时间没有操作 —— 用琥珀色与「在线」区分 */
+.contact-item .avatar .presence.away { background: #f5a623; }
 .contact-detail { flex: 1; min-width: 0; }
 .contact-detail strong { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--text); }
 .contact-detail strong .pin { font-size: 11px; color: var(--brand-ink); background: var(--brand-soft); padding: 1px 7px; border-radius: var(--radius-pill); font-weight: 500; }
@@ -74,6 +76,8 @@
 .chat-peer .avatar { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex: none; font-size: 16px; }
 .chat-peer b { font-size: 15px; display: block; }
 .chat-peer small { font-size: 12px; color: var(--text-3); }
+/* 离开：与「在线」的绿色区分开，用琥珀色提示「人在但没在操作」 */
+.chat-peer small.away { color: #f5a623; }
 .chat-peer .peer-actions { margin-left: auto; display: flex; gap: 8px; }
 .chat-peer .icon-btn {
   width: 34px; height: 34px; border-radius: var(--radius); border: 1px solid var(--border-strong);

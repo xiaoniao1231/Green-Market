@@ -56,9 +56,18 @@ let peerTimer = null; // route.query.peer 自动开聊的 80ms 延时（离开�
 let docEmojiHandler = null; // 点击空白关闭表情面板（原版 bindCompose 里的 document once 监听，Vue 版改为常驻）
 let alive = false;    // 组件是否仍挂载：防止卸载后异步返回再建 WebSocket（原版 remount 竞态的清理）
 
-/* 已知在线账号集合：由首屏快照（loadRealData 的 /users/online）与 PRESENCE 实时广播共同维护，
-   供新建联系人时判断初始在线状态（原先硬编码 online: true，会导致离线对端也显示「在线」） */
+/* 已知状态集合：由首屏快照（loadRealData 的 /users/online）与 PRESENCE 实时广播共同维护，
+   供新建联系人时判断初始状态（原先硬编码 online: true，会导致离线对端也显示「在线」）。
+   knownOnline 在线（页面开着且近期有操作）/ knownAway 离开（页面开着、心跳正常，但长时间没操作）。 */
 let knownOnline = new Set();
+let knownAway = new Set();
+
+/* 某账号的展示状态：'online' 在线 / 'away' 离开 / 'offline' 离线 */
+function presenceOf(id) {
+  if (knownOnline.has(id)) return 'online';
+  if (knownAway.has(id)) return 'away';
+  return 'offline';
+}
 
 /* 历史消息分页状态：peerId 当前会话、page 已加载页数、loaded 已加载条数、
    total 服务端总数、loading 请求中、hasMore 是否还有更早消息（滚动到顶部继续加载） */
@@ -84,6 +93,8 @@ const peer = computed(() => {
     id,
     name,
     color: (c && c.color) || '#6b6bdf',
+    /* 三态：online 在线 / away 离开 / offline 离线；online 布尔保留供旧调用点使用 */
+    presence: (c && c.presence) || ((c && c.online) ? 'online' : 'offline'),
     online: !!(c && c.online)
   };
 });
@@ -126,7 +137,7 @@ function contactRow(c, active) {
   <button class="contact-item ${active ? 'active' : ''}" data-action="chat-open" data-id="${esc(c.id)}">
     <span class="avatar" style="background:${esc(c.color || '#6b6bdf')}">
       ${esc((c.name || c.id).slice(0, 1))}
-      <span class="presence ${c.online ? 'online' : ''}"></span>
+      <span class="presence ${c.presence || (c.online ? 'online' : 'offline')}"></span>
     </span>
     <span class="contact-detail">
       <strong>${esc(c.name || c.id)}${badge}${c.pinned ? '<i class="pin">置顶</i>' : ''}</strong>
@@ -388,7 +399,7 @@ function openPeer(peerId) {
     /* 联系人信息不再来自演示店铺映射：先用账号占位，
        对方发来消息时由 senderNickname 补齐，或用后端会话列表（/messages/conversations）带回的昵称 */
     peerObj = QM_STORE.chat.ensureContact(peerId, peerId, {
-      role: 'shop', online: knownOnline.has(peerId)
+      role: 'shop', presence: presenceOf(peerId), online: knownOnline.has(peerId)
     });
   }
   QM_STORE.chat.markRead(peerId);
@@ -598,7 +609,8 @@ async function loadRealData() {
     const online = await QM_API.chat.onlineUsers();
     if (!alive) return; // 组件已卸载：不再建连接
     knownOnline = new Set(online.onlineUsers || []);
-    QM_STORE.chat.contacts().forEach(c => { c.online = knownOnline.has(c.id); });
+    knownAway = new Set(online.awayUsers || []);
+    QM_STORE.chat.applyPresence(online);   // 写入每个联系人的 presence 三态
     state.presenceTick++;
     renderContacts();
     /* 登录后从后端恢复会话列表：本地存储（sessionStorage）一旦被清空
@@ -624,8 +636,11 @@ function handleSocketFrame(payload) {
   const msg = payload.message || {};
   if (payload.type === 'PONG') return;
   if (payload.type === 'PRESENCE') {
+    /* 全量状态快照：在线 / 离开 / 离线，覆盖式更新。
+       「离开」的人连接还在（没退出页面、没退出登录），只是长时间没有操作 */
     knownOnline = new Set(msg.onlineUsers || []);
-    QM_STORE.chat.contacts().forEach(c => { c.online = knownOnline.has(c.id); });
+    knownAway = new Set(msg.awayUsers || []);
+    QM_STORE.chat.applyPresence(msg);
     state.presenceTick++;
     renderContacts();
     return;
@@ -635,7 +650,8 @@ function handleSocketFrame(payload) {
     const peerId = msg.senderId === myId ? msg.receiverId : msg.senderId;
     if (!peerId) return;
     knownOnline.add(peerId); // 能发来消息说明对方此刻在线
-    QM_STORE.chat.ensureContact(peerId, msg.senderNickname || peerId, { online: true });
+    knownAway.delete(peerId);
+    QM_STORE.chat.ensureContact(peerId, msg.senderNickname || peerId, { presence: 'online', online: true });
     const ts = msg.sendTime ? new Date(String(msg.sendTime).replace(' ', 'T')).getTime() : Date.now();
     const name = msg.content || msg.fileName || '文件';
     const live = {
@@ -783,7 +799,7 @@ async function restoreConversations() {
   convs.forEach(conv => {
     const peerId = conv.peerId;
     if (!peerId) return;
-    const contact = QM_STORE.chat.ensureContact(peerId, conv.peerName || peerId, { online: knownOnline.has(peerId) });
+    const contact = QM_STORE.chat.ensureContact(peerId, conv.peerName || peerId, { presence: presenceOf(peerId), online: knownOnline.has(peerId) });
     /* 服务端未读数 → 本地会话角标（打开会话时 markRead 清零） */
     contact.unread = conv.unreadCount || 0;
     const msgs = QM_STORE.chat.messages(peerId);
@@ -913,7 +929,8 @@ onBeforeUnmount(() => {
             <span class="avatar" :style="{ background: peer.color }">{{ peer.name.slice(0, 1) }}</span>
             <div>
               <b>{{ peer.name }}</b>
-              <small v-if="peer.online">● 在线</small>
+              <small v-if="peer.presence === 'online'">● 在线</small>
+              <small v-else-if="peer.presence === 'away'" class="away">◐ 离开</small>
               <small v-else>○ 离线</small>
             </div>
             <div class="peer-actions">

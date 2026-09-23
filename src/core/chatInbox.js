@@ -91,10 +91,9 @@ function handleFrame(payload) {
 
   const msg = payload.message || {};
   if (type === 'PRESENCE') {
-    /* 服务端推送全量在线快照：覆盖式更新联系人绿点 */
-    const online = new Set(msg.onlineUsers || []);
-    QM_STORE.chat.contacts().forEach(c => { c.online = online.has(c.id); });
-    QM_STORE.emit('chat');
+    /* 服务端推送全量状态快照（在线 / 离开 / 离线）：覆盖式更新联系人状态。
+       applyPresence 内部会 emit('chat')，各页角标随之刷新 */
+    QM_STORE.chat.applyPresence(msg);
     return;
   }
   if (!['COMM_MES', 'TO_ALL', 'FILE_MES'].includes(type)) return;

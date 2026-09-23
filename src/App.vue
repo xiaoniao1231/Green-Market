@@ -15,7 +15,7 @@ import QM_CHAT_SOCKET from './core/chatSocket.js';
 import QM_CHAT_INBOX from './core/chatInbox.js';
 import { registerViewRefresh } from './core/viewRefresh.js';
 
-const { esc, toast, confirmDialog } = QM_UI;
+const { esc, toast, confirmDialog, modal, artStyle, artHtml } = QM_UI;
 const router = useRouter();
 
 /* ---------- 响应式状态 ---------- */
@@ -124,6 +124,88 @@ function requireLogin() {
   return false;
 }
 
+/* ---------- 快捷加购的款式选择（商品卡「＋购物车」带规格时弹出，口径与详情页一致） ---------- */
+const valOf = v => (typeof v === 'string' ? v : (v && v.v) || '');
+const valImg = v => (typeof v === 'string' ? '' : (v && v.img) || '');
+const valPrice = v => {
+  const n = Number(typeof v === 'object' && v ? v.price : NaN);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const moneyText = n => (Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2));
+function skuTextOf(skus, pick) { return skus.map((g, gi) => valOf(g.values[pick[gi]])).join(' / '); }
+function skuPriceOf(product, pick) {
+  let unit = Number(product.price) || 0;
+  (product.skus || []).forEach((g, gi) => {
+    const sp = valPrice((g.values || [])[pick[gi]]);
+    if (sp !== null) unit = sp;
+  });
+  return unit;
+}
+function pickArtOf(product, pick, lastGroup) {
+  const skus = (product && Array.isArray(product.skus)) ? product.skus : [];
+  let first = null;
+  for (let gi = 0; gi < skus.length; gi++) {
+    const v = (skus[gi].values || [])[pick[gi]];
+    const img = valImg(v);
+    if (!img) continue;
+    if (!first) first = { img };
+    if (gi === lastGroup) return { img };
+  }
+  return first || (product && product.art) || null;
+}
+/* 商品卡「＋购物车」：带规格商品先选款式（图/价随选实时更新），确认后按所选款式加购 */
+function openSkuPickerForAdd(p) {
+  const skus = Array.isArray(p.skus) ? p.skus : [];
+  if (!skus.length) return;
+  const pick = skus.map(() => 0);
+  let lastGroup = -1;
+  let pickArt = pickArtOf(p, pick, lastGroup);
+  const m = modal(`
+    <div class="sku-picker">
+      <div class="sku-picker-head">
+        <span id="skuPickArt" class="ci-art" style="${artStyle(pickArt)}">${artHtml(pickArt)}</span>
+        <div class="sku-picker-info">
+          <h3 class="ellipsis-2">${esc(p.title)}</h3>
+          <p class="sku-picker-price">款式价：¥<b id="skuPickPrice">${esc(moneyText(skuPriceOf(p, pick)))}</b></p>
+        </div>
+      </div>
+      <div class="sku-picker-body">
+        ${skus.map((g, gi) => `
+          <div class="sku-group">
+            <b>${esc(g.name || '规格')}：</b>
+            ${(g.values || []).map((v, vi) => `
+              <button class="sku-chip${vi === pick[gi] ? ' active' : ''}" data-group="${gi}" data-vi="${vi}">
+                ${esc(valOf(v))}${valPrice(v) ? `<em class="sku-chip-price">¥${esc(moneyText(valPrice(v)))}</em>` : ''}
+              </button>`).join('')}
+          </div>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-plain" data-close>取消</button>
+        <button class="btn btn-primary btn-lg" id="skuPickConfirm" style="flex:1">加入购物车</button>
+      </div>
+    </div>`, { wide: true });
+
+  m.root.querySelectorAll('[data-group]').forEach(btn => btn.onclick = () => {
+    const gi = Number(btn.dataset.group);
+    const vi = Number(btn.dataset.vi);
+    pick[gi] = vi;
+    lastGroup = gi;
+    m.root.querySelectorAll(`[data-group="${gi}"]`).forEach(x => x.classList.toggle('active', Number(x.dataset.vi) === vi));
+    m.root.querySelector('#skuPickPrice').textContent = moneyText(skuPriceOf(p, pick));
+    const artEl = m.root.querySelector('#skuPickArt');
+    const art = pickArtOf(p, pick, lastGroup);
+    artEl.style.cssText = artStyle(art);
+    artEl.innerHTML = artHtml(art);
+  });
+  m.root.querySelector('#skuPickConfirm').onclick = async () => {
+    try {
+      await QM_API.cart.add(p.id, skuTextOf(skus, pick), 1, skuPriceOf(p, pick));
+      m.close();
+      toast('已加入购物车 🛒', 'success');
+    } catch (e) { toast((e && e.message) || '加入购物车失败，请稍后重试', 'error'); }
+  };
+}
+
 /* ---------- 全局事件代理（原 app.js 同款） ---------- */
 async function onGlobalClick(e) {
   const t = e.target.closest('[data-action]');
@@ -144,11 +226,24 @@ async function onGlobalClick(e) {
       }
       break;
     case 'open-product': router.push('/detail/' + encodeURIComponent(t.dataset.id)); break;
-    case 'quick-add-cart':
+    case 'quick-add-cart': {
       if (!requireLogin()) return;
-      await QM_API.cart.add(t.dataset.id, '默认', 1);
-      toast('已加入购物车 🛒', 'success');
+      /* 先取商品详情拿规格：带规格（每组都有可选值）→ 弹款式选择；
+         无规格 → 直接按默认规格加购（收藏页等列表未带 skus 的入口也统一走这里） */
+      let product;
+      try { product = await QM_API.products.get(t.dataset.id); }
+      catch (e) { return toast((e && e.message) || '商品信息获取失败，请稍后重试', 'error'); }
+      if (product && Array.isArray(product.skus) && product.skus.length
+        && product.skus.every(g => Array.isArray(g.values) && g.values.length > 0)) {
+        openSkuPickerForAdd(product);
+        return;
+      }
+      try {
+        await QM_API.cart.add(t.dataset.id, '默认', 1);
+        toast('已加入购物车 🛒', 'success');
+      } catch (e) { toast((e && e.message) || '加入购物车失败，请稍后重试', 'error'); }
       break;
+    }
     case 'toggle-fav': {
       if (!requireLogin()) return;
       const id = t.dataset.id;
@@ -167,9 +262,26 @@ async function onGlobalClick(e) {
       }
       break;
     }
+    case 'remove-fav': {
+      /* 收藏页商品卡的单条取消（含已删除 / 已下架商品）：
+         成功后 api.js 会 emit('favorites')，收藏页订阅后自动刷新列表 */
+      if (!requireLogin()) return;
+      try {
+        await QM_API.favorites.remove(t.dataset.id);
+        toast('已取消收藏');
+      } catch (e) {
+        toast((e && e.message) || '取消收藏失败，请稍后重试', 'error');
+      }
+      break;
+    }
     case 'goto-category': router.push('/category/' + encodeURIComponent(t.dataset.id)); break;
     case 'goto-search': router.push('/search?q=' + encodeURIComponent(t.dataset.q || '')); break;
-    case 'goto-shop': router.push('/shop/' + encodeURIComponent(t.dataset.id)); break;
+    case 'goto-shop': {
+      /* 带上后端下发的店铺标识（?id=）：店铺页据此直接定位，不必依赖本地「店名 → shopId」档案 */
+      const sid = t.dataset.shopId;
+      router.push('/shop/' + encodeURIComponent(t.dataset.id) + (sid ? '?id=' + encodeURIComponent(sid) : ''));
+      break;
+    }
     case 'goto-seller': router.push('/seller'); break;
     case 'goto-chat': router.push('/chat' + (t.dataset.id ? '?peer=' + encodeURIComponent(t.dataset.id) : '')); break;
     case 'goto-placeholder': router.push('/placeholder/' + encodeURIComponent(t.dataset.id || '')); break;
@@ -324,7 +436,6 @@ onBeforeUnmount(() => {
       <a href="#/home?sec=flash" data-nav="flash">限时秒杀</a>
       <a href="#/home?sec=recommend" data-nav="recommend">猜你喜欢</a>
       <a href="#/chat" data-nav="chat">消息中心</a>
-      <a href="#/placeholder/会员中心" data-nav="placeholder">会员中心</a>
     </div>
   </nav>
   <div id="catFlyout" class="cat-flyout hidden" @mouseenter="showFlyout" @mouseleave="hideFlyoutSoon"></div>
@@ -341,9 +452,8 @@ onBeforeUnmount(() => {
         <span class="logo-mark">青</span>
         <div><b>青集市</b><p>发现值得买的日常</p></div>
       </div>
-      <div class="footer-col"><b>购物指南</b><a href="#/placeholder/新手帮助">新手帮助</a><a href="#/placeholder/品质保障">品质保障</a><a href="#/placeholder/售后政策">售后政策</a></div>
-      <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/placeholder/物流查询">物流查询</a><a href="#/placeholder/发票说明">发票说明</a></div>
-      <div class="footer-col"><b>关于我们</b><a href="#/placeholder/平台介绍">平台介绍</a><a href="#/placeholder/卖家入驻">卖家入驻</a><a href="#/chat">联系我们</a></div>
+      <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/placeholder/物流查询">物流查询</a><a href="#/placeholder/售后服务">售后服务</a></div>
+      <div class="footer-col"><b>关于我们</b><a href="#/placeholder/平台介绍">平台介绍</a><a href="#/seller">卖家入驻</a><a href="#/chat">联系我们</a></div>
     </div>
     <p class="copyright">© 2026 青集市 · 课程演示项目 · 前后端分离，数据全部来自后端接口</p>
   </footer>

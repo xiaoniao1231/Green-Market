@@ -185,7 +185,7 @@ function noteOnline(online) {
      product 存服务端下发的商品快照，供页面渲染；
      price 为款式价（服务端按加入时的选款快照存，用于结算计价）；
      img 为款式图：优先取服务端下发的 img，其次按 product.skus 与条目 sku 解析（与详情页
-     「主图随款式切换」同口径），两者都没有时沿用本地已有记录（仅渲染辅助，不改变数据来源） */
+     「展示图随款式切换」同口径），两者都没有时沿用本地已有记录（仅渲染辅助，不改变数据来源） */
   function skuImgFromProduct(product, skuText) {
     if (!product || !Array.isArray(product.skus) || !product.skus.length) return null;
     const parts = String(skuText || '').split(' / ').map(s => s.trim());
@@ -274,16 +274,32 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 店铺档案（读） =================
+    /* ========== 店铺档案（读） / 店铺关注（写） ==========
        契约见 docs/店家中心商品管理接口文档.md 2.11 / 2.12：
        · GET /shops/{shopId}  → 店铺公开档案（店铺主页 / 商品详情店铺栏使用，含店名 / 头像 / 简介 /
          评分 / 粉丝 / 开店时间 / 店主账号）；
        · GET /shops/profile   → 当前登录账号店铺档案（店家中心回显，见 seller.shopProfile）。
-       两个接口都是 strict：后端未实现时抛错，由页面回退本地档案（演示数据 / 本地缓存），不白屏。 */
+       两个接口都是 strict：后端未实现时抛错，由页面回退本地档案（演示数据 / 本地缓存），不白屏。
+       关注 / 取关也在这里：POST / DELETE /shops/{shopId}/follow → { shopId, fans, followed }，
+       接口幂等（重复关注 / 重复取关粉丝数不变），fans 用于即时刷新页面上的粉丝数。 */
     shops: {
       get(shopId) {
         return call(
-          { name: '店铺档案', method: 'GET', path: '/shops/' + encodeURIComponent(shopId), query: {} },
+          { name: '店铺档案', method: 'GET', path: '/shops/' + encodeURIComponent(shopId), query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 关注店铺（需登录）：返回 { shopId, fans, followed }，fans = 操作后最新粉丝数 */
+      follow(shopId) {
+        return call(
+          { name: '关注店铺', method: 'POST', path: '/shops/' + encodeURIComponent(shopId) + '/follow', query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 取消关注店铺（需登录）：返回 { shopId, fans, followed }，fans = 操作后最新粉丝数 */
+      unfollow(shopId) {
+        return call(
+          { name: '取消关注店铺', method: 'DELETE', path: '/shops/' + encodeURIComponent(shopId) + '/follow', query: {}, token: tokenOf() },
           null, { strict: true }
         );
       }
@@ -787,6 +803,17 @@ function noteOnline(online) {
         return call(
           { name: '发送验证码', method: 'POST', path: '/sms-code', body: { phone, scene } },
           () => { throw new Error('后端未启动，验证码功能不可用'); },
+          { strict: true }
+        );
+      },
+      /* 忘记密码重置：POST /password/reset，body { phone, smsCode, password }
+         免登录接口（后端 TokenFilter 白名单），验证码走 /sms-code 的 scene=reset，
+         与注册 / 手机登录的验证码互不通用。注意：库里存的是 BCrypt 单向哈希，
+         服务端也无法还原原密码 —— 所以这个接口只能「设置新密码」，不存在「取回原密码」。 */
+      async resetPassword({ phone, smsCode, password }) {
+        return call(
+          { name: '重置密码', method: 'POST', path: '/password/reset', body: { phone, smsCode, password } },
+          null,
           { strict: true }
         );
       },

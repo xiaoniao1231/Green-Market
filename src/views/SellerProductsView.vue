@@ -6,8 +6,8 @@
    · 数据走 QM_API.seller.*（strict 严格直连后端，契约见 docs/店家中心商品管理接口文档.md）：
      后端未实现（404 / 网络不可达）时提示错误 + 空态，不回退本地演示数据；
    · 分类 / 子类下拉取 mock.js 的 categories（与后端 category / sub 同一套取值）；
-   · 主图自动取第一个带图的 SKU 值，不再单独上传主图；无图时用「表情 + 渐变」占位外观；
-   · 规格 SKU 每个款式值可配一张图，详情页点击款式主图跟随切换；
+   · 展示图自动取第一个带图的 SKU 值，不再单独上传展示图；无图时用「表情 + 渐变」占位外观；
+   · 规格 SKU 每个款式值可配一张图，详情页点击款式展示图跟随切换；
    · 图文详情（多段落文字 + 图片）独立弹窗编辑，不占用编辑表单；
    · 编辑 / 图文详情先拉 GET /seller/products/{id} 取全量字段（列表接口不含 detail，
      直接用列表数据保存会把原有图文详情清空）。
@@ -320,7 +320,7 @@ function openEditor(p) {
         return out;
       }).filter(v => v.v)
     })).filter(s => s.name && s.values.length);
-    /* 主图自动取第一个带图的 SKU 值，不再单独上传主图 */
+    /* 展示图自动取第一个带图的 SKU 值，不再单独上传展示图 */
     let firstImg = '';
     outer: for (const g of skus) {
       for (const val of g.values) {
@@ -537,7 +537,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
     </div>
 
     <template v-if="svc">
-      <div class="seller-tip">💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ listData.length }} 件商品（在售 {{ onSaleCount }} · 已下架 {{ offSaleCount }}）。点击卡片主图可预览买家视角，卡片上可直接改价 / 上下架，「编辑」修改商品信息与款式图，「详情」编辑图文详情。</div>
+      <div class="seller-tip">💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ listData.length }} 件商品（在售 {{ onSaleCount }} · 已下架 {{ offSaleCount }}）。点击卡片展示图可预览买家视角，卡片上可直接改价 / 上下架，「编辑」修改商品信息与款式图，「详情」编辑图文详情。</div>
 
       <!-- 工具栏：筛选 + 排序 + 搜索（与店铺主页商品区同款控件风格） -->
       <div class="seller-product-toolbar">

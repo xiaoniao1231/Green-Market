@@ -17,6 +17,7 @@ const route = useRouteCompat();
 const router = useRouter();
 
 const shopName = computed(() => route.value.params[0] || '');
+const shopId = ref('');       // 当前店铺标识（关注 / 取关接口用它定位店铺）
 
 /* 页面状态：loading 加载中 / missing 店铺不存在 / ready 已就绪 */
 const phase = ref('loading');
@@ -63,22 +64,25 @@ let offShopFav = null;
 async function load() {
   phase.value = 'loading';
   shop.value = null;
+  shopId.value = '';
   sort.value = 'default';
   rawGoods.value = [];
-  /* 店铺定位：店铺名 → 本地档案里的 shopId（档案由 GET /shops/{id} 写入，随会话持久化）。
-     档案里没有该店名时无法定位店铺（后端暂无「按店名查店铺」的接口）→ 显示店铺不存在 */
-  if (!QM_STORE.shopIdOf(shopName.value)) { phase.value = 'missing'; return; }
-  let hit = QM_STORE.shopService(shopName.value);
-  const sid = hit.id;
-  /* 店铺档案接口优先（GET /shops/{id}）：成功后写入本地档案，店名 / 头像 / 简介 / 评分随之更新 */
+  /* 店铺定位：优先用地址里的 ?id=（商品 / 购物车 / 收藏等入口都带上了后端下发的店铺标识），
+     没有该参数时再退回本地档案里的「店名 → shopId」映射 */
+  const sid = route.value.query.id || QM_STORE.shopIdOf(shopName.value);
+  if (!sid) { phase.value = 'missing'; return; }
+  shopId.value = sid;
+  let hit = QM_STORE.shopService(shopName.value) || { id: sid, shopName: shopName.value };
+  /* 店铺档案接口优先（GET /shops/{id}）：成功后写入本地档案，店名 / 头像 / 简介 / 评分随之更新。
+     合并时直接采用返回对象，不再只依赖本地「店名 → shopId」索引，避免索引缺失时字段丢失 */
   try {
     const remote = await QM_API.shops.get(sid);
     if (remote) {
-      QM_STORE.rememberShop(Object.assign({}, remote, { id: remote.id || remote.shopId || remote.shop_id || sid }));
-      hit = QM_STORE.shopService(shopName.value);
+      const saved = QM_STORE.rememberShop(Object.assign({}, remote, { id: remote.id || remote.shopId || remote.shop_id || sid })) || remote;
+      hit = Object.assign({}, hit, saved, { id: sid, shopName: saved.name || remote.name || shopName.value });
     }
   } catch (e) {
-    /* 后端店铺档案接口未实现或不可达：沿用本地已有档案 */
+    /* 后端店铺档案接口不可达：沿用本地已有档案 */
   }
   await loadGoods(sid);
   shop.value = Object.assign({ shopName: QM_STORE.displayShopName(shopName.value), score: Number(avgScore.value) }, hit);
@@ -118,10 +122,34 @@ function requireLogin() {
   router.push({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } });
   return false;
 }
-function toggleFav() {
+/* 关注 / 取消关注店铺：真正写库的是后端 POST / DELETE /shops/{shopId}/follow，
+   本地 shopFavs 只是关注态镜像；接口返回的最新粉丝数用 applyFans 写回页面与本地档案 */
+const favBusy = ref(false);
+async function toggleFav() {
   if (!requireLogin()) return;
-  const favedNow = QM_STORE.shopFav.toggle(shopName.value);
-  toast(favedNow ? '已关注店铺 ♥' : '已取消关注', favedNow ? 'success' : '');
+  if (favBusy.value) return;
+  const sid = shopId.value || (shop.value && (shop.value.id || shop.value.shopId)) || '';
+  if (!sid) { toast('店铺信息缺失，请刷新页面后重试', 'error'); return; }
+  const wasFaved = QM_STORE.shopFav.has(shopName.value);
+  favBusy.value = true;
+  try {
+    const res = wasFaved ? await QM_API.shops.unfollow(sid) : await QM_API.shops.follow(sid);
+    QM_STORE.shopFav.set(shopName.value, !wasFaved);
+    applyFans(res && res.fans);
+    toast(wasFaved ? '已取消关注' : '已关注店铺 ♥', wasFaved ? '' : 'success');
+  } catch (e) {
+    toast((e && e.message) || '操作失败，请稍后重试', 'error');
+  } finally {
+    favBusy.value = false;
+  }
+}
+
+/* 把接口返回的最新粉丝数写回本地档案 + 当前页面（店铺主页 / 详情页 / 店家中心口径一致） */
+function applyFans(fans) {
+  if (fans === undefined || fans === null) return;
+  const sid = shopId.value || (shop.value && (shop.value.id || shop.value.shopId)) || '';
+  if (sid) QM_STORE.rememberShop({ id: sid, fans });
+  if (shop.value) shop.value = Object.assign({}, shop.value, { fans });
 }
 
 watch(shopName, load);
@@ -174,7 +202,7 @@ onBeforeUnmount(() => { if (offShopFav) { offShopFav(); offShopFav = null; } });
           </div>
         </div>
         <div class="shop-cover-actions">
-          <button class="btn" :class="faved ? 'fav-on' : ''" @click="toggleFav">{{ faved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
+          <button class="btn" :class="faved ? 'fav-on' : ''" :disabled="favBusy" @click="toggleFav">{{ faved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
           <button class="btn btn-plain" data-action="goto-chat" :data-id="shop.userId">◌ 联系卖家</button>
         </div>
       </div>

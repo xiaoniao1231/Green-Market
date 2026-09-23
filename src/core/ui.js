@@ -45,9 +45,9 @@ let currentLoginModal = null;
   };
 
   /* ---------- 商品图形（离线可用：表情 + 渐变；店家上传图片后优先显示真实图） ----------
-     兼容两种主图形态：
+     兼容两种展示图形态：
      · art.img 存在  → 显示店家上传的商品图（img.art-img 由 CSS 铺满容器）；
-     · 否则          → 回退「表情 + 渐变」离线主图（演示数据）。 */
+     · 否则          → 回退「表情 + 渐变」离线展示图（演示数据）。 */
   const artStyle = art => {
     if (art && art.img) return 'background:#f2f3f5';
     const g = (art && art.g) || ['#ffe4d3', '#ffb88c'];
@@ -132,12 +132,13 @@ let currentLoginModal = null;
   const cardPrice = p => { const r = skuRange(p); return r ? r.min : Number((p && p.price) || 0); };
   const hasSkuRange = p => !!skuRange(p);
 
-  function productCard(p, extra) {
+  function productCard(p, extra, shopActions, opts) {
     /* 商品状态：已删除(deleted=1) 或 已下架(onSale=0) 时，图片灰化并叠加状态标签。
        仅收藏页 / 购物车等「历史快照」场景才会出现非在售商品；
        首页/搜索/推荐等在售列表接口不会下发这两个状态，因此不影响正常卡片外观。 */
     const isDeleted = p && p.deleted === 1;
     const isOffShelf = !isDeleted && p && p.onSale === 0;
+    const hideQuickCart = !!(opts && opts.hideQuickCart); // 收藏页显式关掉「＋购物车」按钮
     const statusLabel = isDeleted ? '已删除' : (isOffShelf ? '已下架' : '');
     const cardCls = (isDeleted || isOffShelf) ? 'product-card is-inactive' : 'product-card';
     const statusBadge = statusLabel
@@ -154,7 +155,7 @@ let currentLoginModal = null;
         <h3 class="ellipsis-2">${esc(p.title)}</h3>
         <div class="pc-price-row">${price(cardPrice(p))}<small class="price-from">${hasSkuRange(p) ? '起' : ''}</small><del>${price(p.original)}</del></div>
         <div class="pc-meta"><span>${sales(p.sales)}人付款</span><span>好评 ${p.shop.score}</span></div>
-        <div class="pc-shop"><b class="ellipsis">${esc(QM_STORE.displayShopName(p.shop.name))}</b><span class="btn btn-plain" data-action="quick-add-cart" data-id="${esc(p.id)}">＋购物车</span></div>
+        <div class="pc-shop"><b class="ellipsis">${esc(QM_STORE.displayShopName(p.shop.name))}</b><span style="display:inline-flex;align-items:center;gap:8px">${shopActions || ''}${(isDeleted || isOffShelf || hideQuickCart) ? '' : `<span class="btn btn-plain" data-action="quick-add-cart" data-id="${esc(p.id)}">＋购物车</span>`}</span></div>
       </div>
       ${extra || ''}
     </div>`;

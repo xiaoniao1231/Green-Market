@@ -50,7 +50,7 @@ function orderCard(o) {
       </div>
       <div class="order-body">
         ${o.items.map(it => {
-          const art = (it.img && { img: it.img }) || it.art || null;   // 优先加购时选中的款式图，否则后端随订单下发的商品主图
+          const art = (it.img && { img: it.img }) || it.art || null;   // 优先加购时选中的款式图，否则后端随订单下发的商品展示图
           return `<div class="oi-row">
             <span class="oi-art" style="${artStyle(art)}">${artHtml(art)}</span>
             <div class="oi-info"><h4 class="ellipsis" data-action="open-product" data-id="${esc(it.productId)}">${esc(it.title)}</h4><small>规格：${esc(it.sku)} × ${it.qty}</small></div>

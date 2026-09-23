@@ -3,16 +3,24 @@
    —— 2026-09 视觉升级：首屏栅格留白、轮播层次、卡片与板块标题统一。
    ========================================================= */
 
-.home-grid { display: grid; grid-template-columns: 208px 1fr 248px; gap: 14px; margin-top: 14px; align-items: start; }
+/* 中间列用 minmax(0, 1fr) 而不是 1fr：1fr 等价于 minmax(auto, 1fr)，auto 会取内容的
+   min-content —— 轮播里 8 张 flex: 0 0 100% 的 slide 累加出 ~1126px 的 min-content，
+   足以把中间列撑到 1126px，整行溢出、右侧会员卡被挤出视口并产生横向滚动条。
+   align-items: stretch（默认值）：首屏三栏（分类栏 / 轮播 / 会员卡）等高，
+   高度取三者中最高的分类栏，轮播用 flex: 1 填满，底部齐平。 */
+.home-grid { display: grid; grid-template-columns: 208px minmax(0, 1fr) 248px; gap: 14px; margin-top: 14px; align-items: stretch; }
 
-/* ---------- 左侧分类栏 ---------- */
-.cat-rail { background: #fff; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
-.cat-rail h2 { font-size: 15px; padding: 12px 12px 10px 16px; color: var(--text); display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+/* ---------- 左侧分类栏 ----------
+   行高与图标略收紧（每项 38px → 36px）：首屏三栏是等高的，左栏 8 项的高度决定整行行高，
+   收紧后三栏统一在 ~330px，轮播不会被拉到近 390px 而显得空旷 */
+.cat-rail { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
+.cat-rail h2 { font-size: 15px; padding: 11px 12px 9px 16px; color: var(--text); display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
 .cat-rail h2 a { font-size: 12px; color: var(--text-3); font-weight: 400; padding: 5px 9px; border-radius: var(--radius-sm); }
 .cat-rail h2 a:hover { color: var(--brand-ink); background: var(--brand-soft); }
+.cat-rail-item { position: relative; }
 .cat-rail button {
   width: 100%; display: flex; align-items: center; gap: 9px;
-  padding: 9px 16px; font-size: 13px; color: var(--text-2); text-align: left;
+  padding: 7px 16px; font-size: 13px; color: var(--text-2); text-align: left;
   position: relative; transition: all var(--dur) var(--ease);
 }
 .cat-rail button::before {
@@ -21,32 +29,48 @@
   transition: height var(--dur) var(--ease);
 }
 .cat-rail button .rail-icon {
-  width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--brand-soft); color: var(--brand-ink); font-size: 13px; flex: none;
+  width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--brand-soft); color: var(--brand-ink); font-size: 12px; flex: none;
   transition: all var(--dur) var(--ease);
 }
 .cat-rail button b { margin-left: auto; color: var(--text-4); font-weight: 400; }
 .cat-rail button:hover { background: var(--brand-softer); color: var(--brand-ink); }
 .cat-rail button:hover::before { height: 60%; }
 .cat-rail button:hover .rail-icon { background: var(--brand); color: #fff; }
+.cat-rail-sub {
+  position: absolute; left: 100%; top: 0; width: 160px; background: #fff; border: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0; box-shadow: var(--shadow); padding: 8px 0;
+  opacity: 0; visibility: hidden; transform: translateX(-8px); transition: all .15s ease; z-index: 100;
+}
+.cat-rail-item:hover .cat-rail-sub {
+  opacity: 1; visibility: visible; transform: translateX(0);
+}
+.cat-rail-sub button {
+  display: block; width: 100%; text-align: left; padding: 9px 16px; border: none;
+  font-size: 13px; color: var(--text-2); background: #fff;
+}
+.cat-rail-sub button:hover { background: var(--brand-softer); color: var(--brand-ink); }
 
 /* ---------- 中间轮播 + 快捷入口 ---------- */
-.hero-zone { display: flex; flex-direction: column; gap: 14px; }
-.carousel { position: relative; height: 330px; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+/* min-width: 0：grid / flex 子项默认 min-width: auto，会被轮播的 min-content 顶开，
+   明确置 0 后中间列才能真正收缩到分配宽度。
+   .carousel 用 flex: 1 填满 hero-zone：三栏等高时轮播自动长到与分类栏一致 */
+.hero-zone { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.carousel { position: relative; flex: 1; min-height: 220px; min-width: 0; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
 .carousel-track { display: flex; height: 100%; transition: transform .5s var(--ease); }
 .carousel-slide { flex: 0 0 100%; height: 100%; display: flex; align-items: center; position: relative; }
 .carousel-slide::after {
   content: ""; position: absolute; inset: 0;
   background: radial-gradient(circle at 78% 22%, rgba(255, 255, 255, .22), transparent 52%);
 }
-.carousel-copy { padding-left: 46px; color: #fff; position: relative; z-index: 2; }
-.carousel-copy .c-tag { display: inline-block; font-size: 12px; letter-spacing: 2px; background: rgba(255, 255, 255, .22); padding: 4px 14px; border-radius: var(--radius-pill); margin-bottom: 13px; backdrop-filter: blur(4px); }
-.carousel-copy h1 { font-size: 34px; line-height: 1.25; margin-bottom: 10px; text-shadow: 0 2px 10px rgba(0, 0, 0, .22); letter-spacing: .5px; }
-.carousel-copy p { font-size: 14px; opacity: .94; margin-bottom: 20px; }
-.carousel-copy .btn { background: #fff; color: var(--brand-ink); height: 40px; box-shadow: 0 6px 18px rgba(0, 0, 0, .16); }
+.carousel-copy { padding-left: 36px; color: #fff; position: relative; z-index: 2; }
+.carousel-copy .c-tag { display: inline-block; font-size: 11px; letter-spacing: 2px; background: rgba(255, 255, 255, .22); padding: 3px 12px; border-radius: var(--radius-pill); margin-bottom: 9px; backdrop-filter: blur(4px); }
+.carousel-copy h1 { font-size: 25px; line-height: 1.2; margin-bottom: 7px; text-shadow: 0 2px 10px rgba(0, 0, 0, .22); letter-spacing: .5px; }
+.carousel-copy p { font-size: 13px; opacity: .94; margin-bottom: 14px; }
+.carousel-copy .btn { background: #fff; color: var(--brand-ink); height: 34px; padding: 0 18px; font-size: 13px; box-shadow: 0 6px 18px rgba(0, 0, 0, .16); }
 .carousel-copy .btn:hover { background: #fff5ef; transform: translateY(-2px); color: var(--brand-ink); }
-.carousel-art { position: absolute; right: 34px; bottom: 0; font-size: 128px; opacity: .92; filter: drop-shadow(0 12px 20px rgba(0, 0, 0, .22)); }
-.carousel-dots { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 3; }
+.carousel-art { position: absolute; right: 30px; bottom: 0; font-size: 84px; opacity: .92; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .22)); max-height: 190px; max-width: 190px; object-fit: contain; border-radius: 12px; }
+.carousel-dots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 3; }
 .carousel-dots i { width: 22px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .45); cursor: pointer; transition: all var(--dur) var(--ease); }
 .carousel-dots i:hover { background: rgba(255, 255, 255, .75); }
 .carousel-dots i.active { width: 34px; background: #fff; }
@@ -74,7 +98,9 @@
 .quick-links small { display: block; font-size: 11px; color: var(--text-3); }
 
 /* ---------- 右侧用户卡 ---------- */
-.member-card { background: #fff; border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--shadow-sm); height: fit-content; border: 1px solid var(--border); }
+/* 高度交给 grid 的 align-items: stretch（去掉 fit-content，否则不会被拉伸到与左栏等高）；
+   内部用纵向 flex，让底部公告吸底，避免卡片下半部分留一大块空白 */
+.member-card { background: #fff; border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--border); display: flex; flex-direction: column; }
 .member-user { display: flex; gap: 11px; align-items: center; }
 .member-avatar {
   width: 52px; height: 52px; border-radius: 50%; flex: none;
@@ -91,7 +117,7 @@
 .member-actions { display: flex; gap: 8px; margin: 15px 0; }
 .member-actions .btn { flex: 1; height: 34px; font-size: 13px; padding: 0 10px; }
 .member-line { border-top: 1px dashed var(--border); margin: 6px 0 13px; }
-.order-shortcuts { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; }
+.order-shortcuts { display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; margin-bottom: 13px; }
 .order-shortcuts button, .order-shortcuts a { padding: 6px 0; font-size: 12px; color: var(--text-2); display: block; border-radius: var(--radius-sm); }
 .order-shortcuts button:hover, .order-shortcuts a:hover { color: var(--brand-ink); background: var(--brand-softer); }
 .order-shortcuts span {
@@ -101,7 +127,15 @@
   transition: all var(--dur) var(--ease);
 }
 .order-shortcuts a:hover span, .order-shortcuts button:hover span { background: var(--brand); color: #fff; }
-.notice { margin-top: 13px; padding: 11px 12px; background: #fff8ec; border-radius: var(--radius); font-size: 12px; color: var(--warn-ink); border: 1px solid #ffe6c4; }
+/* 会员卡「消息」入口的未读角标（有未读才显示；超过 99 显示 99+） */
+.order-shortcuts .mini-badge {
+  display: inline-block; min-width: 16px; height: 16px; line-height: 16px;
+  padding: 0 4px; margin-left: 3px; border-radius: var(--radius-pill);
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 600;
+  vertical-align: 1px;
+}
+/* margin-top: auto：卡片被拉伸到与左栏等高时，公告吸底（不拉伸时仍是 13px 间距） */
+.notice { margin-top: auto; padding: 11px 12px; background: #fff8ec; border-radius: var(--radius); font-size: 12px; color: var(--warn-ink); border: 1px solid #ffe6c4; }
 .notice b { display: block; color: #8a4b00; margin-bottom: 2px; }
 
 /* ---------- 服务保障条 ---------- */
@@ -169,13 +203,13 @@
 /* 加载更多 */
 .load-more { text-align: center; margin-top: 20px; }
 
-@media (max-width: 1100px) {
-  .home-grid { grid-template-columns: 190px 1fr; }
+@media (max-width: 900px) {
+  .home-grid { grid-template-columns: 190px minmax(0, 1fr); }
   .member-card { grid-column: 1 / -1; }
   .flash-products { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 860px) {
-  .home-grid { grid-template-columns: 1fr; }
+  .home-grid { grid-template-columns: minmax(0, 1fr); }
   .cat-rail { display: none; }
   .flash-wrap { flex-direction: column; }
   .flash-side { width: 100%; }

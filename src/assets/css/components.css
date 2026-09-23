@@ -74,6 +74,18 @@ img.art-img {
 .pc-shop .btn { height: 26px; padding: 0 12px; font-size: 12px; }
 .product-card:hover .pc-shop .btn-plain { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-softer); }
 
+/* 已下架 / 已删除商品卡（收藏页等历史快照场景）：图片与信息整体灰化，叠加状态标签 */
+.product-card.is-inactive { border-color: var(--border); }
+.product-card.is-inactive:hover { transform: none; box-shadow: none; border-color: var(--border); }
+.product-card.is-inactive .pc-art { filter: grayscale(1); }
+.product-card.is-inactive .pc-art .art-img { opacity: .55; }
+.product-card.is-inactive .pc-info { opacity: .62; }
+.pc-status-badge {
+  position: absolute; top: 9px; right: 9px; z-index: 2;
+  font-size: 11px; line-height: 20px; padding: 0 9px; border-radius: var(--radius-pill);
+  color: #fff; background: rgba(0, 0, 0, .55); box-shadow: 0 2px 8px rgba(0, 0, 0, .22);
+}
+
 /* 商品网格 */
 .product-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
 .product-grid.large { grid-template-columns: repeat(4, 1fr); }

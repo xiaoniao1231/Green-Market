@@ -17,6 +17,7 @@ import QM_API from '../core/api.js';
 import QM_CFG from '../core/config.js';
 import QM_STORE from '../core/store.js';
 import QM_CHAT_SOCKET from '../core/chatSocket.js';
+import QM_CHAT_INBOX from '../core/chatInbox.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
 const { esc, price, artStyle, artHtml, toast, confirmDialog } = QM_UI;
@@ -357,16 +358,10 @@ async function sendCurrent() {
     renderActive();
     renderContacts();
   } catch (e) {
-    /* 后端消息接口缺失（404）时降级为本地演示消息，保证聊天闭环可测试；
-       其余错误（令牌失效 / 接收方不存在 / 网络中断）必须如实提示，不能伪装成"已发送" */
-    if (/404|后端返回错误/.test(String(e && e.message))) {
-      pushLocal(peerId, { from, type: 'text', content, time: Date.now() });
-      renderActive();
-      renderContacts();
-      toast('后端消息接口未实现，已存为本地演示消息', 'success');
-    } else {
-      toast('发送失败：' + (e && e.message ? e.message : '未知错误'), 'error');
-    }
+    /* 消息接口已落地（POST /messages/private）：发送失败一律如实提示。
+       不再降级成「本地演示消息」—— 那会让用户以为已经发出，服务端却没有这条记录
+       （与收藏 / 地址同样的原则：服务端数据不做本地假成功） */
+    toast('发送失败：' + (e && e.message ? e.message : '未知错误'), 'error');
   }
 }
 
@@ -384,6 +379,8 @@ function openPeer(peerId) {
   if (!alive) return;
   state.emojiOpen = false; // 原版每次重建面板都会把表情面板恢复为隐藏
   state.activePeer = peerId;
+  /* 同步给全局收件箱：正在看的会话不累加未读（打开即已读） */
+  QM_CHAT_INBOX.setActivePeer(peerId);
   /* 会话只能由商品详情「联系卖家」进入：联系人不存在时按对应店铺的开店用户元数据创建
      （role=shop 仅表示这是店铺会话；聊天全程发生在两个用户账号之间） */
   let peerObj = contactById(peerId);
@@ -816,6 +813,7 @@ async function initView() {
   state.demo = false;
   state.emojiOpen = false;
   state.activePeer = null;
+  QM_CHAT_INBOX.setActivePeer(null);   // 重挂载时复位"当前会话"，未读判断交给新的选中项
   state.ws = null; // 实时通道状态由 loadRealData 从全局连接取回，先复位避免显示残留
 
   /* 登录用户 + 后端在线时加载真实聊天数据 */
@@ -849,6 +847,8 @@ let offSocketClose = null;
 
 onMounted(() => {
   alive = true;
+  /* 告知全局收件箱：本页挂载期间由这里处理实时帧并渲染（全局只在其它页面兜底落库） */
+  QM_CHAT_INBOX.setPageActive(true);
   docEmojiHandler = onDocEmojiClick;
   document.addEventListener('click', docEmojiHandler);
   document.addEventListener('keydown', onPreviewKeydown);
@@ -869,6 +869,9 @@ watch(() => route.value.query.peer, () => { initView(); });
 
 onBeforeUnmount(() => {
   alive = false;
+  /* 离开消息中心：实时帧改由 App.vue 的全局收件箱兜底处理，当前会话一并清空 */
+  QM_CHAT_INBOX.setPageActive(false);
+  QM_CHAT_INBOX.setActivePeer(null);
   if (peerTimer) { clearTimeout(peerTimer); peerTimer = null; }
   if (offSocketMessage) offSocketMessage();
   if (offSocketClose) offSocketClose();
@@ -910,16 +913,16 @@ onBeforeUnmount(() => {
             <span class="avatar" :style="{ background: peer.color }">{{ peer.name.slice(0, 1) }}</span>
             <div>
               <b>{{ peer.name }}</b>
-              <small v-if="peer.online">● 在线 · 消息实时送达</small>
-              <small v-else>○ 离线 · 消息将保存到服务器</small>
+              <small v-if="peer.online">● 在线</small>
+              <small v-else>○ 离线</small>
             </div>
             <div class="peer-actions">
               <button class="icon-btn" title="清空本地记录" data-action="chat-clear">🗑</button>
             </div>
           </header>
-          <div class="chat-modebar" :class="state.ws ? 'online' : 'offline'">
-            <b>{{ state.ws ? '已连接后端' : '未连接实时通道' }}</b>
-            · {{ state.ws ? 'WebSocket 实时消息通道开启中' : '点击右上「↻ 刷新」重连（消息仍可发送并存入服务器）' }}
+          <!-- 实时通道异常时才提示：连接正常是预期状态，不需要常驻横幅 -->
+          <div v-if="!state.ws" class="chat-modebar offline">
+            <b>未连接实时通道</b> · 消息仍可发送，点击右上「↻ 刷新」重连
           </div>
           <div class="chat-messages" id="chatMessages" v-html="messagesBoxHtml" @scroll="onMessagesScroll" @click="onMessagesClick"></div>
           <footer class="chat-compose">

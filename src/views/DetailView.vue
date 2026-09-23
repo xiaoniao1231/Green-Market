@@ -77,22 +77,6 @@ const curUnitPrice = computed(() => {
 });
 const curPrice = computed(() => priceParts(curUnitPrice.value));
 const origPrice = computed(() => priceParts(product.value.original));
-/* 款式价区间：只用于提示「不同款式价格不同」，成交价仍以 curPrice 为准 */
-const skuPriceRange = computed(() => {
-  const p = product.value;
-  if (!p) return null;
-  let min = Number(p.price) || 0;
-  let max = Number(p.price) || 0;
-  let hasSkuPrice = false;
-  (p.skus || []).forEach(g => (g.values || []).forEach(v => {
-    const sp = valPrice(v);
-    if (sp === null) return;
-    hasSkuPrice = true;
-    if (sp < min) min = sp;
-    if (sp > max) max = sp;
-  }));
-  return { min, max, hasSkuPrice };
-});
 const goodRate = computed(() => Math.round((product.value.shop.score / 5) * 100));
 
 /* 店铺的开店用户 id（详情页「联系卖家」→ 对端就是这位用户，由消息中心创建会话）
@@ -289,12 +273,24 @@ function pickThumb(t) {
   else { lastSkuGroup.value = null; } // 点主图缩略图 → 恢复商品主图
 }
 function setTab(name) { tab.value = name; }
-function setQty(v) { qty.value = Math.max(1, Math.min(5, v)); }
+/* 每人限购件数：**只以后端下发为准**（商品详情里的 limitPerUser，预留字段）。
+   后端没给 → 不限购、也不显示任何限购提示；给了才按它设上限并展示提示。 */
+const limitPerUser = computed(() => {
+  const p = product.value;
+  if (!p) return 0;
+  const n = Number(p.limitPerUser !== undefined ? p.limitPerUser : p.limit);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;   // 0 表示不限购
+});
+function setQty(v) {
+  const max = limitPerUser.value || Infinity;
+  qty.value = Math.max(1, Math.min(max, v));
+}
 function stepQty(dir) { setQty(qty.value + dir); }
 function onQtyInput(e) { setQty(parseInt(e.target.value, 10) || 1); }
 
 async function addCart() {
-  /* 第 4 个参数是「当前选中款式的成交价」：购物车按它计价（留空 / 无款式价时用商品默认价） */
+  /* 第 4 个参数是「当前选中款式的成交价」：购物车按它计价（留空 / 无款式价时用商品默认价）。
+     加购只走后端（strict）：接口失败如实报错，不做本地假加购。 */
   await QM_API.cart.add(product.value.id, skuText(), qty.value, curUnitPrice.value);
   toast('已加入购物车 🛒', 'success');
 }
@@ -378,11 +374,6 @@ onBeforeUnmount(() => {
                 <span>库存 {{ product.stock }} 件</span>
                 <span>好评率 {{ goodRate }}%</span>
               </div>
-              <!-- 款式价提示：该商品存在「同款不同价」时提示区间，成交价随上方选中的款式实时变化 -->
-              <div v-if="skuPriceRange && skuPriceRange.hasSkuPrice" class="price-sku-tip">
-                不同款式价格不同：¥{{ moneyText(skuPriceRange.min) }}<template v-if="skuPriceRange.max !== skuPriceRange.min"> - ¥{{ moneyText(skuPriceRange.max) }}</template>
-                <span class="price-sku-hint">（切换下方款式可查看对应价格）</span>
-              </div>
             </div>
 
             <!-- 规格选择 -->
@@ -402,7 +393,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- 数量（限购 5 件） -->
+            <!-- 数量（限购件数由后端下发，未下发则不限购、不显示提示） -->
             <div class="detail-qty">
               <span>数量</span>
               <span class="stepper">
@@ -410,7 +401,7 @@ onBeforeUnmount(() => {
                 <input id="qtyInput" :value="qty" @input="onQtyInput" />
                 <button data-action="qty" data-dir="1" @click="stepQty(1)">＋</button>
               </span>
-              <span class="pill pill-gray">每人限购 5 件</span>
+              <span v-if="limitPerUser" class="pill pill-gray">每人限购 {{ limitPerUser }} 件</span>
             </div>
 
             <!-- 购买栏：购物车图标块 + 主按钮「立即购买」+ 收藏 / 联系卖家小按钮 -->

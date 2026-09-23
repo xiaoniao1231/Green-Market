@@ -1,11 +1,11 @@
 /* =========================================================
    青集市 · store.js —— 状态管理与本地持久化
    本地只保存「用户自己的数据」与「后端下发的快照」：
-   购物车 / 订单 / 收藏 / 地址 / 优惠券 / 聊天记录 / 店铺档案。
+   购物车（后端缓存）/ 订单 / 收藏 / 地址 / 优惠券 / 聊天记录 / 店铺档案。
    商品库、店铺库、演示账号等静态演示数据已全部移除，
    这些内容一律以后端接口为准（商品 / 订单接口尚未实现时页面显示空态）。
-   注意：favorites 只是「后端收藏列表的本地缓存」，写入一律先成功后同步，
-   接口失败时不会本地假成功（详见 api.js 的 favorites 段）。
+   注意：favorites / addresses / cart 只是「后端数据的本地缓存」，写入一律先成功后同步，
+   接口失败时不会本地假成功（详见 api.js 的 favorites / addresses / cart 段）。
    ========================================================= */
 
 const KEY = 'qm_v2_state';
@@ -47,7 +47,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
     return {
       user: null,            // {userId, nickname, token, demo}
       chatOwner: null,       // 本地聊天数据归属的账号（登录写入、退出保留；换账号登录时据此清空旧会话）
-      cart: [],              // {key, productId, sku, qty, checked}
+      cart: [],              // {key, productId, sku, qty, checked, price?, img?, product?} —— 后端数据缓存（api.js 写穿）
       favorites: [],         // productId[]
       /* 订单 / 地址 / 优惠券：本地不预置任何演示数据。
          目前这三项仍由本地存储承载（后端 /orders 等接口尚未实现），
@@ -168,27 +168,16 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       }
     },
 
-    /* ---------- 购物车 ---------- */
+    /* ---------- 购物车 ----------
+       购物车是**后端数据**（strict 接口，见 api.js 的 cart 段）：本地 store 只存
+       api.js 写穿缓存（syncCartFromApi）与服务端下发的商品快照，加购 / 删改一律走后端。
+       条目里的 checked（勾选）是纯前端态，不落库，刷新后由 api.js 按条目保持。 */
     cart: {
       list() {
         /* 购物车条目自带服务端下发的商品快照（api.js 写入 item.product）；
-           本地只保存 productId 与数量，不复制商品库。没有快照的条目直接跳过（不渲染空壳）。 */
+           没有快照的条目直接跳过（不渲染空壳）。 */
         return QM_STORE.state.cart.map(item => Object.assign({}, item, { product: item.product || null }))
           .filter(item => item.product);
-      },
-      add(productId, sku, qty, price) {
-        const key = productId + '|' + (sku || '默认');
-        /* price = 加购时选中款式的成交价（详情页算好传入）；null = 该商品/款式没有款式价 */
-        const skuPrice = (price === undefined || price === null || price === '') ? null : Number(price);
-        const found = QM_STORE.state.cart.find(i => i.key === key);
-        if (found) {
-          found.qty = Math.min(999, found.qty + qty);
-          if (skuPrice !== null) found.price = skuPrice;   // 店家改价 / 换款式后，以最新一次加购价为准
-        }
-        /* 新加入的商品默认不勾选：由用户手动勾选后再结算 */
-        else QM_STORE.state.cart.unshift({ key, productId, sku: sku || '默认', qty, checked: false, price: skuPrice });
-        save(); emit('cart');
-        return found || QM_STORE.state.cart[0];
       },
       /* 条目单价：加购时选中的**款式价**优先，没有款式价才用商品当前默认价。
          购物车页 / 结算弹窗的单价与小计统一走这里，避免出现「卡片显示款式价、合计按默认价」的错账。 */

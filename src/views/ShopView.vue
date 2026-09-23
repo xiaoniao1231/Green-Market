@@ -190,7 +190,7 @@ onBeforeUnmount(() => { if (offShopFav) { offShopFav(); offShopFav = null; } });
             <button :class="{ active: sort === 'priceDesc' }" @click="sort = 'priceDesc'">价格↓</button>
           </div>
         </div>
-        <div v-if="!goodsLoaded" class="hint" style="margin:0 0 10px">商品加载失败：后端商品接口尚未实现或暂不可达。</div>
+        <div v-if="!goodsLoaded" class="hint" style="margin:0 0 10px">商品加载失败：接口暂时不可达，请稍后重试。</div>
         <div class="product-grid" v-html="goodsHtml"></div>
         <div v-if="!goods.length" class="empty-state">
           <div class="empty-icon">🛍️</div>

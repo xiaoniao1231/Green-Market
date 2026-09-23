@@ -12,6 +12,7 @@ import QM_API from './core/api.js';
 import QM_STORE from './core/store.js';
 import QM_UI from './core/ui.js';
 import QM_CHAT_SOCKET from './core/chatSocket.js';
+import QM_CHAT_INBOX from './core/chatInbox.js';
 import { registerViewRefresh } from './core/viewRefresh.js';
 
 const { esc, toast, confirmDialog } = QM_UI;
@@ -21,8 +22,8 @@ const router = useRouter();
 const user = ref(null);
 const cartCount = ref(0);
 const unread = ref(0);
-const chipClass = ref('backend-chip');
-const chipHtml = ref('○ 检测后端…');
+const chipClass = ref('');
+const chipHtml = ref('');
 const viewKey = ref(0);
 
 /* ---------- 渲染：用户区 / 角标 / 后端状态胶囊 ---------- */
@@ -35,10 +36,11 @@ function renderBadges() {
 }
 function renderBackendChip(online) {
   /* chipClass 只负责状态类：容器上的静态 class="backend-chip" 已由模板提供，
-     原实现把基础类重复写两遍（静态 + 动态），生成的 class 属性里会出现两个 backend-chip */
-  if (online === true) { chipClass.value = 'online'; chipHtml.value = '● 后端已连接'; }
-  else if (online === false) { chipClass.value = 'offline'; chipHtml.value = '○ 后端未连接'; }
-  else { chipClass.value = ''; chipHtml.value = '○ 检测后端…'; }
+     原实现把基础类重复写两遍（静态 + 动态），生成的 class 属性里会出现两个 backend-chip。
+     只在异常时提示：后端连通是预期状态，常驻「● 后端已连接」属于调试信息，
+     不该出现在用户界面上（模板用 v-show 控制显隐，空串即隐藏） */
+  if (online === false) { chipClass.value = 'offline'; chipHtml.value = '○ 后端未连接'; }
+  else { chipClass.value = ''; chipHtml.value = ''; }
 }
 
 /* ---------- 分类浮层 ---------- */
@@ -90,10 +92,15 @@ async function ensureChatSocket() {
 }
 
 /* 登录后从后端拉取商城数据（购物车 / 收藏 / 订单「全部」）同步本地 store 与角标；
+   顺带同步一次会话列表 —— 未读数只有服务端知道，不拉这一次，不进消息中心就永远没有
+   未读角标（顶部「消息中心」与首页会员卡的「消息」入口都靠它）；
    后端未实现时 api.js 自动回退本地演示数据，无副作用、不阻塞登录流程 */
 async function refreshServerData() {
   if (!QM_STORE.state.user || !QM_STORE.state.user.token) return;
-  await Promise.allSettled([QM_API.cart.list(), QM_API.favorites.list(), QM_API.orders.list('')]);
+  await Promise.allSettled([
+    QM_API.cart.list(), QM_API.favorites.list(), QM_API.orders.list(''),
+    QM_CHAT_INBOX.syncConversations()   // 会话未读数（失败静默：不影响登录流程）
+  ]);
 }
 function onUserChange(u) {
   renderUserArea();
@@ -236,6 +243,7 @@ const navOff = router.afterEach(navActive);
 
 let guardTimer = null;
 let globalClickHandler = null;
+let offInboxFrame = null;
 
 /* ---------- 初始化 ---------- */
 onMounted(() => {
@@ -247,6 +255,9 @@ onMounted(() => {
   buildFlyout();
   globalClickHandler = e => { onGlobalClick(e).catch(err => console.error(err)); };
   document.addEventListener('click', globalClickHandler);
+  /* 全局订阅实时帧：消息中心页挂载时由该页处理并渲染，其余页面（首页 / 商品页 / 订单页…）
+     由 chatInbox 兜底落库并累加未读 —— 否则不在消息中心就收不到任何未读提示 */
+  offInboxFrame = QM_CHAT_SOCKET.onMessage(frame => QM_CHAT_INBOX.handleFrame(frame));
   QM_API.health().then(online => {
     renderBackendChip(online);
     /* 刷新页面恢复登录态（sessionStorage）后立即上线，无需先进消息中心 */
@@ -263,6 +274,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   offs.forEach(off => off());
   navOff();
+  if (offInboxFrame) offInboxFrame();
   QM_CHAT_SOCKET.close(); // 应用销毁时关闭全局实时通道
   if (guardTimer) clearInterval(guardTimer);
   if (globalClickHandler) document.removeEventListener('click', globalClickHandler);
@@ -300,7 +312,8 @@ onBeforeUnmount(() => {
       <span class="cart-glyph" aria-hidden="true">🛒<em id="cartCount">{{ cartCount }}</em></span>
       <span>购物车</span>
     </a>
-    <button id="backendChip" class="backend-chip" :class="chipClass" v-html="chipHtml" title="点击重新检测后端连通性" @click="checkBackend"></button>
+    <!-- 后端状态胶囊：只在未连接时出现（v-show 由 chipHtml 是否为空驱动） -->
+    <button v-show="chipHtml" id="backendChip" class="backend-chip" :class="chipClass" v-html="chipHtml" title="点击重新检测后端连通性" @click="checkBackend"></button>
   </header>
 
   <!-- ===== 主导航 ===== -->

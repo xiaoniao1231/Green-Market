@@ -12,6 +12,40 @@ import QM_UI from '../core/ui.js';
 const { esc, price, artStyle, artHtml, toast, modal, confirmDialog } = QM_UI;
 const router = useRouter();
 
+/* ---------- SKU 工具（与 DetailView 同口径：值兼容字符串 / {v,img} / {v,img,price}） ---------- */
+const valOf = v => (typeof v === 'string' ? v : (v && v.v) || '');
+const valImg = v => (typeof v === 'string' ? '' : (v && v.img) || '');
+const valPrice = v => {
+  const n = Number(typeof v === 'object' && v ? v.price : NaN);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+const moneyText = n => (Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2));
+/* 生成规格文本：各组已选值用 ' / ' 拼接（与详情页加购口径一致） */
+function skuTextOf(skus, pick) { return skus.map((g, gi) => valOf(g.values[pick[gi]])).join(' / '); }
+/* 按选中款式计算成交价：靠后的款式价覆盖靠前；无款式价回退商品默认价（与详情页 curUnitPrice 同规则） */
+function skuPriceOf(product, pick) {
+  let unit = Number(product.price) || 0;
+  (product.skus || []).forEach((g, gi) => {
+    const sp = valPrice((g.values || [])[pick[gi]]);
+    if (sp !== null) unit = sp;
+  });
+  return unit;
+}
+/* 按选中款式取展示图（与详情页 mainArt 同口径：最近点击的规格组有图就用它，
+   否则第一个带图的选中组；都没有回退商品主图） */
+function pickArtOf(product, pick, lastGroup) {
+  const skus = (product && Array.isArray(product.skus)) ? product.skus : [];
+  let first = null;
+  for (let gi = 0; gi < skus.length; gi++) {
+    const v = (skus[gi].values || [])[pick[gi]];
+    const img = valImg(v);
+    if (!img) continue;
+    if (!first) first = { img };
+    if (gi === lastGroup) return { img };
+  }
+  return first || (product && product.art) || null;
+}
+
 /* 原版 #cartTitle 文本（textContent）与 #cartRoot 容器（innerHTML 由 renderList 重建，
    与原版 mount 里对 view.querySelector('#cartRoot') 的写法保持一致） */
 const cartTitle = ref('');
@@ -19,14 +53,26 @@ const cartRootEl = ref(null);
 
 function cartRow(item) {
   const p = item.product;
+  /* 条目图片：优先显示加购时选中的款式图（item.img），没有款式图才回退商品主图 */
+  const art = (item.img && { img: item.img }) || (p && p.art) || null;
+  /* 商品状态：已删除(deleted=1) / 已下架(onSale=0) 时，图片灰化并叠加状态标签 */
+  const isDeleted = p && p.deleted === 1;
+  const isOffShelf = !isDeleted && p && p.onSale === 0;
+  const statusLabel = isDeleted ? '已删除' : (isOffShelf ? '已下架' : '');
+  /* 可换款式：商品在售（未删除、未下架）且带规格、每组都有可选值；已下架/已删除的商品不再提供换款式 */
+  const canChangeSku = p && !isDeleted && p.onSale !== 0
+    && Array.isArray(p.skus) && p.skus.length
+    && p.skus.every(g => Array.isArray(g.values) && g.values.length > 0);
+  const ciArtCls = (isDeleted || isOffShelf) ? 'ci-art is-inactive' : 'ci-art';
+  const statusBadge = statusLabel ? `<span class="ci-status-badge">${statusLabel}</span>` : '';
   return `
     <div class="cart-item" data-key="${esc(item.key)}">
       <span class="cart-check ${item.checked ? 'checked' : ''}" data-action="cart-check" data-key="${esc(item.key)}">${item.checked ? '✓' : ''}</span>
       <div class="ci-main">
-        <span class="ci-art" style="${artStyle(p.art)}">${artHtml(p.art)}</span>
+        <span class="${ciArtCls}" style="${artStyle(art)}">${statusBadge}${artHtml(art)}</span>
         <div class="ci-info">
           <h4 class="ellipsis-2" data-action="open-product" data-id="${esc(p.id)}">${esc(p.title)}</h4>
-          <span class="ci-sku">规格：${esc(item.sku)}</span>
+          <span class="ci-sku">规格：${esc(item.sku)}${canChangeSku ? `<a class="ci-sku-edit" data-action="cart-sku" data-key="${esc(item.key)}">换款式</a>` : ''}</span>
         </div>
       </div>
       <span>${price(QM_STORE.cart.unitPrice(item))}</span>
@@ -51,10 +97,30 @@ function bindCheckout() {
   };
 }
 
-/* 每次渲染前先走接口同步（后端实现后为真实数据；未实现时自动回退本地演示数据），
-   随后按本地 store 渲染——服务端数据为准、本地缓存兜底 */
+/* 按店铺分组（保持首次出现顺序；无店铺信息归入「其他店铺」） */
+function groupByShop(items) {
+  const groups = [];
+  const idx = new Map();
+  items.forEach(it => {
+    const name = (it.product && it.product.shop && it.product.shop.name) || '其他店铺';
+    if (!idx.has(name)) { idx.set(name, groups.length); groups.push({ name, items: [] }); }
+    groups[idx.get(name)].items.push(it);
+  });
+  return groups;
+}
+
+/* 每次渲染前先走接口同步（strict：购物车数据以后端为准，失败如实报错并显示空态，
+   绝不用本地旧缓存冒充后端数据），成功后再按本地缓存渲染 */
 async function renderList() {
-  try { await QM_API.cart.list(); } catch (e) { /* 业务失败不阻断本地渲染 */ }
+  try {
+    await QM_API.cart.list();
+  } catch (e) {
+    /* strict：接口失败不展示本地旧缓存（列表 / 角标同步归零），并给出明确原因 */
+    QM_STORE.state.cart = [];
+    QM_STORE.saveNow();
+    QM_STORE.emit('cart');
+    toast((e && e.message) || '购物车加载失败', 'error');
+  }
   const items = QM_STORE.cart.list();
   const allChecked = items.length > 0 && items.every(i => i.checked);
   const selected = items.filter(i => i.checked);
@@ -69,7 +135,18 @@ async function renderList() {
               <span class="cart-check ${allChecked ? 'checked' : ''}" data-action="cart-check-all">${allChecked ? '✓' : ''}</span>
               <span>商品信息</span><span>单价</span><span>数量</span><span>小计</span><span>操作</span>
             </div>
-            ${items.map(cartRow).join('')}
+            <div class="cart-batch-bar">
+              <span>已选 <b style="color:var(--accent)">${selected.length}</b> 种</span>
+              <button class="btn btn-plain btn-sm" data-action="cart-batch-del" ${selected.length ? '' : 'disabled'}>批量删除</button>
+            </div>
+            ${groupByShop(items).map(g => `
+              <div class="cart-shop-group">
+                <div class="cart-shop-head">
+                  <span>${esc(g.name)}</span>
+                  <small>共 ${g.items.reduce((s, i) => s + i.qty, 0)} 件</small>
+                </div>
+                ${g.items.map(cartRow).join('')}
+              </div>`).join('')}
           </div>
           <aside class="cart-summary">
             <h3>结算明细</h3>
@@ -82,6 +159,79 @@ async function renderList() {
           </aside>
         </div>` : `<div class="cart-list"><div class="empty-state"><div class="empty-icon">🛒</div><h3>购物车还是空的</h3><p>快去挑选心仪的好物吧</p><a class="btn btn-primary" href="#/home">去逛逛</a></div></div>`;
   bindCheckout();
+}
+
+/* 换款式弹层：选择新规格组合（与详情页同一套规格渲染 / 价格口径），
+   确认后调 PUT /cart/items/sku（后端事务：新款式合并数量并删除旧条目），成功后重拉列表 */
+function openSkuPicker(key) {
+  const item = QM_STORE.cart.list().find(i => i.key === key);
+  if (!item || !item.product) return;
+  const p = item.product;
+  /* 已删除 / 已下架的商品不再支持换款式（入口已隐藏，此处双保险） */
+  if (p.deleted === 1 || p.onSale === 0) return;
+  const skus = Array.isArray(p.skus) ? p.skus : [];
+  if (!skus.length) return;
+  /* 从当前 sku 反解初始选中（' / ' 切分逐组匹配；匹配不到默认第 0 项） */
+  const curParts = String(item.sku || '').split(' / ').map(s => s.trim());
+  const pick = skus.map((g, gi) => {
+    const want = curParts[gi];
+    const vs = g.values || [];
+    const idx = vs.findIndex(v => valOf(v) === want);
+    return idx >= 0 ? idx : 0;
+  });
+  /* 弹层头部图：优先当前选中款式图（最近点击的规格组有图优先），无则回退商品主图 */
+  let lastGroup = -1;
+  let pickArt = pickArtOf(p, pick, lastGroup);
+
+  const m = modal(`
+    <div class="sku-picker">
+      <div class="sku-picker-head">
+        <span id="skuPickArt" class="ci-art" style="${artStyle(pickArt)}">${artHtml(pickArt)}</span>
+        <div class="sku-picker-info">
+          <h3 class="ellipsis-2">${esc(p.title)}</h3>
+          <p class="sku-picker-price">款式价：¥<b id="skuPickPrice">${esc(moneyText(skuPriceOf(p, pick)))}</b></p>
+        </div>
+      </div>
+      <div class="sku-picker-body">
+        ${skus.map((g, gi) => `
+          <div class="sku-group">
+            <b>${esc(g.name || '规格')}：</b>
+            ${(g.values || []).map((v, vi) => `
+              <button class="sku-chip${vi === pick[gi] ? ' active' : ''}" data-group="${gi}" data-vi="${vi}">
+                ${esc(valOf(v))}${valPrice(v) ? `<em class="sku-chip-price">¥${esc(moneyText(valPrice(v)))}</em>` : ''}
+              </button>`).join('')}
+          </div>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-plain" data-close>取消</button>
+        <button class="btn btn-primary btn-lg" id="skuPickConfirm" style="flex:1">确认更换</button>
+      </div>
+    </div>`, { wide: true });
+
+  m.root.querySelectorAll('[data-group]').forEach(btn => btn.onclick = () => {
+    const gi = Number(btn.dataset.group);
+    const vi = Number(btn.dataset.vi);
+    pick[gi] = vi;
+    lastGroup = gi;
+    m.root.querySelectorAll(`[data-group="${gi}"]`).forEach(x => x.classList.toggle('active', Number(x.dataset.vi) === vi));
+    m.root.querySelector('#skuPickPrice').textContent = moneyText(skuPriceOf(p, pick));
+    /* 头部图随所选款式实时切换（与详情页主图同口径） */
+    const artEl = m.root.querySelector('#skuPickArt');
+    const art = pickArtOf(p, pick, lastGroup);
+    artEl.style.cssText = artStyle(art);
+    artEl.innerHTML = artHtml(art);
+  });
+
+  m.root.querySelector('#skuPickConfirm').onclick = async () => {
+    const newSku = skuTextOf(skus, pick);
+    if (newSku === String(item.sku || '')) { m.close(); toast('款式未变化'); return; }
+    try {
+      await QM_API.cart.updateSku(item.key, newSku, skuPriceOf(p, pick));
+      m.close();
+      await renderList();
+      toast('已更换款式');
+    } catch (e) { toast((e && e.message) || '修改款式失败，请稍后重试', 'error'); }
+  };
 }
 
 /* 结算弹窗（地址 / 优惠券 / 支付方式选择，QM_UI.modal） */
@@ -175,7 +325,7 @@ async function openCheckout(items) {
     if (!chosenAddr) return toast('请先选择收货地址', 'error');
     const coupon = coupons.find(c => c.id === chosenCoupon) || null;
     const payload = {
-      items: items.map(i => ({ productId: i.productId, sku: i.sku, qty: i.qty, price: QM_STORE.cart.unitPrice(i), title: i.product.title })),
+      items: items.map(i => ({ productId: i.productId, sku: i.sku, qty: i.qty, price: QM_STORE.cart.unitPrice(i), title: i.product.title, img: i.img || null })),
       address: { name: chosenAddr.name, phone: chosenAddr.phone, region: chosenAddr.region, detail: chosenAddr.detail },
       coupon, payMethod, remark: m.root.querySelector('#orderRemark').value.trim()
     };
@@ -207,18 +357,53 @@ async function onCartRootClick(e) {
     QM_STORE.cart.toggleAll(!allChecked); renderList();
   } else if (action === 'cart-del') {
     if (await confirmDialog('删除商品', '确定将该商品移出购物车吗？', '删除', true)) {
-      await QM_API.cart.remove([t.dataset.key]); renderList(); toast('已删除');
+      try {
+        await QM_API.cart.remove([t.dataset.key]);
+        renderList();
+        toast('已删除');
+      } catch (e) { toast((e && e.message) || '删除失败，请稍后重试', 'error'); }
+    }
+  } else if (action === 'cart-batch-del') {
+    const selected = QM_STORE.cart.list().filter(i => i.checked);
+    if (!selected.length) return;
+    if (await confirmDialog('批量删除', `确定将选中的 ${selected.length} 种商品移出购物车吗？`, '删除', true)) {
+      try {
+        await QM_API.cart.remove(selected.map(i => i.key));
+        renderList();
+        toast(`已删除 ${selected.length} 种商品`);
+      } catch (e) { toast((e && e.message) || '批量删除失败，请稍后重试', 'error'); }
     }
   } else if (action === 'cart-clear') {
     if (await confirmDialog('清空购物车', '确定清空购物车中的所有商品吗？', '清空', true)) {
-      await QM_API.cart.clear(); renderList(); toast('购物车已清空');
+      try {
+        await QM_API.cart.clear();
+        renderList();
+        toast('购物车已清空');
+      } catch (e) { toast((e && e.message) || '清空失败，请稍后重试', 'error'); }
     }
+  } else if (action === 'cart-sku') {
+    openSkuPicker(t.dataset.key);
   } else if (action === 'cart-qty') {
     const item = QM_STORE.cart.list().find(i => i.key === t.dataset.key);
-    if (item) { await QM_API.cart.update(t.dataset.key, item.qty + Number(t.dataset.dir)); renderList(); }
+    if (item) {
+      /* 数量边界钳制（1-999）：到边界后步进不再向后端发非法值（原实现会发 0 / 1000 被后端拒绝） */
+      const next = item.qty + Number(t.dataset.dir);
+      if (next < 1 || next > 999) return;
+      try {
+        await QM_API.cart.update(t.dataset.key, next);
+        renderList();
+      } catch (e) { toast((e && e.message) || '修改数量失败，请稍后重试', 'error'); }
+    }
   } else if (action === 'cart-qty-input') {
     const input = t;
-    input.onchange = async () => { const v = parseInt(input.value, 10); if (v >= 1) { await QM_API.cart.update(input.dataset.key, v); renderList(); } };
+    input.onchange = async () => {
+      /* 输入非法（非数字 / 0 / 超上限）时钳制到 1-999，与步进按钮同一口径 */
+      const v = Math.max(1, Math.min(999, parseInt(input.value, 10) || 1));
+      try {
+        await QM_API.cart.update(input.dataset.key, v);
+        renderList();
+      } catch (e) { toast((e && e.message) || '修改数量失败，请稍后重试', 'error'); }
+    };
   }
 }
 

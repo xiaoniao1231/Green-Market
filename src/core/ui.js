@@ -133,10 +133,21 @@ let currentLoginModal = null;
   const hasSkuRange = p => !!skuRange(p);
 
   function productCard(p, extra) {
+    /* 商品状态：已删除(deleted=1) 或 已下架(onSale=0) 时，图片灰化并叠加状态标签。
+       仅收藏页 / 购物车等「历史快照」场景才会出现非在售商品；
+       首页/搜索/推荐等在售列表接口不会下发这两个状态，因此不影响正常卡片外观。 */
+    const isDeleted = p && p.deleted === 1;
+    const isOffShelf = !isDeleted && p && p.onSale === 0;
+    const statusLabel = isDeleted ? '已删除' : (isOffShelf ? '已下架' : '');
+    const cardCls = (isDeleted || isOffShelf) ? 'product-card is-inactive' : 'product-card';
+    const statusBadge = statusLabel
+      ? `<span class="pc-status-badge">${statusLabel}</span>`
+      : '';
     return `
-    <div class="product-card" data-action="open-product" data-id="${esc(p.id)}">
+    <div class="${cardCls}" data-action="open-product" data-id="${esc(p.id)}">
       <div class="pc-art" style="${artStyle(p.art)}">
         ${p.tag ? `<span class="pc-tag">${esc(p.tag)}</span>` : ''}
+        ${statusBadge}
         ${artHtml(p.art)}
       </div>
       <div class="pc-info">

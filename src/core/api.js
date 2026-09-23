@@ -88,10 +88,10 @@ function noteOnline(online) {
   /**
    * 通用调用：把后端的 Result 结构统一转成业务数据 / 业务错误。
    *
-   * mockFn 是**本地离线回退**：只用于后端尚未实现的购物车 / 订单等接口，
-   * 让用户在不接后端时仍能把数据存到本地（存的是用户自己的操作，不是预置假数据）。
+   * mockFn 是**本地离线回退**：目前只用于后端尚未实现的订单接口，
+   * 让用户在不接后端时仍能把订单数据存到本地（存的是用户自己的操作，不是预置假数据）。
    * 后端已实现的接口一律 strict=true，出错就如实抛出，不再有任何演示数据兜底
-   * —— 收藏、地址这类「服务端才是唯一真相」的数据尤其如此，静默回退只会造成假成功。
+   * —— 收藏、地址、购物车这类「服务端才是唯一真相」的数据尤其如此，静默回退只会造成假成功。
    */
   async function call(entry, mockFn, { strict = false } = {}) {
     let res;
@@ -160,13 +160,13 @@ function noteOnline(online) {
                       address, coupon, payMethod, remark, goodsAmount, discount, freight, total, logistics }
        favorites    productId[]
      接口结构（契约见 docs/商城三功能联调接口文档.md）：
-       cart.item    { itemKey, productId, sku, qty, product{id,title,price,original,art,sales,stock,tag,shop} }
+       cart.item    { itemKey, productId, sku, qty, price, product{id,title,price,original,art,skus,sales,stock,tag,shop} }
        orders.order { 同上，但 createTime/payTime/shipTime/finishTime 为 'yyyy-MM-dd HH:mm:ss' 字符串，
                       items 额外携带 art 快照 }
        favorites    { total, page, size, list: [商品对象] }
      说明：真实接口成功（code=1）后同步本地 store（写穿缓存）；
-      购物车 / 订单在后端未实现时仍可由 call() 回退本地存储，
-      收藏已改为 strict（服务端是唯一数据源，不做本地回退）。
+      购物车 / 收藏 / 地址已改为 strict（服务端是唯一数据源，不做本地回退），
+      订单在后端未实现时仍可由 call() 回退本地存储。
      ========================================================= */
   function fullTime(ts) {
     const d = new Date(ts);
@@ -179,33 +179,39 @@ function noteOnline(online) {
     const t = Date.parse(v);
     return isNaN(t) ? null : t;
   }
-  /* 本地购物车条目 → 接口条目（本地离线回退路径使用；商品信息取条目自带的快照）
-     price = 加购时选中款式的成交价（无款式价则为 null，服务端按商品默认价处理） */
-  function cartItemToApi(item) {
-    const p = item.product || null;
-    return {
-      itemKey: item.key,
-      productId: item.productId,
-      sku: item.sku,
-      qty: item.qty,
-      price: (item.price === undefined || item.price === null) ? null : Number(item.price),
-      product: p ? { id: p.id, title: p.title, price: p.price, original: p.original, art: p.art, sales: p.sales, stock: p.stock, tag: p.tag, shop: p.shop } : null
-    };
-  }
-  /* 接口购物车列表 → 本地 store：
+  /* 接口购物车列表 → 本地 store（写穿缓存：store 只作页面渲染 / 角标的缓存，
+     购物车数据以后端为准；接口失败由调用方如实报错，不再回退本地数据）：
      checked 属前端态（勾选不落库）——刷新后对已存在条目保持原勾选，新条目默认不勾选（由用户手动勾选）；
-     product 存服务端下发的商品快照，供页面渲染（不依赖 mock 商品库是否有该商品）；
-     price 为款式价（服务端按加入时的选款快照存，用于结算计价） */
+     product 存服务端下发的商品快照，供页面渲染；
+     price 为款式价（服务端按加入时的选款快照存，用于结算计价）；
+     img 为款式图：优先取服务端下发的 img，其次按 product.skus 与条目 sku 解析（与详情页
+     「主图随款式切换」同口径），两者都没有时沿用本地已有记录（仅渲染辅助，不改变数据来源） */
+  function skuImgFromProduct(product, skuText) {
+    if (!product || !Array.isArray(product.skus) || !product.skus.length) return null;
+    const parts = String(skuText || '').split(' / ').map(s => s.trim());
+    let img = null;
+    product.skus.forEach((g, gi) => {
+      if (img || !Array.isArray(g.values)) return;
+      const want = parts[gi];
+      if (!want) return;
+      for (const v of g.values) {
+        const vt = typeof v === 'string' ? v : (v && v.v);
+        if (vt === want && v && v.img) { img = v.img; break; }
+      }
+    });
+    return img || null;
+  }
   function syncCartFromApi(apiList) {
     const prev = {};
-    QM_STORE.state.cart.forEach(i => { prev[i.key] = i.checked; });
+    QM_STORE.state.cart.forEach(i => { prev[i.key] = { checked: i.checked, img: i.img || null }; });
     QM_STORE.state.cart = (apiList || []).map(it => ({
       key: it.itemKey,
       productId: it.productId,
       sku: it.sku || '默认',
       qty: it.qty,
-      checked: prev[it.itemKey] !== undefined ? prev[it.itemKey] : false,
+      checked: prev[it.itemKey] !== undefined ? prev[it.itemKey].checked : false,
       price: (it.price === undefined || it.price === null) ? null : Number(it.price),
+      img: it.img || skuImgFromProduct(it.product, it.sku) || (prev[it.itemKey] ? prev[it.itemKey].img : null),
       product: it.product || null
     }));
     QM_STORE.saveNow();
@@ -337,35 +343,54 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 购物车（后端实现后走真实接口；未实现时回退本地存储演示） =================
+    /* ================= 购物车（strict：严格走后端，不做本地回退） =================
        契约要点（详见 docs/购物车接口文档.md）：
-       · GET    /cart                     → data: [条目]，条目含 itemKey/productId/sku/qty/product{...}
-       · POST   /cart                     → body {productId, skuText, quantity}，data: {itemKey}（合并后的条目）
-       · PUT    /cart/items               → body {itemKey, quantity}（itemKey 含 '/'，故不走路径参数）
-       · DELETE /cart/items               → body {itemKeys: []} 批量删除
-       · DELETE /cart                     → 清空购物车
-       每个变更成功后重新拉取一次列表（写穿缓存），保证本地 store 与服务端一致。 */
+       · GET    /cart                     → data: [条目]，条目含 itemKey/productId/sku/qty/price/product{...}
+       · POST   /cart                     → body {productId, skuText, quantity, price}，data: null（写接口无业务返回数据）
+       · PUT    /cart/items               → body {itemKey, quantity}（itemKey 含 '/'，故不走路径参数），data: null
+       · PUT    /cart/items/sku           → body {itemKey, skuText, price}（更换款式；新款式已存在则合并数量并删旧条目），data: null
+       · DELETE /cart/items               → body {itemKeys: []} 批量删除，data: null
+       · DELETE /cart                     → 清空购物车，data: null
+
+       ⚠ 购物车一律 strict，**不做本地离线回退**：购物车是服务端数据（加购 / 列表 / 结算都来自后端）。
+       历史实现曾静默回退本地存储，出现「后端 404 时本地假加购、刷新即消失」的问题；
+       现与收藏 / 地址同策略：接口不可达 / 404 / 500 如实抛错，由页面提示，绝不假成功。
+       成功（code=1）后仍写穿本地 store，但它只是渲染缓存，不再承担兜底职责。
+       每个变更成功后重新拉取一次列表，保证本地缓存与服务端一致。 */
     cart: {
       async list() {
         const data = await call(
           { name: '购物车列表', method: 'GET', path: '/cart', query: {}, token: tokenOf() },
-          () => QM_STORE.cart.list().map(cartItemToApi)
+          null, { strict: true }
         );
         syncCartFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
         return QM_STORE.cart.list();
       },
+      /* add(productId, skuText, qty, price)：price 为选中款式的成交价（详情页算好传入；
+         无款式价传 null，服务端按商品默认价处理）。加购只走后端，失败如实抛错。 */
       async add(productId, skuText, qty, price) {
         const skuPrice = (price === undefined || price === null || price === '') ? null : Number(price);
         await call(
           { name: '加入购物车', method: 'POST', path: '/cart', body: { productId, skuText, quantity: qty, price: skuPrice }, token: tokenOf() },
-          () => { QM_STORE.cart.add(productId, skuText, qty, skuPrice); return { itemKey: productId + '|' + (skuText || '默认') }; }
+          null, { strict: true }
         );
         return QM_API.cart.list();
       },
       async update(itemKey, qty) {
         await call(
           { name: '修改数量', method: 'PUT', path: '/cart/items', body: { itemKey, quantity: qty }, token: tokenOf() },
-          () => { QM_STORE.cart.setQty(itemKey, qty); return { updated: true }; }
+          null, { strict: true }
+        );
+        return QM_API.cart.list();
+      },
+      /* 修改款式（换规格）：body { itemKey, skuText, price }——itemKey 为当前条目，
+         skuText 为新款式（详情页同一口径的 ' / ' 拼接文本），price 为新款式成交价（无款式价传 null）。
+         后端事务：新款式已存在则数量合并（上限 999），随后删除旧条目；写接口无业务返回数据。 */
+      async updateSku(itemKey, skuText, skuPrice) {
+        const price = (skuPrice === undefined || skuPrice === null || skuPrice === '') ? null : Number(skuPrice);
+        await call(
+          { name: '修改款式', method: 'PUT', path: '/cart/items/sku', body: { itemKey, skuText, price }, token: tokenOf() },
+          null, { strict: true }
         );
         return QM_API.cart.list();
       },
@@ -373,14 +398,14 @@ function noteOnline(online) {
         const keys = [].concat(itemKeys || []);
         await call(
           { name: '删除购物车', method: 'DELETE', path: '/cart/items', body: { itemKeys: keys }, token: tokenOf() },
-          () => { QM_STORE.cart.remove(keys); return { removed: keys.length }; }
+          null, { strict: true }
         );
         return QM_API.cart.list();
       },
       async clear() {
         await call(
           { name: '清空购物车', method: 'DELETE', path: '/cart', body: {}, token: tokenOf() },
-          () => { QM_STORE.cart.clear(); return { cleared: true }; }
+          null, { strict: true }
         );
         return QM_API.cart.list();
       }

@@ -42,6 +42,10 @@ public interface ShopMapper {
     @Delete("delete from shop_follows where user_id = #{userId} and shop_id = #{shopId}")
     int deleteFollow(@Param("userId") String userId, @Param("shopId") String shopId);
 
+    //查询是否已关注（>0 表示已关注；店铺档案接口用它下发关注态，避免只靠前端本地记忆）
+    @Select("select count(*) from shop_follows where user_id = #{userId} and shop_id = #{shopId}")
+    int countFollow(@Param("userId") String userId, @Param("shopId") String shopId);
+
     //粉丝数 +1
     @Update("update shops set fans = fans + 1, updated_at = now() where shop_id = #{shopId}")
     void increaseFans(String shopId);

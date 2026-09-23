@@ -25,6 +25,7 @@ public class ShopInformation {
     private double score;       // 店铺评分
     private Integer fans;          // 店铺粉丝数
     private String founded;     // 店铺成立时间
+    private Boolean followed;   // 当前登录用户是否已关注该店铺（仅公开店铺档案接口下发；本地关注态只是镜像）
 
     public ShopInformation(String shopId, String name, String ownerUserId, String nicknameByUserId, String avatar, String intro, BigDecimal score, Integer fans, String founded) {
         this.shopId = shopId;

@@ -148,7 +148,13 @@ public class ShopServiceImpl implements ShopService {
         if (!StringUtils.hasLength(shopId)) throw new BusinessException("店铺不存在");
         Shop shop = shopMapper.findById(shopId);
         if (shop == null) throw new BusinessException("店铺不存在");
-        return toVo(shop);
+        ShopInformation info = toVo(shop);
+        /* 关注态必须由服务端下发：本地 shopFavs 只是镜像，换设备 / 清缓存 / 新标签页后
+           会丢失，导致已关注的店铺显示成「未关注」，而粉丝数却不为 0（前端无法自洽）。 */
+        String userId = CurrentHolder.getCurrentUserId();
+        info.setFollowed(StringUtils.hasLength(userId)
+                && shopMapper.countFollow(userId, shop.getShopId()) > 0);
+        return info;
     }
 
     //关注店铺

@@ -4,6 +4,7 @@ package org.web03.service.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.FavoriteMapper;
 import org.web03.mapper.ProductMapper;
@@ -73,6 +74,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
     //添加收藏
     @Override
+    @Transactional
     public void add(FavoriteAddRequest favoriteAddRequest) {
         String userId = currentUser();
         if (favoriteAddRequest == null || favoriteAddRequest.getProductId() == null) {
@@ -120,6 +122,8 @@ public class FavoriteServiceImpl implements FavoriteService {
         vo.setStock(row.getStock());
         vo.setTag(row.getTag());
         vo.setArt(buildArt(row.getSkus()));
+        vo.setOnSale(row.getOnSale());
+        vo.setDeleted(row.getDeleted());
         Map<String, Object> shop = new HashMap<>();
         shop.put("name", row.getShopName());
         shop.put("score", row.getShopScore());

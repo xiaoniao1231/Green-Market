@@ -3,6 +3,7 @@ package org.web03.service.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.web03.exception.BusinessException;
@@ -54,6 +55,7 @@ public class ShopServiceImpl implements ShopService {
 
     //创建店铺
     @Override
+    @Transactional
     public ShopInformation createShop(ShopRequest shopRequest) {
         String ownerId = currentOwner();
         String name = shopRequest.getName() == null ? null : shopRequest.getName();

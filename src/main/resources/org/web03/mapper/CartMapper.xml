@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.CartMapper">
+
+    <!-- 根据用户ID查询购物车列表 -->
+    <select id="listByUserId" resultType="org.web03.pojo.CartItem.CartItem">
+        select ci.*, p.title, p.price
+            as product_price, p.original_price, p.sales, p.stock, p.tag, p.skus,
+            p.on_sale, p.deleted, s.name
+            as shop_name, s.score as shop_score from cart_items ci
+            join products p on p.id = ci.product_id and p.deleted = 0
+            left join shops s on s.shop_id = p.shop_id
+        where ci.user_id = #{userId}
+        order by ci.id desc
+    </select>
+
+    <!-- 添加购物车 -->
+    <insert id="upsert">
+        insert into
+            cart_items(user_id, product_id, sku, quantity, price ,created_at ,updated_at)
+            values
+            (#{userId}, #{productId}, #{sku}, #{quantity}, #{price}, now(), now())
+            on duplicate key update
+            quantity = least(999,quantity + #{quantity}), price = coalesce(#{price}, price),updated_at = now()
+    </insert>
+
+</mapper>

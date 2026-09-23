@@ -2,6 +2,7 @@ package org.web03.service.impl;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.RegisterMapper;
 import org.web03.pojo.PhoneRegisterRequest;
@@ -24,6 +25,7 @@ public class RegisterServiceImpl implements RegisterService {
 
     // 手机号注册
     @Override
+    @Transactional
     public void phoneRegister(PhoneRegisterRequest prr) {
         // 参数校验
         if (prr.getPhone() == null || !prr.getPhone().matches("^1[3-9]\\d{9}$")) {

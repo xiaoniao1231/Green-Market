@@ -4,19 +4,19 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.web03.mapper.FavoriteMapper">
 
-    <!-- 根据用户ID统计收藏夹数量（商品已被软删除的不计入） -->
+    <!-- 根据用户ID统计收藏夹数量 -->
     <select id="countByUserId" resultType="java.lang.Integer">
-        SELECT COUNT(*) FROM favorites join products on
-        products.id = favorites.product_id and products.deleted = 0 WHERE favorites.user_id = #{userId}
+        SELECT COUNT(*) FROM favorites WHERE favorites.user_id = #{userId}
     </select>
 
-    <!-- 根据用户ID分页查询收藏夹列表（商品已被软删除的不返回） -->
+    <!-- 根据用户ID分页查询收藏夹列表 -->
     <select id="listByUserId" resultType="org.web03.pojo.Favorite.Favorite">
         SELECT f.id,f.user_id,f.product_id,f.created_at,
                p.title,p.price,p.original_price,p.sales,p.stock,p.tag,p.skus,
+               p.on_sale,p.deleted,
                s.name shop_name, s.score shop_score
         FROM favorites f
-                 JOIN products p ON p.id = f.product_id AND p.deleted = 0
+                 LEFT JOIN products p ON p.id = f.product_id
                  LEFT JOIN shops s ON s.shop_id = p.shop_id
         WHERE f.user_id = #{userId}
         ORDER BY f.id DESC

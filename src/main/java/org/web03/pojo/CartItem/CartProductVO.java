@@ -1,29 +1,27 @@
-package org.web03.pojo.Favorite;
+package org.web03.pojo.CartItem;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 /**
- * 收藏列表元素
+ * 购物车条目中的商品信息
  */
-
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class FavoriteProductVO {
+public class CartProductVO {
     private Integer id;                       // 商品ID
     private String title;                     // 标题
     private BigDecimal price;                 // 售价
     private BigDecimal original;              // 原价/划线价
-    private Map<String, Object> art;          // 主图：{img} 或占位 {e, g}
+    private Map<String, Object> art;          // 第一个带 img 的款式的图片
+    private List<Map<String, Object>> skus;   // 规格数组
     private Integer sales;                    // 销量
     private Integer stock;                    // 库存
     private String tag;                       // 标签
-    private Map<String, Object> shop;         // {name, score}
     private Integer onSale;                   // 是否在售：1 在售 / 0 已下架
-    private Integer deleted;                 // 软删除：1 已删除 / 0 正常
+    private Integer deleted;                  // 软删除：1 已删除 / 0 正常
+    private BigDecimal shopScore;             // 店铺评分
+    private Map<String, Object> shop;         // 店铺信息 {name, score}（前端购物车按店铺分组展示用）
 }

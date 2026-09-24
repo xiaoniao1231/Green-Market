@@ -22,6 +22,6 @@ public class OrderItem {
     private String sku;               // 规格文本
     private Integer qty;              // 数量
     private BigDecimal price;         // 下单时售价快照
-    private String artImg;            // 展示图 OSS 地址快照（下单时定格商品第一个图片）
+    private String artImg;            // 展示图 OSS 地址快照（下单时按下单规格定格所选款式图；无款式图时为空）
     private LocalDateTime createdAt;  // 创建时间
 }

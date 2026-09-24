@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 public class Order {
     private Integer id;               // 订单ID
     private String orderNo;           // 订单号
+    private String payNo;             // 支付单号
     private String userId;            // 买家账号
     private String status;            // pending 待付款 / paid 待发货 / shipped 待收货 / done 已完成 / canceled 已取消
     private BigDecimal goodsAmount;   // 商品金额（下单时定格）
@@ -32,4 +33,8 @@ public class Order {
     private LocalDateTime shipTime;   // 发货时间
     private LocalDateTime finishTime; // 完成时间（确认收货）
     private LocalDateTime createdAt;  // 下单时间
+
+
+    private Integer remindCount;          // 买家催发货次数
+    private LocalDateTime lastRemindTime; // 最近一次催发货时间
 }

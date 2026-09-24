@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.OrderMapper">
+
+    <!-- 插入订单 -->
+    <insert id="insertOrder" useGeneratedKeys="true" keyProperty="id">
+        insert into
+            orders (order_no, pay_no, user_id, status, goods_amount, discount, freight, total,pay_method, remark, address_json, coupon_json, logistics_json, created_at, updated_at)
+            values
+                (#{orderNo}, #{payNo}, #{userId}, #{status}, #{goodsAmount}, #{discount}, #{freight}, #{total},#{payMethod}, #{remark}, #{addressJson}, #{couponJson}, #{logisticsJson}, now(), now())
+    </insert>
+
+    <!-- 插入订单条目 -->
+    <insert id="insertItem">
+        insert into
+            order_items (order_id, shop_id, product_id, title, sku, qty, price, art_img, created_at)
+        values
+            (#{orderId}, #{shopId}, #{productId}, #{title}, #{sku}, #{qty}, #{price}, #{artImg}, now())
+    </insert>
+
+    <!-- 列出订单 -->
+    <select id="listByUser" resultType="org.web03.pojo.Order.Order">
+        select o.*, r.remind_count, r.last_remind_time
+        from orders o
+        left join seller_reminders r on r.order_id = o.id
+        where o.user_id = #{userId} <if test='status != null'> and o.status = #{status} </if>
+        order by o.id desc limit #{offset}, #{size}
+    </select>
+
+    <!-- 订单总数 -->
+    <select id="countByUser" resultType="java.lang.Long">
+        select count(*)
+            from orders
+            where user_id = #{userId} <if test='status != null'> and status = #{status}</if>
+    </select>
+
+
+                                        <!--- 店家    -->
+    <!-- 卖家订单列表 -->
+    <select id="sellerList" resultType="org.web03.pojo.Order.Order">
+        select o.*, r.remind_count, r.last_remind_time
+                        from orders o
+                        left join seller_reminders r on r.order_id = o.id
+                        where exists (select 1 from order_items i where i.order_id = o.id and i.shop_id = #{shopId})
+                        <if test='status != null'>  and o.status = #{status}</if>
+        order by o.id desc
+        limit #{offset}, #{size}
+    </select>
+
+    <!-- 卖家订单总数 -->
+    <select id="sellerCount" resultType="java.lang.Long">
+        select count(*) from orders o
+                        where exists (select 1 from order_items i where i.order_id = o.id and i.shop_id = #{shopId})
+                        <if test='status != null'>  and o.status = #{status}</if>
+    </select>
+
+    <!-- 同一支付单号下的所有子订单 -->
+    <select id="listByPayNo" resultType="org.web03.pojo.Order.Order">
+        select * from orders
+        where user_id = #{userId} and pay_no = #{payNo}
+        order by id
+    </select>
+
+</mapper>

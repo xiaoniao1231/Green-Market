@@ -29,11 +29,11 @@ public interface EmpMapper {
     @Select("select * from users where phone_number = #{phone}")
     User longinPhone(PhoneRegisterRequest prr);
 
-    // 根据手机号查询账号（忘记密码重置时定位用户；未绑定手机号的账号查不到，返回 null）
+    // 根据手机号查询账号
     @Select("select * from users where phone_number = #{phone} limit 1")
     User findByPhone(String phone);
 
-    //按照账户查询昵称（推送消息时展示对方昵称）
+    //按照账户查询昵称
     @Select("select nickname from users where user_id = #{userId}")
     String findNicknameByUserId(String userId);
 

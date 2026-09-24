@@ -13,6 +13,11 @@ import org.web03.service.SmsVerificationCodeService;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 短信验证码模块的控制器类
+ */
+
+
 @Slf4j
 @RestController
 public class SmsVerificationCode {

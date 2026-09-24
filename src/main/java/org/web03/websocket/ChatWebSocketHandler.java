@@ -167,27 +167,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     public void sweepDeadSessions() {
         long now = System.currentTimeMillis();
 
-        /* 1) 状态迁移：连接还活着，但用户超过 AWAY_TIMEOUT_MS 没操作 → 在线变离开；
-              这期间又操作了 → 离开变回在线。变化的账号先收集，再统一广播一次快照
-              （逐个广播会让每次变化都推一遍完整名单，人数一多纯属浪费）。 */
-        List<String> changed = new ArrayList<>();
-        ONLINE_SESSIONS.forEach((userId, entry) -> {
-            String next = statusOf(entry, now);
-            if (!next.equals(entry.status)) {
-                String prev = entry.status;
-                entry.status = next;
-                changed.add(userId);
-                log.info("用户 [{}] 状态变化: {} → {}（已 {}s 无用户操作）",
-                        userId, prev, next, (now - entry.lastUserActiveAt) / 1000);
-            }
-        });
-        if (!changed.isEmpty()) {
-            String first = changed.get(0);
-            OnlineSession firstEntry = ONLINE_SESSIONS.get(first);
-            broadcastPresence(first, firstEntry == null ? STATUS_OFFLINE : firstEntry.status, changed);
-        }
-
-        /* 2) 心跳超时回收：连接层面的清理，与上面的在线 / 离开状态无关 */
+        /* 1) 先回收心跳超时的僵死连接（连接层面）。
+              必须先于状态迁移：否则一个已经收不到任何帧的连接可能先被判成「离开」并广播，
+              紧接着同一轮又被摘表广播「离线」，对外表现为状态来回闪烁。
+              判定前提是「收到过心跳」（heartbeatSeen）——从没发过 PING 的旧客户端不参与超时回收。 */
         ONLINE_SESSIONS.forEach((userId, entry) -> {
             if (!entry.heartbeatSeen) {
                 return;
@@ -196,7 +179,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             if (idle <= heartbeatTimeoutMs) {
                 return;
             }
-            log.warn("用户 [{}] 心跳超时（{}s 未收到客户端帧），主动断开连接", userId, idle / 1000);
+            log.warn("用户 [{}] 心跳超时（{}s 未收到任何客户端帧，含自动心跳），主动断开连接", userId, idle / 1000);
             // 先摘表再关闭：即使 close() 没能触发 afterConnectionClosed，状态也已经干净，
             // 且不会与回调里的广播重复（回调此时已找不到该 user，wentOffline 为 false）。
             boolean[] removed = { false };
@@ -217,6 +200,29 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             }
             broadcastPresence(userId, STATUS_OFFLINE);
         });
+
+        /* 2) 再对**仍然活着**的连接做「在线 ↔ 离开」迁移。
+              为什么挂机不会被上一步判成离线：心跳是前端**定时自动**发的（每 30s，与用户是否操作无关），
+              它会持续刷新 lastActiveAt，所以 90s 的存活超时根本不会触发；
+              而离开判定只看 lastUserActiveAt（只由 ACTIVE 帧刷新）。
+              两个时钟互不干扰 —— 这正是「挂了 5 分钟还在线表里、只是变成离开」成立的原因。
+              变化的账号先收集再统一广播一次快照（逐个广播会重复推送完整名单）。 */
+        List<String> changed = new ArrayList<>();
+        ONLINE_SESSIONS.forEach((userId, entry) -> {
+            String next = statusOf(entry, now);
+            if (!next.equals(entry.status)) {
+                String prev = entry.status;
+                entry.status = next;
+                changed.add(userId);
+                log.info("用户 [{}] 状态变化: {} → {}（已 {}s 无用户操作）",
+                        userId, prev, next, (now - entry.lastUserActiveAt) / 1000);
+            }
+        });
+        if (!changed.isEmpty()) {
+            String first = changed.get(0);
+            OnlineSession firstEntry = ONLINE_SESSIONS.get(first);
+            broadcastPresence(first, firstEntry == null ? STATUS_OFFLINE : firstEntry.status, changed);
+        }
     }
 
     /** 取当前 session 对应的在线记录（按 sessionId 校验，避免多端换端时拿到别人的记录） */

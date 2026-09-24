@@ -8,6 +8,11 @@ import org.web03.pojo.Result;
 import org.web03.pojo.Shop.ShopRequest;
 import org.web03.service.ShopService;
 
+/**
+ * 店铺模块的控制器类
+ */
+
+
 @Slf4j
 @RestController
 @RequestMapping("/shops")

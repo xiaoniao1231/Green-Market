@@ -86,6 +86,7 @@ public class LongServiceImpl implements LongService {
         return getLoginInfo(login);
     }
 
+    //    获取登录信息
     private LoginInfo getLoginInfo(User login) {
         if (login != null) {
             //    创建JWT令牌

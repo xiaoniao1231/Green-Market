@@ -14,6 +14,7 @@ import java.util.Map;
 public class OrderVO {
     private Integer id;                       // 订单ID
     private String orderNo;                   // 订单号
+    private String payNo;                     // 支付单号：同一次下单拆出的子订单相同（前端据此归组 / 同步支付态）
     private String status;                    // pending / paid / shipped / done / canceled
     private String createTime;                // 下单时间
     private String payTime;                   // 支付时间
@@ -29,4 +30,6 @@ public class OrderVO {
     private BigDecimal freight;               // 运费
     private BigDecimal total;                 // 应付总额
     private List<Map<String, Object>> logistics; // 物流轨迹
+    private Integer remindCount;              // 买家催发货次数（null / 0 = 从未提醒）
+    private String lastRemindTime;            // 最近一次催发货时间（冷却期展示用）
 }

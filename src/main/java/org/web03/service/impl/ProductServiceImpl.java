@@ -18,7 +18,7 @@ import org.web03.pojo.Product.ProductVO;
 import org.web03.service.ProductService;
 import org.web03.utils.AliyunOSSOperator;
 import org.web03.utils.CurrentHolder;
-import tools.jackson.core.type.TypeReference;
+import org.web03.utils.JsonUtils;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
@@ -98,9 +98,9 @@ public class ProductServiceImpl implements ProductService {
         p.setCategory(productRequest.getCategory());
         p.setSub(productRequest.getSub());
         p.setTag(productRequest.getTag());
-        p.setSkus(toJson(normalizeSkus(productRequest.getSkus())));
-        p.setParams(toJson(productRequest.getParams()));
-        p.setDetail(toJson(productRequest.getDetail()));
+        p.setSkus(JsonUtils.toJson(normalizeSkus(productRequest.getSkus())));
+        p.setParams(JsonUtils.toJson(productRequest.getParams()));
+        p.setDetail(JsonUtils.toJson(productRequest.getDetail()));
         p.setDescription(resolveDesc(productRequest.getDesc(), productRequest.getDetail()));
         p.setOnSale(1);
         p.setDeleted(0);
@@ -108,7 +108,6 @@ public class ProductServiceImpl implements ProductService {
         productMapper.insert(p);
         return toVO(productMapper.getById(p.getId()));
     }
-
 
     //删除商品
     @Override
@@ -140,9 +139,9 @@ public class ProductServiceImpl implements ProductService {
         if (req.getCategory() != null) exist.setCategory(req.getCategory());
         if (req.getSub() != null) exist.setSub(req.getSub());
         if (req.getTag() != null) exist.setTag(req.getTag());
-        if (req.getSkus() != null) exist.setSkus(toJson(normalizeSkus(req.getSkus())));
-        if (req.getParams() != null) exist.setParams(toJson(req.getParams()));
-        if (req.getDetail() != null) exist.setDetail(toJson(req.getDetail()));
+        if (req.getSkus() != null) exist.setSkus(JsonUtils.toJson(normalizeSkus(req.getSkus())));
+        if (req.getParams() != null) exist.setParams(JsonUtils.toJson(req.getParams()));
+        if (req.getDetail() != null) exist.setDetail(JsonUtils.toJson(req.getDetail()));
         if (req.getDesc() != null) exist.setDescription(req.getDesc());
 
         productMapper.update(exist);
@@ -252,7 +251,8 @@ public class ProductServiceImpl implements ProductService {
         }
         return shopId;
     }
-    //Product（DB 行）→ ProductVO（前端契约对象）
+
+    //将 Product（DB 行）转换为 ProductVO（前端契约对象）
     private ProductVO toVO(Product p) {
         ProductVO vo = new ProductVO();
         vo.setId(p.getId());
@@ -264,21 +264,7 @@ public class ProductServiceImpl implements ProductService {
         vo.setCategory(p.getCategory());
         vo.setSub(p.getSub());
         vo.setTag(p.getTag());
-
-        // skus：展示图由「第一个带图的款式值」推导（前端已删除独立展示图上传，口径见 SellerProductsView.collect）
-        List<Map<String, Object>> skus = parseList(p.getSkus());
-        vo.setSkus(skus);
-
-        // art：取第一个带图的 SKU 款式图；无图返回渐变占位
-        Map<String, Object> art = new HashMap<>();
-        String firstImg = firstSkuImg(skus);
-        if (StringUtils.hasLength(firstImg)) {
-            art.put("img", firstImg);
-        } else {
-            art.put("e", "🛍️");
-            art.put("g", Arrays.asList("#ffe4d3", "#ffb88c"));
-        }
-        vo.setArt(art);
+        vo.setArt(JsonUtils.buildArt(p.getSkus()));
 
         // shop：JOIN 结果
         Map<String, Object> shop = new HashMap<>();
@@ -286,11 +272,11 @@ public class ProductServiceImpl implements ProductService {
         shop.put("name", p.getShopName());
         shop.put("score", p.getShopScore());
         vo.setShop(shop);
-        /* 款式价 → 价格区间：默认价与所有款式价一起取 min / max。
-           卡片列表用区间（如「¥299 - ¥399」），详情页按选中款式取具体价。 */
+        vo.setSkus(JsonUtils.parseList(p.getSkus()));
+        //款式价 → 价格区间
         BigDecimal min = p.getPrice();
         BigDecimal max = p.getPrice();
-        for (Map<String, Object> g : skus) {
+        for (Map<String, Object> g : JsonUtils.parseList(p.getSkus())) {
             Object valuesObj = g.get("values");
             if (!(valuesObj instanceof List)) continue;
             for (Object item : (List<?>) valuesObj) {
@@ -309,50 +295,11 @@ public class ProductServiceImpl implements ProductService {
         }
         vo.setPriceMin(min);
         vo.setPriceMax(max);
-        vo.setParams(parseParams(p.getParams()));
-        vo.setDetail(parseList(p.getDetail()));
+        vo.setParams(JsonUtils.parseParams(p.getParams()));
+        vo.setDetail(JsonUtils.parseList(p.getDetail()));
         vo.setDesc(p.getDescription());
         vo.setOnSale(p.getOnSale() != null && p.getOnSale() == 1);
         return vo;
-    }
-
-    //JSON 字符串 → List<Map>，异常则返回空列表
-    private List<Map<String, Object>> parseList(String json) {
-        if (!StringUtils.hasLength(json)) return new ArrayList<>();
-        try {
-            return OM.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
-        } catch (Exception e) {
-            log.error("json解析失败，json:{}", json, e);
-            return new ArrayList<>();
-        }
-    }
-
-    //展示图：取第一个带 img 的 SKU 款式值（与前端 collect() 推导一致）；无图返回 null
-    private String firstSkuImg(List<Map<String, Object>> skus) {
-        if (skus == null) return null;
-        for (Map<String, Object> g : skus) {
-            Object valuesObj = g.get("values");
-            if (!(valuesObj instanceof List)) continue;
-            for (Object item : (List<?>) valuesObj) {
-                if (!(item instanceof Map)) continue;
-                Object img = ((Map<?, ?>) item).get("img");
-                if (img != null && StringUtils.hasLength(String.valueOf(img))) {
-                    return String.valueOf(img);
-                }
-            }
-        }
-        return null;
-    }
-
-    //JSON 字符串 → List<List<String>>，异常则返回空列表
-    private List<List<String>> parseParams(String json) {
-        if (!StringUtils.hasLength(json)) return new ArrayList<>();
-        try {
-            return OM.readValue(json, new TypeReference<List<List<String>>>() {});
-        } catch (Exception e) {
-            log.error("json解析失败，json:{}", json, e);
-            return new ArrayList<>();
-        }
     }
 
     //original 传 0 / 负数按空处理
@@ -360,7 +307,6 @@ public class ProductServiceImpl implements ProductService {
         if (original == null || original.compareTo(BigDecimal.ZERO) <= 0) return null;
         return original;
     }
-
 
     //规范化规格款式（SKU）：入口统一清洗，保证入库 JSON 结构稳定。
     private List<Map<String, Object>> normalizeSkus(List<Map<String, Object>> skus) {
@@ -421,16 +367,6 @@ public class ProductServiceImpl implements ProductService {
             throw new BusinessException("款式「" + valueText + "」的价格需在 1-99999 元之间");
         }
         return p.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    //obj → JSON 字符串，异常则抛业务异常
-    private String toJson(Object obj) {
-        if (obj == null) return null;
-        try {
-            return OM.writeValueAsString(obj);
-        } catch (Exception e) {
-            throw new BusinessException("数据格式错误");
-        }
     }
 
     //desc 为空时从 detail 首段文字截取 120 字

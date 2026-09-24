@@ -54,10 +54,11 @@ aliyun:
     accessKeyId: ${OSS_ACCESS_KEY_ID:}
     accessKeySecret: ${OSS_ACCESS_KEY_SECRET:}
 
-# 在线状态
+# 在线状态：两个独立计时 —— 心跳只证明「页面还开着」（决定连接是否断开），
+# 离开看的是用户操作 ACTIVE 帧（决定在线 / 离开），所以挂机时不会被判离线
 app:
   presence:
-    away-timeout-ms: 300000      # 离开：毫秒，默认 5 分钟
-    heartbeat-timeout-ms: 90000  # 断开：毫秒，默认 90 秒
+    away-timeout-ms: 300000      # 离开：毫秒，默认 5 分钟（多久没有用户操作）
+    heartbeat-timeout-ms: 90000  # 断开：毫秒，默认 90 秒（需大于前端心跳间隔 30 秒）
     sweep-interval-ms: 30000     # 状态巡检间隔（毫秒，默认 30 秒）：检测「在线 ↔ 离开」变化并广播
 

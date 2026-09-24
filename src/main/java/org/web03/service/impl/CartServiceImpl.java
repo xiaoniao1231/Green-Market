@@ -11,6 +11,7 @@ import org.web03.mapper.ProductMapper;
 import org.web03.pojo.CartItem.*;
 import org.web03.service.CartService;
 import org.web03.utils.CurrentHolder;
+import org.web03.utils.JsonUtils;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -186,7 +187,7 @@ public class CartServiceImpl implements CartService {
         p.setOnSale(row.getOnSale());
         p.setDeleted(row.getDeleted());
         p.setSkus(parseSkus(row.getSkus()));
-        p.setArt(buildArt(row.getSkus()));
+        p.setArt(JsonUtils.buildArt(row.getSkus()));
         p.setShopScore(row.getShopScore());
         Map<String, Object> shop = new HashMap<>();
         shop.put("id", row.getShopId());
@@ -195,40 +196,6 @@ public class CartServiceImpl implements CartService {
         p.setShop(shop);
         vo.setProduct(p);
         return vo;
-    }
-
-    //构建商品图片(显示图片取第一个图片)
-    private Map<String, Object> buildArt(String art) {
-        Map<String, Object> artMap = new HashMap<>();
-        String firstImg = firstSkuImg(art);
-        if (StringUtils.hasLength(firstImg)) {
-            artMap.put("img", firstImg);
-        } else {
-            artMap.put("e", "🛍️");
-            artMap.put("g", Arrays.asList("#e8e8e8", "#f5f5f5"));
-        }
-        return artMap;
-    }
-
-    //获取第一个SKU的图片
-    private String firstSkuImg(String art) {
-        if (!StringUtils.hasLength(art)) return null;
-        try {
-            List<Map<String, Object>> skus = OM.readValue(art, new TypeReference<>() {
-            });
-            for (Map<String, Object> g : skus) {
-                Object valuesObj = g.get("values");
-                if (!(valuesObj instanceof List)) continue;
-                for (Object item : (List<?>) valuesObj) {
-                    if (!(item instanceof Map)) continue;
-                    Object img = ((Map<?, ?>) item).get("img");
-                    if (img != null && StringUtils.hasLength(String.valueOf(img))) {
-                        return String.valueOf(img);
-                    }
-                }
-            }
-        } catch (Exception ignored) { }
-        return null;
     }
 
 

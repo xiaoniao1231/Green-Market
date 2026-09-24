@@ -2,6 +2,7 @@ package org.web03.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Update;
 import org.web03.pojo.Product.ProductsCheck;
 import org.web03.pojo.Product.Product;
 
@@ -31,16 +32,10 @@ public interface ProductMapper {
     // 根据id获取商品
     Product getById(Integer id);
 
-    /**
-     * 买家端按 id 获取商品：额外要求「在售」。
-     * 商品下架后详情页必须不可见，而 getById 只过滤了软删除，故单独提供本方法。
-     */
+    //买家端按 id 获取商品
     Product getPublicById(@Param("id") Integer id);
 
-    /**
-     * 相关推荐：同分类的在售商品优先，不足时用其他在售商品补足（排除自身）。
-     * 排序表达式 (p.category = #{category}) DESC 让同分类排在最前。
-     */
+    //相关推荐：同分类的在售商品优先，不足时用其他在售商品补足（排除自身）。
     List<Product> related(@Param("id") Integer id, @Param("category") String category, @Param("limit") int limit);
 
     // 删除商品
@@ -69,4 +64,12 @@ public interface ProductMapper {
 
     // 标题模糊搜索（在售）总数
     long searchCount(@Param("q") String q);
+
+    // 扣减库存
+    @Update("update products set stock = stock - #{qty} where id = #{id} and stock >= #{qty}")
+    int deductStock(@Param("id") Integer id, @Param("qty") int qty);
+
+    //库存回补（取消订单时归还）
+    @Update("update products set stock = stock + #{qty} where id = #{id}")
+    void restoreStock(@Param("id") Integer id, @Param("qty") Integer qty);
 }

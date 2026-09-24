@@ -226,6 +226,7 @@ async function onGlobalClick(e) {
       }
       break;
     case 'open-product': router.push('/detail/' + encodeURIComponent(t.dataset.id)); break;
+    case 'open-order': router.push('/order/' + encodeURIComponent(t.dataset.id)); break;
     case 'quick-add-cart': {
       if (!requireLogin()) return;
       /* 先取商品详情拿规格：带规格（每组都有可选值）→ 弹款式选择；
@@ -369,7 +370,18 @@ onMounted(() => {
   document.addEventListener('click', globalClickHandler);
   /* 全局订阅实时帧：消息中心页挂载时由该页处理并渲染，其余页面（首页 / 商品页 / 订单页…）
      由 chatInbox 兜底落库并累加未读 —— 否则不在消息中心就收不到任何未读提示 */
-  offInboxFrame = QM_CHAT_SOCKET.onMessage(frame => QM_CHAT_INBOX.handleFrame(frame));
+  offInboxFrame = QM_CHAT_SOCKET.onMessage(frame => {
+    QM_CHAT_INBOX.handleFrame(frame);
+    /* 卖家催发货提醒（SELLER_REMIND）：与消息中心是否打开无关，店家在任意页面都要收到。
+       后端已把提醒落库（卖家订单列表靠它打「催发货」角标），这里只负责「让店家立刻知道」，
+       再广播一个本地事件，让店家相关页面自行重拉列表刷新角标 */
+    if (!frame || frame.type !== 'SELLER_REMIND') return;
+    const msg = frame.message || {};
+    const me = QM_STORE.state.user;
+    if (me && msg.receiverId && String(msg.receiverId) !== String(me.userId)) return;
+    QM_UI.toast(msg.content || '买家提醒你尽快发货', 'success');
+    QM_STORE.emit('sellerRemind', msg);
+  });
   QM_API.health().then(online => {
     renderBackendChip(online);
     /* 刷新页面恢复登录态（sessionStorage）后立即上线，无需先进消息中心 */

@@ -151,6 +151,8 @@
   border: 1px solid #ffe6c4; color: var(--text-2); font-size: 12.5px;
   border-radius: var(--radius); line-height: 1.75;
 }
+/* 有订单被买家催发货时的强调样式（订单管理页顶部汇总 / 工作台待办） */
+.seller-tip.urge { background: #fff7e6; border-color: #ffd591; color: #ad4e00; font-weight: 500; }
 
 /* ---------- 经营数据 ---------- */
 .seller-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 16px; }
@@ -165,8 +167,34 @@
 }
 .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: #ffd2b8; }
 .stat-card:hover::before { opacity: 1; }
+/* 统计卡是可点击入口（a 标签）：保持卡片外观，去掉链接默认样式 */
+a.stat-card { display: block; color: inherit; text-decoration: none; cursor: pointer; }
+a.stat-card:hover b { color: var(--brand); }
 .stat-card b { display: block; font-size: 26px; color: var(--brand-ink); font-variant-numeric: tabular-nums; line-height: 1.3; }
 .stat-card span { font-size: 12.5px; color: var(--text-3); }
+/* 「待发货」卡上的被催角标：把「有单待发」和「买家已经催了」区分开 */
+.stat-card .stat-urge {
+  display: inline-block; margin-top: 5px; font-style: normal; font-size: 11.5px;
+  color: #d4380d; background: #fff2e8; border: 1px solid #ffbb96;
+  border-radius: var(--radius-pill); padding: 1px 8px; white-space: nowrap;
+}
+
+/* 订单管理：状态筛选页签（沿用 .tabs 的胶囊样式，这里只调间距） */
+.seller-order-tabs { margin: 14px 0 6px; }
+
+/* 收入明细页：概览卡 + 明细表 */
+.income-stats { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .income-stats { grid-template-columns: repeat(2, 1fr); } }
+.income-panel { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--border); margin-top: 16px; overflow: hidden; }
+.income-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.income-table th { text-align: left; padding: 12px 18px; background: #fafafa; color: var(--text-2); font-weight: 600; font-size: 12.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.income-table td { padding: 12px 18px; border-bottom: 1px solid #f4f4f4; color: var(--text-2); }
+.income-table tr:last-child td { border-bottom: none; }
+.income-table tbody tr:hover { background: var(--fill-hover); }
+.income-table .ta-right { text-align: right; }
+.income-no { color: var(--text); font-variant-numeric: tabular-nums; }
+.income-amount .price { font-size: 14px; font-weight: 700; color: var(--accent-ink); }
+.income-time { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---------- 分区面板（待办 / 快捷管理 / 最近订单） ---------- */
 .seller-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
@@ -439,20 +467,62 @@ a.sm-art:hover { text-decoration: none; }
 
 /* ---------- 订单管理 ---------- */
 .seller-order-row {
-  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  margin-top: 12px; padding: 18px; border: 1px solid var(--border);
-  transition: box-shadow var(--dur) var(--ease);
+  background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  margin-top: 12px; border: 1px solid var(--border); border-left: 3px solid var(--border-strong);
+  overflow: hidden; transition: box-shadow var(--dur) var(--ease);
 }
 .seller-order-row:hover { box-shadow: var(--shadow-md); }
-.seller-order-head { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-2); flex-wrap: wrap; }
-.seller-order-head b { color: var(--text); font-weight: 600; }
-.seller-order-head .o-time { color: var(--text-3); font-size: 12px; }
+/* 左侧色条：待发货（要处理）最醒目，已发货次之，其余保持灰色 */
+.seller-order-row.st-paid { border-left-color: var(--brand); }
+.seller-order-row.st-shipped { border-left-color: #34b37a; }
+.seller-order-row.st-pending { border-left-color: #e8a33d; }
+.seller-order-row.st-done, .seller-order-row.st-canceled { border-left-color: var(--border-strong); }
+
+.seller-order-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: linear-gradient(180deg, #fcfcfd, #f8f9fa); border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-3); flex-wrap: wrap; }
+.seller-order-head .so-no { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.seller-order-head .o-time { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.seller-order-head .so-qty { font-size: 12px; color: var(--text-3); background: var(--fill); border-radius: var(--radius-pill); padding: 2px 10px; }
 .seller-order-head .o-status { margin-left: auto; }
-.seller-order-body { margin-top: 12px; padding: 12px 15px; background: var(--fill); border-radius: var(--radius); font-size: 13px; color: var(--text-2); line-height: 1.75; }
-.seller-order-foot { margin-top: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.seller-order-foot .o-total { font-size: 14px; }
-.seller-order-foot .o-total b { color: var(--brand-ink); font-size: 19px; }
-.seller-order-foot .o-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+/* 买家催发货角标：只有「待发货 + 被催过」的订单才显示，店家一眼看出该先发谁 */
+.seller-order-head .so-urge {
+  font-size: 12px; color: #d4380d; background: #fff2e8;
+  border: 1px solid #ffbb96; border-radius: var(--radius-pill);
+  padding: 2px 10px; white-space: nowrap;
+}
+
+.seller-order-body { padding: 14px 18px; }
+/* 收货信息：标签 + 值成对排版，地址独占一行 */
+.so-buyer { display: flex; flex-wrap: wrap; gap: 6px 26px; padding-bottom: 12px; border-bottom: 1px dashed var(--border); font-size: 13px; }
+.so-field { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.so-field > span { color: var(--text-4); flex: none; }
+.so-field > b { color: var(--text-2); font-weight: 500; word-break: break-all; }
+.so-field.so-addr { flex: 1 1 320px; }
+
+/* 商品明细：款式图 + 标题 + 规格标签 + 单价 × 数量 */
+.so-items { display: flex; flex-direction: column; }
+.so-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
+.so-item + .so-item { border-top: 1px dashed var(--border); }
+.so-art { position: relative; overflow: hidden; width: 56px; height: 56px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; flex: none; }
+.so-item-info { flex: 1; min-width: 0; }
+.so-item-info h4 { font-size: 13px; font-weight: 400; color: var(--text); margin-bottom: 6px; }
+.so-item-info small { font-size: 12px; color: var(--text-3); background: var(--fill); border-radius: var(--radius-xs); padding: 2px 8px; }
+.so-item-price { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.so-item-price small { font-size: 12px; color: var(--text-4); font-variant-numeric: tabular-nums; }
+
+/* 已发货订单露出最新一条物流轨迹 */
+.so-logi { margin-top: 2px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.so-logi span { color: var(--text-4); flex: none; }
+.so-logi b { color: var(--text-2); font-weight: 500; }
+.so-logi small { color: var(--text-4); font-size: 12px; }
+
+.seller-order-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 18px; background: #fffbf7; border-top: 1px solid #fdf1e8; font-size: 13px; color: var(--text-2); }
+.so-sum { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.so-sum > span { color: var(--text-3); font-size: 12px; }
+.so-sum > span > b { color: var(--text-2); font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+.so-sum .so-discount > b { color: var(--accent-ink-2); }
+.so-sum .so-total > b { font-size: 20px; color: var(--accent); }
+.seller-order-foot .o-actions { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.so-wait { font-size: 12px; color: var(--text-3); }
 
 @media (max-width: 1000px) {
   .seller-cols { grid-template-columns: 1fr; }

@@ -53,6 +53,10 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
          目前这三项仍由本地存储承载（后端 /orders 等接口尚未实现），
          用户实际产生数据后才有内容；后端接口落地后改为服务端数据源。 */
       orders: [],
+      /* 售后申请记录：{ [订单id]: { orderId, type, typeText, reason, remark, status, statusText, createTime } }
+         后端售后接口尚未实现（本轮约定只改前端），申请记录落在本机浏览器存储：
+         订单卡据此显示「售后处理中」并提供「售后进度」入口。 */
+      afterSales: {},
       addresses: [],
       coupons: [],
       contacts: [],        // 会话联系人：由「联系卖家」创建，或从 /messages/conversations 恢复
@@ -100,6 +104,8 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       if (!QM_STORE.state.chats) QM_STORE.state.chats = {};
       if (!QM_STORE.state.contacts) QM_STORE.state.contacts = [];
       QM_STORE.state.shopFavs = QM_STORE.state.shopFavs || [];
+      /* 旧会话里没有售后记录字段（本轮新增）：补齐为空字典，避免读取时抛错 */
+      QM_STORE.state.afterSales = QM_STORE.state.afterSales || {};
       /* 独立商家账号体系已移除：清理旧版 sellerUser 会话数据（店铺绑定统一挂在 user.shopId 上） */
       if (QM_STORE.state.sellerUser) { delete QM_STORE.state.sellerUser; save(); }
       /* 会话保留规则：只有「有实际聊天记录」的联系人才算会话 ——
@@ -296,7 +302,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
           total: 0,
           logistics: []
         };
-        order.freight = order.goodsAmount >= 99 ? 0 : 8;
+        order.freight = order.goodsAmount >= 50 ? 0 : 5;
         order.total = order.goodsAmount - order.discount + order.freight;
         QM_STORE.state.orders.unshift(order);
         save(); emit('orders');
@@ -331,6 +337,27 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         o.status = 'done'; o.finishTime = Date.now();
         o.logistics.unshift({ text: '包裹已签收，感谢您使用青集市', time: Date.now() });
         save(); emit('orders');
+      }
+    },
+
+    /* ---------- 售后服务（前端本地记录，不动后端） ---------- */
+    afterSales: {
+      get(orderId) { return QM_STORE.state.afterSales[String(orderId)] || null; },
+      list() { return Object.values(QM_STORE.state.afterSales); },
+      /** 提交售后申请：同一订单重复提交覆盖上一条（只保留最新进度） */
+      submit(orderId, { type, typeText, reason, remark }) {
+        const rec = {
+          orderId: String(orderId),
+          type, typeText, reason,
+          remark: remark || '',
+          status: 'pending',
+          statusText: '待处理',
+          createTime: Date.now()
+        };
+        QM_STORE.state.afterSales[String(orderId)] = rec;
+        persist();
+        emit('afterSales', rec);
+        return rec;
       }
     },
 

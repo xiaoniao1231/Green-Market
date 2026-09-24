@@ -88,10 +88,11 @@ function noteOnline(online) {
   /**
    * 通用调用：把后端的 Result 结构统一转成业务数据 / 业务错误。
    *
-   * mockFn 是**本地离线回退**：目前只用于后端尚未实现的订单接口，
-   * 让用户在不接后端时仍能把订单数据存到本地（存的是用户自己的操作，不是预置假数据）。
-   * 后端已实现的接口一律 strict=true，出错就如实抛出，不再有任何演示数据兜底
-   * —— 收藏、地址、购物车这类「服务端才是唯一真相」的数据尤其如此，静默回退只会造成假成功。
+   * mockFn 是**本地离线回退**：目前仅用于订单的读取类接口（列表 / 详情 / 提醒 / 物流），
+   * 且只在「后端未启动（网络不可达）」时兜底，让页面不至于空白。
+   * 写操作（下单 / 支付 / 取消 / 确认收货）一律 strict=true：订单是否真的落库必须以后端为准，
+   * 静默回退只会造成「提示成功、数据库没数据」的假成功。
+   * 收藏、地址、购物车这类「服务端才是唯一真相」的数据同样如此。
    */
   async function call(entry, mockFn, { strict = false } = {}) {
     let res;
@@ -225,6 +226,10 @@ function noteOnline(online) {
       payTime: o.payTime ? parseTime(o.payTime) : null,
       shipTime: o.shipTime ? parseTime(o.shipTime) : null,
       finishTime: o.finishTime ? parseTime(o.finishTime) : null,
+      /* 催发货状态：后端列表接口带出（LEFT JOIN seller_reminders），转 millis 供页面排序 / 倒计时；
+         从未提醒时为 null / 0，页面据此把「提醒发货」按钮渲染成可点状态 */
+      lastRemindTime: o.lastRemindTime ? parseTime(o.lastRemindTime) : null,
+      remindCount: o.remindCount || 0,
       items: (o.items || []).map(it => Object.assign({}, it, { art: it.art || null }))
     });
   }
@@ -427,16 +432,21 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 订单（后端实现后走真实接口；未实现时回退本地存储演示） =================
+    /* ================= 订单（写操作 strict：下单 / 支付 / 取消 / 确认收货一律以服务端为准） =================
+       写操作失败必须如实报错：此前「后端 500 时静默回退本地存储」会造成
+       「前端提示下单成功、数据库里却没有任何订单」的假成功（排查见后端 OrderMapper.xml 主键回填）。
+       读取类接口（列表 / 详情 / 提醒 / 物流）仍保留本地回退，仅作后端未启动时的页面兜底。
        契约要点（详见 docs/商城三功能联调接口文档.md）：
        · GET    /orders?status=&page=&size=      → {total,page,size,list}（status 空=全部）
        · GET    /orders/counts                   → {all,pending,paid,shipped,done,canceled}
        · GET    /orders/{orderId}                → 订单详情
-       · POST   /orders                          → 创建订单，data: 创建的订单（status=pending）
-       · POST   /orders/{orderId}/pay            → 支付（演示：直接置 paid）
+       · POST   /orders                          → 创建订单（按店铺拆单！返回 { payNo, orders:[...], orderCount,
+                                                   goodsAmount, discount, freight, totalAmount }，每个子订单 status=pending）
+       · POST   /orders/pay                      → 批量支付 body { payNo }，把同一次下单的子订单一次付清 → { paid: 笔数 }
+       · POST   /orders/{orderId}/pay            → 单笔支付（演示：直接置 paid）
        · POST   /orders/{orderId}/cancel         → 取消（仅 pending 可取消）
        · POST   /orders/{orderId}/confirm        → 确认收货（仅 shipped 可确认）
-       · POST   /orders/{orderId}/remind         → 提醒发货（后端可选实现）
+       · POST   /orders/{orderId}/remind         → 提醒发货（落库 + 推送给店主，返回 remindCount / nextRemindTime）
        · GET    /orders/{orderId}/logistics      → {list:[{text,time}]}
        时间统一 'yyyy-MM-dd HH:mm:ss'，前端映射回本地毫秒结构。 */
     orders: {
@@ -475,23 +485,60 @@ function noteOnline(online) {
           () => orderToApi(QM_STORE.orders.get(orderId))
         ).then(orderFromApi);
       },
+      /* 创建订单：后端按店铺拆单，同一店铺合成一单、不同店铺各出一单，
+         返回 { payNo, orders:[子订单...], orderCount, goodsAmount, discount, freight, totalAmount }。
+         注意：不再返回单个订单 —— 调用方要用返回的 payNo 走 payBatch 一次付清 */
       async create(payload) {
         const data = await call(
           { name: '创建订单', method: 'POST', path: '/orders', body: payload, token: tokenOf() },
-          () => QM_STORE.orders.create(payload)
+          () => QM_STORE.orders.create(payload),
+          { strict: true }
         );
-        const order = orderFromApi(data);
-        if (order && !QM_STORE.state.orders.some(o => o.id === order.id)) {
-          QM_STORE.state.orders.unshift(order);
+        /* 兼容两种返回：拆单后的 { orders:[...] } 与（本地兜底路径的）单个订单对象 */
+        const rawList = data && Array.isArray(data.orders) ? data.orders : (data && data.id ? [data] : []);
+        const orders = rawList.map(orderFromApi).filter(Boolean);
+        if (orders.length) {
+          orders.forEach(order => {
+            if (!QM_STORE.state.orders.some(o => o.id === order.id)) QM_STORE.state.orders.unshift(order);
+          });
           QM_STORE.saveNow();
           QM_STORE.emit('orders');
         }
-        return order;
+        return {
+          payNo: (data && data.payNo) || '',
+          orders,
+          orderCount: (data && data.orderCount) || orders.length,
+          goodsAmount: Number((data && data.goodsAmount) || 0),
+          discount: Number((data && data.discount) || 0),
+          freight: Number((data && data.freight) || 0),
+          totalAmount: Number((data && data.totalAmount) || 0)
+        };
+      },
+      /* 批量支付：一次下单拆出的多个子订单共享 payNo，一次付清 → { paid: 支付笔数 }。
+         strict：支付是写操作，失败必须如实报错，绝不本地伪造已支付 */
+      async payBatch(payNo) {
+        if (!payNo) throw new Error('缺少支付单号，请重新提交订单');
+        const data = await call(
+          { name: '批量支付', method: 'POST', path: '/orders/pay', body: { payNo }, token: tokenOf() },
+          () => ({ paid: 0 }),
+          { strict: true }
+        );
+        /* 同步本地订单状态：同一 payNo 的子订单全部置为已支付（后端已在一个事务里付清），
+           这样订单列表无需等一次重新拉取就能显示正确状态 */
+        let touched = false;
+        QM_STORE.state.orders.forEach(o => {
+          if (o.payNo && o.payNo === payNo && o.status === 'pending') {
+            o.status = 'paid'; o.payTime = Date.now(); touched = true;
+          }
+        });
+        if (touched) { QM_STORE.saveNow(); QM_STORE.emit('orders'); }
+        return { paid: (data && data.paid) || 0 };
       },
       async pay(orderId) {
         await call(
           { name: '订单支付', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/pay', body: {}, token: tokenOf() },
-          () => { QM_STORE.orders.pay(orderId); return { paid: true }; }
+          () => { QM_STORE.orders.pay(orderId); return { paid: true }; },
+          { strict: true }
         );
         QM_STORE.orders.pay(orderId); // 幂等：仅 pending→paid；mock 路径已改，重复调用无副作用
         return { paid: true };
@@ -499,7 +546,8 @@ function noteOnline(online) {
       async cancel(orderId) {
         await call(
           { name: '取消订单', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/cancel', body: {}, token: tokenOf() },
-          () => { QM_STORE.orders.cancel(orderId); return { canceled: true }; }
+          () => { QM_STORE.orders.cancel(orderId); return { canceled: true }; },
+          { strict: true }
         );
         QM_STORE.orders.cancel(orderId);
         return { canceled: true };
@@ -507,16 +555,29 @@ function noteOnline(online) {
       async confirm(orderId) {
         await call(
           { name: '确认收货', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/confirm', body: {}, token: tokenOf() },
-          () => { QM_STORE.orders.confirm(orderId); return { confirmed: true }; }
+          () => { QM_STORE.orders.confirm(orderId); return { confirmed: true }; },
+          { strict: true }
         );
         QM_STORE.orders.confirm(orderId);
         return { confirmed: true };
       },
+      /* 提醒发货：后端落库 + WebSocket 推给店主，返回
+         { reminded, orderNo, remindCount, lastRemindTime, nextRemindTime }。
+         冷却期 / 次数超限由后端拒绝并报错（前端如实提示），成功后把状态写回本地订单，
+         按钮立即变「已提醒」而不必等一次重新拉取 */
       async remind(orderId) {
-        return call(
+        const data = await call(
           { name: '提醒发货', method: 'POST', path: '/orders/' + encodeURIComponent(orderId) + '/remind', body: {}, token: tokenOf() },
-          () => ({ reminded: true })
+          () => ({ reminded: true, remindCount: 1, lastRemindTime: new Date().toISOString() })
         );
+        const target = QM_STORE.state.orders.find(o => String(o.id) === String(orderId));
+        if (target) {
+          target.remindCount = (data && data.remindCount) || (target.remindCount || 0) + 1;
+          target.lastRemindTime = data && data.lastRemindTime ? parseTime(data.lastRemindTime) : Date.now();
+          QM_STORE.saveNow();
+          QM_STORE.emit('orders');
+        }
+        return data || { reminded: true };
       },
       async logistics(orderId) {
         return call(

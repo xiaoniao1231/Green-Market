@@ -386,23 +386,78 @@
 .order-tabs button:hover { color: var(--brand-ink); background: var(--brand-softer); }
 .order-tabs button.active { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
 .order-tabs button b { color: var(--accent-ink); font-weight: 700; margin-left: 2px; }
-.order-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm); margin-bottom: 16px; overflow: hidden; border: 1px solid var(--border); transition: box-shadow var(--dur) var(--ease); }
+.order-card { background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); margin-bottom: 16px; overflow: hidden; border: 1px solid var(--border); transition: box-shadow var(--dur) var(--ease); }
 .order-card:hover { box-shadow: var(--shadow-md); }
-.order-head { display: flex; justify-content: space-between; align-items: center; padding: 13px 18px; border-bottom: 1px solid #f4f4f4; font-size: 13px; color: var(--text-2); background: #fcfcfd; gap: 12px; flex-wrap: wrap; }
-.order-head .o-status { color: var(--brand-ink); font-weight: 600; padding: 3px 12px; border-radius: var(--radius-pill); background: var(--brand-soft); font-size: 12px; }
-.order-head .o-status.done { color: var(--text-3); background: var(--fill); }
-.order-body { padding: 14px 18px; }
-.oi-row { display: flex; gap: 13px; align-items: center; padding: 9px 0; }
-.oi-row + .oi-row { border-top: 1px dashed #f4f4f4; }
-.oi-art { position: relative; overflow: hidden; width: 66px; height: 66px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; font-size: 30px; flex: none; }
+.order-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-3); background: linear-gradient(180deg, #fcfcfd, #f8f9fa); gap: 12px; flex-wrap: wrap; }
+.order-head .oh-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.order-head .oh-time { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.order-head .oh-no { color: var(--text-4); font-variant-numeric: tabular-nums; }
+/* 售后中标记：与状态胶囊区分（状态是订单流转，售后是另一条线） */
+.order-head .o-tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: var(--radius-pill); background: var(--brand-soft); color: var(--brand-ink); }
+/* 状态胶囊：配色与 seller.css 的 .o-status.<state> 保持一致，全站观感统一 */
+.order-head .o-status { font-weight: 600; padding: 3px 12px; border-radius: var(--radius-pill); font-size: 12px; white-space: nowrap; }
+.order-head .o-status.pending { background: #fff3e0; color: #a35c00; }
+.order-head .o-status.paid { background: #e8f1ff; color: #1a4fbe; }
+.order-head .o-status.shipped { background: #e8f8ef; color: var(--green-ink); }
+.order-head .o-status.done { background: var(--fill); color: #5f6773; }
+.order-head .o-status.canceled { background: #f7f7f8; color: #6f7784; }
+.order-body { padding: 2px 18px; }
+.oi-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; }
+.oi-row + .oi-row { border-top: 1px dashed var(--border); }
+.oi-art { position: relative; overflow: hidden; width: 72px; height: 72px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; font-size: 30px; flex: none; border: 1px solid var(--border); background: #fff; cursor: pointer; transition: box-shadow var(--dur) var(--ease); }
+/* 订单里的商品图与商品名都可点进商品详情，悬停给一层橙色描边提示 */
+.oi-art:hover { box-shadow: 0 0 0 2px rgba(255, 106, 43, .35); }
 .oi-info { flex: 1; min-width: 0; }
-.oi-info h4 { font-size: 13px; font-weight: 400; cursor: pointer; transition: color var(--dur) var(--ease); }
+.oi-info h4 { font-size: 14px; font-weight: 400; color: var(--text); cursor: pointer; transition: color var(--dur) var(--ease); margin-bottom: 8px; }
 .oi-info h4:hover { color: var(--brand-ink); }
-.oi-info small { color: var(--text-3); }
-.oi-price { font-size: 13px; color: var(--text-2); flex: none; }
-.order-foot { display: flex; justify-content: space-between; align-items: center; padding: 13px 18px; background: #fffbf7; font-size: 13px; color: var(--text-2); gap: 12px; flex-wrap: wrap; }
-.order-foot .price { font-size: 19px; margin-left: 6px; }
+.oi-meta { display: flex; align-items: center; gap: 8px; }
+.oi-sku { font-size: 12px; color: var(--text-3); background: var(--fill); border-radius: var(--radius-xs); padding: 2px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oi-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.oi-price { font-size: 14px; }
+.oi-qty { font-size: 12px; color: var(--text-4); font-variant-numeric: tabular-nums; }
+.order-foot { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; background: #fffbf7; border-top: 1px solid #fdf1e8; font-size: 13px; color: var(--text-2); gap: 12px; flex-wrap: wrap; }
+.order-foot .of-sum { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.order-foot .of-extra { color: var(--text-3); font-size: 12px; }
+.order-foot .of-extra.of-discount { color: var(--accent-ink-2); }
+.order-foot .of-total .price { font-size: 20px; margin-left: 4px; }
 .order-foot .o-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* ---------- 订单详情页（#/order/:id，复用订单卡片的头尾样式） ---------- */
+.order-detail-card { padding-bottom: 0; }
+.od-hint { margin: 14px 18px 0; font-size: 13px; color: var(--brand-ink); background: var(--brand-softer); border: 1px solid var(--brand-soft); border-radius: var(--radius); padding: 9px 12px; }
+.od-section { padding: 16px 18px; border-top: 1px dashed var(--border); }
+.od-section:first-of-type { border-top: none; }
+.od-section h3 { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.od-section h3 small { font-size: 12px; font-weight: 400; color: var(--text-3); }
+.od-section .oi-row:first-of-type { padding-top: 4px; }
+.od-line { font-size: 13px; color: var(--text-2); line-height: 1.8; }
+.od-addr { color: var(--text-3); }
+.od-total { font-size: 15px; border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 6px; }
+.od-total b { color: var(--accent); font-size: 18px; }
+.od-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; }
+@media (max-width: 720px) { .od-grid { grid-template-columns: minmax(0, 1fr); } }
+.od-grid > div { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--text-3); padding: 8px 0; border-bottom: 1px dashed #f4f4f4; }
+/* 标签与值紧挨着显示（原来是两端对齐，间隔太远）：支付方式：支付宝 */
+.od-grid > div > span::after { content: "："; }
+.od-grid b { color: var(--text-2); font-weight: 500; word-break: break-all; }
+.od-timeline { position: relative; }
+.od-timeline li { position: relative; padding: 0 0 14px 20px; }
+.od-timeline li:last-child { padding-bottom: 0; }
+.od-timeline li::before { content: ""; position: absolute; left: 3px; top: 14px; bottom: 0; width: 1px; background: var(--border); }
+.od-timeline li:last-child::before { display: none; }
+.od-dot { position: absolute; left: 0; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-4); }
+.od-dot.first { background: var(--brand); box-shadow: 0 0 0 3px rgba(255, 80, 0, .15); }
+.od-timeline p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.od-timeline small { font-size: 12px; color: var(--text-3); }
+.od-empty { font-size: 13px; color: var(--text-3); }
+.order-foot .o-actions .btn-sm { height: 30px; padding: 0 14px; font-size: 13px; }
+
+/* 售后进度明细（订单卡「售后进度」弹窗） */
+.as-detail { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 14px; }
+.as-detail > div { display: flex; gap: 12px; padding: 10px 14px; font-size: 13px; }
+.as-detail > div + div { border-top: 1px dashed var(--border); }
+.as-detail span { color: var(--text-3); width: 72px; flex: none; }
+.as-detail b { color: var(--text); font-weight: 500; word-break: break-all; }
+.as-detail .as-status { color: var(--brand-ink); }
 
 /* 物流时间线 */
 .logistics { padding: 8px 4px; }
@@ -453,6 +508,14 @@
 .service-grid button:hover .s-icon { background: var(--brand); color: #fff; }
 .service-grid b { font-size: 13px; display: block; }
 .service-grid small { font-size: 11px; color: var(--text-3); }
+/* 「我的订单」待处理提醒：标题旁的总数提示 + 每个入口右上角的数量角标（为 0 时不渲染） */
+.profile-panel h3 .panel-tip { font-size: 12px; font-weight: 400; color: var(--brand-ink); background: var(--brand-soft); border-radius: var(--radius-pill); padding: 2px 10px; }
+.service-grid button { position: relative; }
+.service-grid .s-badge {
+  position: absolute; top: 8px; right: 8px; min-width: 18px; height: 18px; line-height: 18px;
+  padding: 0 5px; border-radius: var(--radius-pill); background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 600; text-align: center; box-shadow: 0 2px 6px rgba(255, 59, 48, .28);
+}
 
 /* ---------- 收藏页 ---------- */
 .fav-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }

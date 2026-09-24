@@ -30,6 +30,8 @@ const win = ref(
 );
 const loginMode = ref('acct');   // acct 账号登录 / phone 手机登录
 const regMode = ref('acct');     // acct 账号注册 / phone 手机注册
+/* 手机注册分步：verify=验证手机号+验证码，info=填密码+昵称；两步不同屏出现 */
+const rpStep = ref('verify');
 const busy = ref(false);
 
 /* ---------- 登录表单 ---------- */
@@ -52,6 +54,8 @@ const rsPhone = ref('');
 const rsSms = ref('');
 const rsPassword = ref('');
 const rsPassword2 = ref('');
+/* 重置密码分步：verify=验证手机号+验证码，setpwd=设置新密码；两步不同屏出现 */
+const rsStep = ref('verify');
 
 /* ---------- 短信验证码：scene 区分 login / register / reset，各自独立倒计时 ---------- */
 const smsTimers = { login: null, register: null, reset: null };
@@ -59,9 +63,37 @@ const smsText = ref({ login: '获取验证码', register: '获取验证码', res
 const smsDisabled = ref({ login: false, register: false, reset: false });
 const smsHint = ref({ login: '', register: '', reset: '' });
 
-function switchWin(next) { win.value = next; }
+function switchWin(next) {
+  win.value = next;
+  /* 每次进入重置窗口都从第一步（验证手机号）开始，避免上次停在第二步 */
+  if (next === 'reset') rsStep.value = 'verify';
+  /* 每次切到注册窗口也重置手机注册步骤，避免上次停在第二步 */
+  if (next === 'register') rpStep.value = 'verify';
+}
 function pickLogin(m) { loginMode.value = m; }
-function pickRegister(m) { regMode.value = m; }
+function pickRegister(m) {
+  regMode.value = m;
+  /* 切到手机注册 tab 时回到第一步（验证手机号） */
+  if (m === 'phone') rpStep.value = 'verify';
+}
+
+/* 手机注册第一步：校验手机号 + 验证码格式，通过后才进入填资料那一步 */
+function nextRegPhoneStep() {
+  const phone = phPhone.value.trim();
+  const smsCode = phSmsCode.value.trim();
+  if (!/^1\d{10}$/.test(phone)) return toast('请输入正确的 11 位手机号', 'error');
+  if (!/^\d{6}$/.test(smsCode)) return toast('请输入 6 位短信验证码', 'error');
+  rpStep.value = 'info';
+}
+
+/* 重置密码第一步：校验手机号 + 验证码格式，通过后才进入设置新密码那一步 */
+function nextResetStep() {
+  const phone = rsPhone.value.trim();
+  const smsCode = rsSms.value.trim();
+  if (!/^1\d{10}$/.test(phone)) return toast('请输入正确的 11 位手机号', 'error');
+  if (!/^\d{6}$/.test(smsCode)) return toast('请输入 6 位短信验证码', 'error');
+  rsStep.value = 'setpwd';
+}
 
 /* ---------- 登录成功公共处理：校验密令并把整份 data（用户信息 + 密令）写入登录态 ---------- */
 async function commitLogin(data) {
@@ -234,8 +266,8 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); stopSms
         <p>登录后继续你的发现之旅</p>
       </div>
 
-      <!-- 登录 / 注册 窗口切换 -->
-      <div class="login-switch">
+      <!-- 登录 / 注册 窗口切换（重置密码窗口下不显示，避免顶部出现「登录 | 注册」tab） -->
+      <div class="login-switch" v-if="win !== 'reset'">
         <button :class="{ active: win === 'login' }" @click="switchWin('login')">登 录</button>
         <button :class="{ active: win === 'register' }" @click="switchWin('register')">注 册</button>
       </div>
@@ -257,7 +289,7 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); stopSms
             <input v-model="loginPassword" type="password" maxlength="15" placeholder="请输入密码" @keyup.enter="doAcctLogin" />
           </div>
           <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doAcctLogin">登 录</button>
-          <button type="button" class="switch-link forgot-link" @click="switchWin('reset')">忘记密码？用短信验证码重置</button>
+          <button type="button" class="switch-link forgot-link" @click="switchWin('reset')">忘记密码</button>
         </div>
 
         <div v-else>
@@ -303,60 +335,78 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); stopSms
         </div>
 
         <div v-else>
-          <div class="form-row">
-            <label>手机号</label>
-            <input v-model="phPhone" maxlength="11" inputmode="numeric" placeholder="11 位手机号，将作为登录账号" />
-          </div>
-          <div class="form-row">
-            <label>短信验证码</label>
-            <div class="input-flex">
-              <input v-model="phSmsCode" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" />
-              <button type="button" class="btn btn-plain sms-btn" :disabled="smsDisabled.register" @click="requestSms('register')">{{ smsText.register }}</button>
+          <!-- 第一步：手机号 + 短信验证码 -->
+          <div v-if="rpStep === 'verify'">
+            <div class="form-row">
+              <label>手机号</label>
+              <input v-model="phPhone" maxlength="11" inputmode="numeric" placeholder="11 位手机号，将作为登录账号" />
             </div>
-            <div class="hint">{{ smsHint.register }}</div>
+            <div class="form-row">
+              <label>短信验证码</label>
+              <div class="input-flex">
+                <input v-model="phSmsCode" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" @keyup.enter="nextRegPhoneStep" />
+                <button type="button" class="btn btn-plain sms-btn" :disabled="smsDisabled.register" @click="requestSms('register')">{{ smsText.register }}</button>
+              </div>
+              <div class="hint">{{ smsHint.register }}</div>
+            </div>
+            <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="nextRegPhoneStep">下 一 步</button>
           </div>
-          <div class="form-row">
-            <label>密码</label>
-            <input v-model="phPassword" type="password" maxlength="15" placeholder="最长 15 位，用于账号密码登录" />
+
+          <!-- 第二步：设置密码 + 昵称（验证码校验通过后才显示） -->
+          <div v-else>
+            <div class="form-row">
+              <label>密码</label>
+              <input v-model="phPassword" type="password" maxlength="15" placeholder="最长 15 位，用于账号密码登录" />
+            </div>
+            <div class="form-row">
+              <label>昵称</label>
+              <input v-model="phNickname" maxlength="30" placeholder="怎么称呼你" />
+            </div>
+            <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doPhoneReg">完成注册</button>
+            <button type="button" class="switch-link" @click="rpStep = 'verify'">上一步，重新验证手机号</button>
           </div>
-          <div class="form-row">
-            <label>昵称</label>
-            <input v-model="phNickname" maxlength="30" placeholder="怎么称呼你" />
-          </div>
-          <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doPhoneReg">注 册</button>
         </div>
 
         <button type="button" class="switch-link" @click="switchWin('login')">已有账号？立即登录</button>
       </template>
 
-      <!-- ===================== 忘记密码窗口（短信验证码重置） ===================== -->
+      <!-- ===================== 忘记密码窗口（短信验证码重置，分两步） ===================== -->
       <template v-else>
         <div class="reset-head">
           <h2>重置密码</h2>
-          <p>验证手机号归属后设置新密码<br />（原密码无法找回，只能重置）</p>
         </div>
 
-        <div class="form-row">
-          <label>手机号</label>
-          <input v-model="rsPhone" maxlength="11" inputmode="numeric" placeholder="注册时绑定的 11 位手机号" />
-        </div>
-        <div class="form-row">
-          <label>短信验证码</label>
-          <div class="input-flex">
-            <input v-model="rsSms" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" />
-            <button type="button" class="btn btn-plain sms-btn" :disabled="smsDisabled.reset" @click="requestSms('reset')">{{ smsText.reset }}</button>
+        <!-- 第一步：手机号 + 短信验证码 -->
+        <div v-if="rsStep === 'verify'">
+          <div class="form-row">
+            <label>手机号</label>
+            <input v-model="rsPhone" maxlength="11" inputmode="numeric" placeholder="注册时绑定的 11 位手机号" />
           </div>
-          <div class="hint">{{ smsHint.reset }}</div>
+          <div class="form-row">
+            <label>短信验证码</label>
+            <div class="input-flex">
+              <input v-model="rsSms" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" @keyup.enter="nextResetStep" />
+              <button type="button" class="btn btn-plain sms-btn" :disabled="smsDisabled.reset" @click="requestSms('reset')">{{ smsText.reset }}</button>
+            </div>
+            <div class="hint">{{ smsHint.reset }}</div>
+          </div>
+          <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="nextResetStep">下 一 步</button>
         </div>
-        <div class="form-row">
-          <label>新密码</label>
-          <input v-model="rsPassword" type="password" maxlength="15" placeholder="6-15 位" />
+
+        <!-- 第二步：设置新密码（验证码校验通过后才显示） -->
+        <div v-else>
+          <div class="form-row">
+            <label>新密码</label>
+            <input v-model="rsPassword" type="password" maxlength="15" placeholder="6-15 位" />
+          </div>
+          <div class="form-row">
+            <label>确认新密码</label>
+            <input v-model="rsPassword2" type="password" maxlength="15" placeholder="再输入一次" @keyup.enter="doResetPassword" />
+          </div>
+          <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doResetPassword">确 认 重 置</button>
+          <button type="button" class="switch-link" @click="rsStep = 'verify'">上一步，重新验证手机号</button>
         </div>
-        <div class="form-row">
-          <label>确认新密码</label>
-          <input v-model="rsPassword2" type="password" maxlength="15" placeholder="再输入一次" @keyup.enter="doResetPassword" />
-        </div>
-        <button class="btn btn-primary btn-lg login-submit" :disabled="busy" @click="doResetPassword">重 置 密 码</button>
+
         <button type="button" class="switch-link" @click="switchWin('login')">返回登录</button>
       </template>
     </div>

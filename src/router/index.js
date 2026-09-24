@@ -6,6 +6,7 @@ import SearchView from '../views/SearchView.vue';
 import DetailView from '../views/DetailView.vue';
 import CartView from '../views/CartView.vue';
 import OrdersView from '../views/OrdersView.vue';
+import OrderDetailView from '../views/OrderDetailView.vue';
 import ProfileView from '../views/ProfileView.vue';
 import FavoritesView from '../views/FavoritesView.vue';
 import ChatView from '../views/ChatView.vue';
@@ -14,6 +15,7 @@ import LoginView from '../views/LoginView.vue';
 import SellerView from '../views/SellerView.vue';
 import SellerProductsView from '../views/SellerProductsView.vue';
 import SellerOrdersView from '../views/SellerOrdersView.vue';
+import SellerIncomeView from '../views/SellerIncomeView.vue';
 import ShopView from '../views/ShopView.vue';
 import QM_STORE from '../core/store.js';
 
@@ -30,6 +32,7 @@ const routes = [
   { path: '/detail/:id', name: 'detail', component: DetailView },
   { path: '/cart', name: 'cart', component: CartView },
   { path: '/orders', name: 'orders', component: OrdersView },
+  { path: '/order/:id', name: 'order-detail', component: OrderDetailView },
   { path: '/profile', name: 'profile', component: ProfileView },
   { path: '/favorites', name: 'favorites', component: FavoritesView },
   { path: '/chat', name: 'chat', component: ChatView },
@@ -37,6 +40,7 @@ const routes = [
   { path: '/seller', name: 'seller', component: SellerView },
   { path: '/seller/products', name: 'seller-products', component: SellerProductsView },
   { path: '/seller/orders', name: 'seller-orders', component: SellerOrdersView },
+  { path: '/seller/income', name: 'seller-income', component: SellerIncomeView },
   { path: '/placeholder/:feature', name: 'placeholder', component: PlaceholderView },
   { path: '/:pathMatch(.*)*', redirect: '/home' }
 ];
@@ -44,7 +48,7 @@ const routes = [
 /* 需登录才能访问的页面：商品详情（点击商品）、店铺主页、购物车、订单、个人中心、收藏、消息中心、
    我的店铺（店铺绑定在当前用户账号下，开店后仍是这一个账号，无需独立店家账号；消息统一在消息中心处理）。
    未登录访问时重定向到登录页，并带上 redirect 参数，登录成功后回跳原目标。 */
-const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'orders', 'profile', 'favorites', 'chat', 'seller', 'seller-products', 'seller-orders'];
+const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'orders', 'order-detail', 'profile', 'favorites', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-income'];
 
 const router = createRouter({
   history: createWebHashHistory(),

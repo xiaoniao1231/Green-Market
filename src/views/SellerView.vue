@@ -68,8 +68,16 @@ onActivated(loadAll);
 
 /* 店铺档案变化（保存资料 / 拉取后端档案 / 开店）后刷新工作台 */
 let offShopProfile = null;
-onMounted(() => { offShopProfile = QM_STORE.on('shopProfile', () => { shopTick.value++; }); });
-onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile = null; } });
+let offRemind = null;
+onMounted(() => {
+  offShopProfile = QM_STORE.on('shopProfile', () => { shopTick.value++; });
+  /* 买家催发货：立即重拉订单，工作台「待发货」卡上的被催角标与待办随之更新 */
+  offRemind = QM_STORE.on('sellerRemind', () => { loadOrders(); });
+});
+onBeforeUnmount(() => {
+  if (offShopProfile) { offShopProfile(); offShopProfile = null; }
+  if (offRemind) { offRemind(); offRemind = null; }
+});
 
 /* 开店：填写店铺基本信息 → POST /shops，成功后自动进入工作台 */
 function openShop() {
@@ -83,6 +91,9 @@ const offSale = computed(() => products.value.filter(p => p.onSale === false).le
 const orderTotal = computed(() => orderList.value.length);
 const pendingShip = computed(() => orderList.value.filter(o => o.status === 'paid').length);
 const pendingPay = computed(() => orderList.value.filter(o => o.status === 'pending').length);
+/* 被催发货：待发货 且 买家催过（后端订单列表带出 remindCount / lastRemindTime）。
+   工作台把它从普通待发货里拎出来单独提示 —— 这是买家已经表达过不满的订单，优先级最高 */
+const urgedOrders = computed(() => orderList.value.filter(o => o.status === 'paid' && Number(o.remindCount || 0) > 0));
 /* 累计收入：排除已取消与未付款的订单 */
 const revenue = computed(() => orderList.value
   .filter(o => o.status !== 'canceled' && o.status !== 'pending')
@@ -98,6 +109,8 @@ const STATUS_TEXT = { pending: '待付款', paid: '待发货', shipped: '待收�
 /* 待办事项：只在确有需要处理的事情时才出现 */
 const todos = computed(() => {
   const list = [];
+  /* 催发货排在最前：买家已经主动催过，比「有单待发」更紧急 */
+  if (urgedOrders.value.length) list.push({ icon: '🔔', text: `${urgedOrders.value.length} 笔订单买家已催发货`, hint: '被催订单已在订单页置顶，建议优先处理', href: '#/seller/orders?status=paid', action: '去发货' });
   if (pendingShip.value) list.push({ icon: '▣', text: `${pendingShip.value} 笔订单等待发货`, hint: '及时发货能提升买家体验', href: '#/seller/orders', action: '去发货' });
   if (offSale.value) list.push({ icon: '◈', text: `${offSale.value} 件商品已下架`, hint: '重新上架后买家才能看到', href: '#/seller/products', action: '去上架' });
   if (pendingPay.value) list.push({ icon: '◴', text: `${pendingPay.value} 笔订单买家还未付款`, hint: '付款后即可安排发货', href: '#/seller/orders', action: '查看' });
@@ -263,12 +276,22 @@ function nameConflict(name) {
 
       <div class="seller-tip">💡 店铺绑定在当前用户账号 <b>@{{ me.username }}</b> 下：你既能以买家身份下单，也能在这里打理店铺，全程只有这一个账号。</div>
 
-      <!-- 经营数据 -->
+      <!-- 经营数据：四张卡都可点，分别进商品管理 / 待发货订单 / 全部订单 / 收入明细 -->
       <div class="seller-stats">
-        <div class="stat-card"><b>{{ onSale }}</b><span>在售商品</span></div>
-        <div class="stat-card"><b>{{ pendingShip }}</b><span>待发货订单</span></div>
-        <div class="stat-card"><b>{{ orderTotal }}</b><span>全部订单</span></div>
-        <div class="stat-card"><b>¥{{ money(revenue) }}</b><span>累计收入</span></div>
+        <a class="stat-card" href="#/seller/products" title="去商品管理">
+          <b>{{ onSale }}</b><span>在售商品</span>
+        </a>
+        <a class="stat-card" href="#/seller/orders?status=paid" title="查看待发货订单">
+          <b>{{ pendingShip }}</b><span>待发货订单</span>
+          <!-- 被催角标：待发货里有多少笔是买家已经催过的 -->
+          <em v-if="urgedOrders.length" class="stat-urge">🔔 {{ urgedOrders.length }} 笔被催</em>
+        </a>
+        <a class="stat-card" href="#/seller/orders" title="查看全部订单">
+          <b>{{ orderTotal }}</b><span>全部订单</span>
+        </a>
+        <a class="stat-card" href="#/seller/income" title="查看收入明细">
+          <b>¥{{ money(revenue) }}</b><span>累计收入</span>
+        </a>
       </div>
 
       <!-- 待办事项 + 快捷管理 -->

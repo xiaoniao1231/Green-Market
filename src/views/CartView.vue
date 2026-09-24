@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router';
 import QM_API from '../core/api.js';
 import QM_STORE from '../core/store.js';
 import QM_UI from '../core/ui.js';
+import openAddressModal from '../core/addressModal.js';
 
 const { esc, price, artStyle, artHtml, toast, modal, confirmDialog } = QM_UI;
 const router = useRouter();
@@ -198,7 +199,7 @@ async function renderList() {
             <h3>结算明细</h3>
             <div class="sum-row"><span>已选商品</span><span>${selected.length} 种</span></div>
             <div class="sum-row"><span>合计件数</span><span>${selected.reduce((s, i) => s + i.qty, 0)} 件</span></div>
-            <div class="sum-row"><span>运费</span><span>${total >= 99 || total === 0 ? '包邮' : price(8)}</span></div>
+            <div class="sum-row"><span>运费</span><span>${total >= 50 || total === 0 ? '包邮' : price(5)}</span></div>
             <div class="sum-total"><span>合计</span>${price(total)}</div>
             <button class="btn btn-primary btn-lg" id="checkoutBtn" ${selected.length ? '' : 'disabled'}>去结算（${selected.length}）</button>
             <!-- 批量删除：放在「去结算」下方、「清空购物车」上方；未选中任何商品时禁用 -->
@@ -298,7 +299,15 @@ async function openCheckout(items) {
   const coupons = QM_STORE.coupon.list().filter(c => c.status === 'unused');
   const goodsAmount = items.reduce((s, i) => s + QM_STORE.cart.subTotal(i), 0);
   const usableCoupons = coupons.filter(c => goodsAmount >= c.threshold);
-  const freight = goodsAmount >= 99 ? 0 : 8;
+  /* 运费必须与后端拆单口径一致：后端按店铺拆单、每店各自计算运费（满 50 包邮，否则 5 元），
+     所以这里也要按店铺分组后分别算再求和 —— 若拿整单金额去凑包邮，
+     弹窗显示的价格会低于实际应付，属于「前端骗用户」 */
+  const shopGroups = groupByShop(items);
+  shopGroups.forEach(g => {
+    g.amount = g.items.reduce((s, i) => s + QM_STORE.cart.subTotal(i), 0);
+    g.freight = g.amount >= 50 ? 0 : 5;
+  });
+  const freight = shopGroups.reduce((s, g) => s + g.freight, 0);
   let chosenCoupon = null;
   let chosenAddr = addresses.find(a => a.isDefault) || addresses[0];
   let payMethod = '支付宝';
@@ -308,17 +317,8 @@ async function openCheckout(items) {
         <h3>确认订单</h3>
         <p class="modal-sub">共 ${items.reduce((s, i) => s + i.qty, 0)} 件商品</p>
         <div class="form-row">
-          <label>收货地址 <a href="#/profile" style="float:right;color:var(--brand)" data-close>管理地址</a></label>
-          <div id="addrList">
-            ${addresses.map(a => `
-              <div class="addr-option ${a === chosenAddr ? 'active' : ''}" data-action="pick-addr" data-id="${esc(a.id)}">
-                <b>${esc(a.name)} ${esc(a.phone)}${a.isDefault ? ' <span class="pill pill-orange">默认</span>' : ''}${a.tag ? ` <span class="pill pill-gray">${esc(a.tag)}</span>` : ''}</b>
-                <small>${esc(a.region)} ${esc(a.detail)}</small>
-              </div>`).join('')}
-            ${addresses.length ? '' : (addrError
-              ? `<p class="hint" style="color:var(--accent-ink)">收货地址加载失败：${esc(addrError)}</p>`
-              : '<p class="hint">暂无地址，请先到「个人中心 → 收货地址」添加</p>')}
-          </div>
+          <label>收货地址 <button type="button" class="link-btn" id="addrManage" style="float:right">添加地址</button></label>
+          <div id="addrList"></div>
         </div>
         <div class="form-row">
           <label>优惠券（${usableCoupons.length} 张可用）</label>
@@ -339,6 +339,17 @@ async function openCheckout(items) {
           <label>订单备注</label>
           <input id="orderRemark" placeholder="选填，给卖家留言（50 字内）" maxlength="50" />
         </div>
+        <!-- 拆单预览：跨店下单时先说清楚会拆成几个订单、每店运费各多少，
+             避免用户提交后才发现「怎么多了几笔订单 / 运费怎么变了」 -->
+        ${shopGroups.length > 1 ? `
+        <div style="border-top:1px dashed var(--border);padding-top:12px;margin-top:4px">
+          <div class="hint" style="margin:0 0 6px">🧾 共 ${shopGroups.length} 家店铺，将拆成 <b>${shopGroups.length}</b> 个订单（各店独立发货、分别计算运费）</div>
+          ${shopGroups.map(g => `
+            <div class="checkout-item">
+              <span>${esc(g.name)} · ${g.items.length} 种</span>
+              <span>${price(g.amount)}${g.freight ? ` + 运费 ${price(g.freight)}` : ' · 包邮'}</span>
+            </div>`).join('')}
+        </div>` : ''}
         <div style="border-top:1px dashed var(--border);padding-top:12px;margin-top:4px">
           <div class="checkout-item"><span>商品金额</span><span>${price(goodsAmount)}</span></div>
           <div class="checkout-item"><span>运费</span><span id="freightText">${freight ? price(freight) : '包邮'}</span></div>
@@ -358,12 +369,44 @@ async function openCheckout(items) {
     m.root.querySelector('#totalText').innerHTML = price(total);
   };
   const refreshAddr = () => {
-    m.root.querySelectorAll('[data-action="pick-addr"]').forEach(el => el.classList.toggle('active', el.dataset.id === chosenAddr.id));
+    const id = chosenAddr && chosenAddr.id;
+    m.root.querySelectorAll('[data-action="pick-addr"]').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   };
-  m.root.querySelectorAll('[data-action="pick-addr"]').forEach(el => el.onclick = () => {
-    chosenAddr = addresses.find(a => a.id === el.dataset.id);
-    refreshAddr();
+  /* 地址区渲染：列表可随「添加地址」后的刷新重绘，选中项按 id 比对（对象引用会因重绘失效） */
+  const renderAddrOptions = () => {
+    const list = QM_STORE.addr.list();
+    const box = m.root.querySelector('#addrList');
+    if (!list.length) {
+      chosenAddr = null;
+      box.innerHTML = addrError
+        ? `<p class="hint" style="color:var(--accent-ink)">收货地址加载失败：${esc(addrError)}</p>`
+        : '<p class="hint">还没有收货地址，点右上「添加地址」</p>';
+      return;
+    }
+    if (!chosenAddr || !list.some(a => a.id === chosenAddr.id)) chosenAddr = list.find(a => a.isDefault) || list[0];
+    box.innerHTML = list.map(a => `
+      <div class="addr-option${a.id === chosenAddr.id ? ' active' : ''}" data-action="pick-addr" data-id="${esc(a.id)}">
+        <b>${esc(a.name)} ${esc(a.phone)}${a.isDefault ? ' <span class="pill pill-orange">默认</span>' : ''}${a.tag ? ` <span class="pill pill-gray">${esc(a.tag)}</span>` : ''}</b>
+        <small>${esc(a.region)} ${esc(a.detail)}</small>
+      </div>`).join('');
+  };
+  renderAddrOptions();
+  /* 「添加地址」直接弹出与个人中心一致的地址管理弹窗（core/addressModal.js），
+     保存 / 删除 / 设默认后重新拉取并刷新本弹窗的地址区 */
+  m.root.querySelector('#addrManage').onclick = () => openAddressModal({
+    onSaved: async () => {
+      try { await QM_API.addresses.list(); addrError = ''; }
+      catch (e) { addrError = (e && e.message) || '收货地址加载失败'; }
+      chosenAddr = null;   // 重新按「默认地址优先」选中：新建并设为默认的地址会被自动选中
+      renderAddrOptions();
+    }
   });
+  m.root.querySelector('#addrList').onclick = e => {
+    const el = e.target.closest('[data-action="pick-addr"]');
+    if (!el) return;
+    chosenAddr = QM_STORE.addr.list().find(a => a.id === el.dataset.id) || null;
+    refreshAddr();
+  };
   m.root.querySelector('#couponSel').onchange = e => { chosenCoupon = e.target.value || null; updateTotal(); };
   m.root.querySelectorAll('[data-pay]').forEach(el => el.onclick = () => {
     m.root.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('active', x === el));
@@ -378,12 +421,16 @@ async function openCheckout(items) {
       coupon, payMethod, remark: m.root.querySelector('#orderRemark').value.trim()
     };
     try {
-      const order = await QM_API.orders.create(payload);
-      /* 下单成功后：服务端删除已购条目 → 支付（演示自动支付）→ 跳转订单页 */
+      const result = await QM_API.orders.create(payload);
+      /* 后端按店铺拆单：用共享的 payNo 把拆出的子订单一次付清（演示自动支付）。
+         顺序上先支付再清购物车 —— 若支付失败，订单仍是 pending、购物车也还在，
+         用户能重试付款，不会出现「购物车空了、订单却没付」的难解释状态 */
+      await QM_API.orders.payBatch(result.payNo);
       await QM_API.cart.remove(items.map(i => i.key));
-      await QM_API.orders.pay(order.id);
       m.close();
-      toast('下单成功！演示订单已自动支付', 'success');
+      toast(result.orderCount > 1
+        ? `下单成功！已按 ${result.orderCount} 家店铺拆成 ${result.orderCount} 个订单并完成支付`
+        : '下单成功！演示订单已自动支付', 'success');
       router.push('/orders');   // 原 QM_ROUTER.go('/orders')
     } catch (e) { toast(e.message, 'error'); }
   };

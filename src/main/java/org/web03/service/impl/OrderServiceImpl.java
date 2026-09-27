@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.web03.exception.BusinessException;
+import org.web03.mapper.CartMapper;
 import org.web03.mapper.EmpMapper;
 import org.web03.mapper.OrderMapper;
 import org.web03.mapper.ProductMapper;
@@ -42,6 +43,8 @@ public class OrderServiceImpl implements OrderService {
     private ShopMapper shopMapper;
     @Autowired
     private ProductMapper productMapper;
+    @Autowired
+    private CartMapper cartMapper;
     @Autowired
     private SellerReminderMapper sellerReminderMapper;
     @Autowired
@@ -104,14 +107,16 @@ public class OrderServiceImpl implements OrderService {
         }
 
         //优惠券
-        BigDecimal discount = BigDecimal.ZERO;// 优惠券优惠金额
+        BigDecimal discount = BigDecimal.ZERO;
         Map<String, Object> coupon = request.getCoupon();
         if (coupon != null && !coupon.isEmpty()) {
+            // 获取优惠券金额
             Object amountObj = coupon.get("amount");
             if (amountObj == null) throw new BusinessException("优惠券参数无效");
+            //把对象**转换成字符串**，再转换成BigDecimal
             BigDecimal amount = new BigDecimal(String.valueOf(amountObj));
             Object thresholdObj = coupon.get("threshold");
-            //校验使用门槛，抵扣金额不超商品金额（避免应付为负）
+            //校验使用门槛，抵扣金额不超商品金额
             if (thresholdObj != null && goodsAmount.compareTo(new BigDecimal(String.valueOf(thresholdObj))) < 0) {
                 throw new BusinessException("优惠券不满足使用条件");
             }
@@ -120,17 +125,19 @@ public class OrderServiceImpl implements OrderService {
 
         //按店铺分组
         Map<String, List<OrderItem>> byShop = new LinkedHashMap<>();
+        // 遍历订单项，并按店铺分组加入集合中
         for (OrderItem oi : items) {
             byShop.computeIfAbsent(oi.getShopId(), k -> new ArrayList<>()).add(oi);
         }
+        //  获取byShop中所有的店铺ID
         List<String> shopIds = new ArrayList<>(byShop.keySet());
 
         //逐店生成子订单,运费按店独立计算,优惠券按商品金额占比分摊，最后一单吸收四舍五入差额，保证「各子单抵扣之和」恰好等于整单优惠
-        String payNo = genPayNo();// 本次下单拆出的所有子订单共享
-        List<OrderVO> orders = new ArrayList<>();
-        BigDecimal sumDiscount = BigDecimal.ZERO;
-        BigDecimal sumFreight = BigDecimal.ZERO;
-        BigDecimal sumTotal = BigDecimal.ZERO;
+        String payNo = genPayNo();// 整单统一支付单号
+        List<OrderVO> orders = new ArrayList<>();// 存储子订单信息
+        BigDecimal sumDiscount = BigDecimal.ZERO;// 优惠券优惠金额
+        BigDecimal sumFreight = BigDecimal.ZERO;// 运费
+        BigDecimal sumTotal = BigDecimal.ZERO;// 订单总金额
 
         for (int i = 0; i < shopIds.size(); i++) {
             String shopId = shopIds.get(i);
@@ -181,6 +188,10 @@ public class OrderServiceImpl implements OrderService {
             sumTotal = sumTotal.add(groupTotal);
         }
 
+        for (OrderItem oi : items) {
+            cartMapper.deleteOne(userId, oi.getProductId(), oi.getSku());
+        }
+
         OrderCreateResult result = new OrderCreateResult();
         result.setPayNo(payNo);
         result.setOrders(orders);
@@ -193,7 +204,7 @@ public class OrderServiceImpl implements OrderService {
         return result;
     }
 
-    //批量支付：把同一次下单拆出的所有子订单一次付清（避免逐单支付留下「付了一半」的状态）
+    //批量支付：把同一次下单拆出的所有子订单一次付清
     @Override
     @Transactional
     public int payBatch(String payNo) {

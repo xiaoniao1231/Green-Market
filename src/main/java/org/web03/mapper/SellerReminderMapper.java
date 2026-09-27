@@ -22,7 +22,7 @@ public interface SellerReminderMapper {
             "on duplicate key update remind_count = remind_count + 1, last_remind_time = now(), handled = 0, updated_at = now()")
     void upsert(SellerReminder reminder);
 
-    //店家发货后把该订单的催发货标记为已处理（店家端角标随之消失）
+    //店家发货后把该订单的催发货标记为已处理
     @Update("update seller_reminders set handled = 1, updated_at = now() where order_id = #{orderId}")
     void markHandled(Integer orderId);
 }

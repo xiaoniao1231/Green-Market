@@ -32,8 +32,6 @@ public class Product {
     private Integer deleted;        // 软删除：1 已删 / 0 正常
     private LocalDateTime createdAt;// 创建时间
     private LocalDateTime updatedAt;// 更新时间
-
-    /** 关联字段：店铺名 / 店铺评分 */
-    private String shopName;
-    private BigDecimal shopScore;
+    private String shopName;        // 店铺名称
+    private BigDecimal shopScore;   // 店铺评分
 }

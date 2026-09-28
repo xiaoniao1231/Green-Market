@@ -590,6 +590,58 @@ function noteOnline(online) {
       }
     },
 
+    /* ================= 优惠券（strict：平台配置，用户在「我的优惠券」里领取） =================
+       · GET  /coupons           → 我的券 [{ id, title, threshold, amount, expire, status, receivedAt }]
+                                    id 是 user_coupons.id，下单时原样回传，后端据此核销
+       · GET  /coupons/claimable → 可领取的券 [{ couponId, title, threshold, amount, expire, claimed }]
+       · POST /coupons/claim     → body { couponId }，同一张券每个用户只能领一张（后端校验） */
+    coupons: {
+      async list() {
+        const data = await call(
+          { name: '优惠券列表', method: 'GET', path: '/coupons', query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        const raw = Array.isArray(data) ? data : ((data && data.list) || []);
+        QM_STORE.state.coupons = raw.filter(Boolean).map(c => ({
+          id: String(c.id),
+          title: c.title || '优惠券',
+          threshold: Number(c.threshold) || 0,
+          amount: Number(c.amount) || 0,
+          expire: c.expire || '',
+          status: c.status === 'used' ? 'used' : 'unused',
+          shopName: c.shopName || '',
+          receivedAt: c.receivedAt || ''
+        }));
+        QM_STORE.saveNow();
+        QM_STORE.emit('coupons');
+        return QM_STORE.coupon.list();
+      },
+      /* 可领取的券：已领过的标 claimed，前端置灰 */
+      async claimable() {
+        const data = await call(
+          { name: '可领取优惠券', method: 'GET', path: '/coupons/claimable', query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        const raw = Array.isArray(data) ? data : ((data && data.list) || []);
+        return raw.filter(Boolean).map(c => ({
+          couponId: String(c.couponId !== undefined ? c.couponId : c.id),
+          title: c.title || '优惠券',
+          threshold: Number(c.threshold) || 0,
+          amount: Number(c.amount) || 0,
+          expire: c.expire || '',
+          claimed: !!c.claimed
+        }));
+      },
+      /* 领取一张券（同一张券每人只能领一次，由后端校验） */
+      claim(couponId) {
+        return call(
+          { name: '领取优惠券', method: 'POST', path: '/coupons/claim', body: { couponId }, token: tokenOf() },
+          null, { strict: true }
+        );
+      }
+    },
+
+
     /* ================= 收藏（strict：严格走后端，不做本地回退） =================
        契约要点（详见 docs/收藏夹接口文档.md）：
        · GET    /favorites?page=&size=         → {total,page,size,list:[商品对象]}（商品对象含收藏页渲染所需字段）
@@ -809,10 +861,11 @@ function noteOnline(online) {
         );
       },
       /* 店家订单列表：{ total, page, size, list }，订单结构同 docs/商城三功能联调接口文档.md
-         （时间字段为 'yyyy-MM-dd HH:mm:ss'，这里统一转成毫秒时间戳供页面直接渲染） */
+         （时间字段为 'yyyy-MM-dd HH:mm:ss'，这里统一转成毫秒时间戳供页面直接渲染）
+         orderNo：按订单号查询（后端支持时走服务端过滤；不传/为空则返回全部） */
       async orders(opts = {}) {
         const data = await call(
-          { name: '店家订单列表', method: 'GET', path: '/seller/orders', query: { page: opts.page || 1, size: opts.size || 100, status: opts.status }, token: tokenOf() },
+          { name: '店家订单列表', method: 'GET', path: '/seller/orders', query: { page: opts.page || 1, size: opts.size || 100, status: opts.status, orderNo: opts.orderNo }, token: tokenOf() },
           null, { strict: true }
         );
         const d = data || {};
@@ -958,6 +1011,14 @@ function noteOnline(online) {
             return { msgId: 'm-' + Date.now(), sendTime: new Date().toLocaleString('zh-CN'), delivered: true };
           },
           { strict: true }
+        );
+      },
+      /* 发送商品卡片消息（把商品发给对方：买家告诉店家「我要的是这个商品」）：
+         body { receiverId, productId } → { msgId, sendTime, isOnline, biz } */
+      sendGoods(receiverId, productId) {
+        return call(
+          { name: '发送商品消息', method: 'POST', path: '/messages/goods', body: { receiverId, productId }, token: tokenOf() },
+          null, { strict: true }
         );
       },
       /* 发送文件（文件最终都存在阿里云 OSS，数据库 messages.file_url 存的就是 OSS 地址）：

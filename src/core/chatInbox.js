@@ -57,7 +57,9 @@ async function syncConversations() {
   convs.forEach(conv => {
     const peerId = conv.peerId;
     if (!peerId) return;
-    const contact = QM_STORE.chat.ensureContact(peerId, conv.peerName || peerId);
+    const contact = QM_STORE.chat.ensureContact(peerId, conv.peerName || peerId, { shopId: conv.shopId || '' });
+    /* 对端是店铺：已存在的联系人也补上店铺信息（供消息中心「发商品」只显示本店商品） */
+    if (conv.shopId) { contact.shopId = conv.shopId; if (conv.peerName) contact.name = conv.peerName; }
     /* 服务端未读数 → 本地会话角标（打开会话时 markRead 清零） */
     contact.unread = conv.unreadCount || 0;
     const msgs = QM_STORE.chat.messages(peerId);
@@ -96,7 +98,7 @@ function handleFrame(payload) {
     QM_STORE.chat.applyPresence(msg);
     return;
   }
-  if (!['COMM_MES', 'TO_ALL', 'FILE_MES'].includes(type)) return;
+  if (!['COMM_MES', 'TO_ALL', 'FILE_MES', 'GOODS_MES', 'ORDER_MES', 'COUPON_MES'].includes(type)) return;
 
   const myId = QM_STORE.state.user ? QM_STORE.state.user.userId : '';
   const peerId = msg.senderId === myId ? msg.receiverId : msg.senderId;
@@ -109,14 +111,19 @@ function handleFrame(payload) {
     contact.unread = (contact.unread || 0) + 1;
   }
 
+  /* 商品 / 订单 / 优惠券卡片：与 ChatView 同构，落库为对应类型，打开消息中心时渲染卡片 */
+  const BIZ_TYPES = { GOODS_MES: 'goods', ORDER_MES: 'order', COUPON_MES: 'coupon' };
+  const bizType = BIZ_TYPES[type] || null;
+
   const ts = msg.sendTime ? new Date(String(msg.sendTime).replace(' ', 'T')).getTime() : Date.now();
   const name = msg.fileName || msg.content || '文件';
   const live = {
     from: msg.senderId === myId ? 'me' : peerId,
-    type: msg.fileUrl ? 'file' : 'text',
+    type: bizType || (msg.fileUrl ? 'file' : 'text'),
     content: msg.fileUrl ? `[文件] ${name}（${fmtSize(msg.fileSize) || '0KB'}）` : (msg.content || msg.fileName || ''),
     time: ts
   };
+  if (bizType && msg.bizJson) { try { live.biz = JSON.parse(msg.bizJson); } catch (e) { live.biz = {}; } }
   if (msg.fileUrl) { live.name = name; live.size = msg.fileSize; live.url = msg.fileUrl; }
   if (msg.msgId) live.id = msg.msgId;
   QM_STORE.chat.push(peerId, live);   // push 内部 emit('chat') → 各页角标刷新

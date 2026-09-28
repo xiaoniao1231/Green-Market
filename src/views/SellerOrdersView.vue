@@ -37,13 +37,18 @@ const FILTERS = [
   { key: 'canceled', label: '已取消' }
 ];
 const filter = ref(typeof route.value.query.status === 'string' ? route.value.query.status : '');
+/* 按订单号查询：输入即时在已加载列表里过滤；点「查询」再带着订单号请求一次后端
+   （后端支持 orderNo 参数时即为服务端查询，未支持时退回本地过滤，两条路都能用） */
+const orderNoKw = ref('');
 /* 「被催发货」= 买家催过 且 订单仍在待发货（发货后状态转 shipped，角标自然消失）。
    后端在订单列表里带出 remindCount / lastRemindTime（LEFT JOIN seller_reminders） */
 const isUrged = o => o.status === 'paid' && Number(o.remindCount || 0) > 0;
 const urgedCount = computed(() => list.value.filter(isUrged).length);
 /* 被催的订单置顶：店家一进页面就知道该先处理谁；同组内按最近催发货时间倒序（催得越急越靠前） */
 const filtered = computed(() => {
-  const base = filter.value ? list.value.filter(o => o.status === filter.value) : list.value.slice();
+  const kw = orderNoKw.value.trim().toLowerCase();
+  let base = filter.value ? list.value.filter(o => o.status === filter.value) : list.value.slice();
+  if (kw) base = base.filter(o => String(o.orderNo || o.id || '').toLowerCase().includes(kw));
   return base.sort((a, b) => {
     const ua = isUrged(a) ? 1 : 0;
     const ub = isUrged(b) ? 1 : 0;
@@ -59,12 +64,15 @@ const statusCounts = computed(() => {
 });
 const countOf = key => (key ? (statusCounts.value[key] || 0) : list.value.length);
 function setFilter(key) { filter.value = key; }
+/* 按订单号查询：回车或点「查询」调一次接口（后端支持 orderNo 时走服务端过滤） */
+function searchByOrderNo() { refresh(); }
+function clearOrderNo() { if (!orderNoKw.value) return; orderNoKw.value = ''; refresh(); }
 
 async function refresh() {
   if (!shopId.value) { list.value = []; return; }
   loading.value = true;
   try {
-    const data = await QM_API.seller.orders({ page: 1, size: 100 });
+    const data = await QM_API.seller.orders({ page: 1, size: 100, orderNo: orderNoKw.value.trim() });
     list.value = (data && data.list) || [];
   } catch (e) {
     list.value = [];
@@ -153,6 +161,15 @@ onBeforeUnmount(() => {
         <button v-for="f in FILTERS" :key="f.key" :class="{ active: filter === f.key }" @click="setFilter(f.key)">
           {{ f.label }}（{{ countOf(f.key) }}）
         </button>
+      </div>
+
+      <!-- 按订单号查询：输入即时过滤，点「查询」再带订单号请求后端 -->
+      <div class="seller-order-search">
+        <input v-model="orderNoKw" type="text" maxlength="32" placeholder="输入订单号查询，如 QM20260927…"
+               @keyup.enter="searchByOrderNo" />
+        <button class="btn btn-primary btn-sm" @click="searchByOrderNo">查询</button>
+        <button v-if="orderNoKw" class="btn btn-plain btn-sm" @click="clearOrderNo">清空</button>
+        <small v-if="orderNoKw">订单号含「{{ orderNoKw.trim() }}」的有 {{ filtered.length }} 笔</small>
       </div>
 
       <div v-if="loading" class="empty-state">

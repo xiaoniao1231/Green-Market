@@ -8,7 +8,6 @@ import { useRouter } from 'vue-router';
 import QM_API from '../core/api.js';
 import QM_STORE from '../core/store.js';
 import QM_UI from '../core/ui.js';
-import openAddressModal from '../core/addressModal.js';
 
 const { esc, price, artStyle, artHtml, toast, modal, confirmDialog } = QM_UI;
 const router = useRouter();
@@ -118,12 +117,13 @@ function cartRow(item) {
 
 /* 「去结算」按钮（原版在 mount 里对初始 #checkoutBtn 绑定一次；该按钮位于 #cartRoot 的
    innerHTML 中，重建后原节点会失效，这里改为每次 renderList 重建后重新绑定，
-   保证任意勾选 / 改数量之后「去结算」仍然可用——外观与触发目标与原版一致） */
+   保证任意勾选 / 改数量之后「去结算」仍然可用——外观与触发目标与原版一致）。
+   结算已抽成两个独立页面：确认订单（/checkout：地址 / 按店铺选券 / 备注）→
+   收银台（/pay：核对金额并付款）。 */
 function bindCheckout() {
   const btn = cartRootEl.value && cartRootEl.value.querySelector('#checkoutBtn');
   if (btn) btn.onclick = () => {
-    const selected = QM_STORE.cart.selected();
-    if (selected.length) openCheckout(selected);
+    if (QM_STORE.cart.selected().length) router.push('/checkout');
   };
 }
 
@@ -283,159 +283,6 @@ function openSkuPicker(key) {
   };
 }
 
-/* 结算弹窗（地址 / 优惠券 / 支付方式选择，QM_UI.modal） */
-async function openCheckout(items) {
-  /* 地址一律以服务端为准（QM_API.addresses 是 strict 接口，不做本地回退）：
-     拉取失败就把地址区置空并给出明确原因，绝不用浏览器缓存冒充后端地址 ——
-     否则用户可能把订单发到一个后端并不存在的「假地址」上 */
-  let addresses = [];
-  let addrError = '';
-  try {
-    await QM_API.addresses.list();
-    addresses = QM_STORE.addr.list();
-  } catch (e) {
-    addrError = (e && e.message) || '收货地址加载失败';
-  }
-  const coupons = QM_STORE.coupon.list().filter(c => c.status === 'unused');
-  const goodsAmount = items.reduce((s, i) => s + QM_STORE.cart.subTotal(i), 0);
-  const usableCoupons = coupons.filter(c => goodsAmount >= c.threshold);
-  /* 运费必须与后端拆单口径一致：后端按店铺拆单、每店各自计算运费（满 50 包邮，否则 5 元），
-     所以这里也要按店铺分组后分别算再求和 —— 若拿整单金额去凑包邮，
-     弹窗显示的价格会低于实际应付，属于「前端骗用户」 */
-  const shopGroups = groupByShop(items);
-  shopGroups.forEach(g => {
-    g.amount = g.items.reduce((s, i) => s + QM_STORE.cart.subTotal(i), 0);
-    g.freight = g.amount >= 50 ? 0 : 5;
-  });
-  const freight = shopGroups.reduce((s, g) => s + g.freight, 0);
-  let chosenCoupon = null;
-  let chosenAddr = addresses.find(a => a.isDefault) || addresses[0];
-  let payMethod = '支付宝';
-
-  const m = modal(`
-      <div>
-        <h3>确认订单</h3>
-        <p class="modal-sub">共 ${items.reduce((s, i) => s + i.qty, 0)} 件商品</p>
-        <div class="form-row">
-          <label>收货地址 <button type="button" class="link-btn" id="addrManage" style="float:right">添加地址</button></label>
-          <div id="addrList"></div>
-        </div>
-        <div class="form-row">
-          <label>优惠券（${usableCoupons.length} 张可用）</label>
-          <select id="couponSel">
-            <option value="">不使用优惠券</option>
-            ${usableCoupons.map(c => `<option value="${esc(c.id)}">${esc(c.title)}（满 ${c.threshold} 减 ${c.amount}）</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-row">
-          <label>支付方式</label>
-          <div class="pay-methods">
-            <div class="pay-method active" data-pay="支付宝">支付宝</div>
-            <div class="pay-method" data-pay="微信支付">微信支付</div>
-            <div class="pay-method" data-pay="银行卡">银行卡</div>
-          </div>
-        </div>
-        <div class="form-row">
-          <label>订单备注</label>
-          <input id="orderRemark" placeholder="选填，给卖家留言（50 字内）" maxlength="50" />
-        </div>
-        <!-- 拆单预览：跨店下单时先说清楚会拆成几个订单、每店运费各多少，
-             避免用户提交后才发现「怎么多了几笔订单 / 运费怎么变了」 -->
-        ${shopGroups.length > 1 ? `
-        <div style="border-top:1px dashed var(--border);padding-top:12px;margin-top:4px">
-          <div class="hint" style="margin:0 0 6px">🧾 共 ${shopGroups.length} 家店铺，将拆成 <b>${shopGroups.length}</b> 个订单（各店独立发货、分别计算运费）</div>
-          ${shopGroups.map(g => `
-            <div class="checkout-item">
-              <span>${esc(g.name)} · ${g.items.length} 种</span>
-              <span>${price(g.amount)}${g.freight ? ` + 运费 ${price(g.freight)}` : ' · 包邮'}</span>
-            </div>`).join('')}
-        </div>` : ''}
-        <div style="border-top:1px dashed var(--border);padding-top:12px;margin-top:4px">
-          <div class="checkout-item"><span>商品金额</span><span>${price(goodsAmount)}</span></div>
-          <div class="checkout-item"><span>运费</span><span id="freightText">${freight ? price(freight) : '包邮'}</span></div>
-          <div class="checkout-item"><span>优惠券</span><span id="couponText">- ¥0.00</span></div>
-          <div class="checkout-item" style="font-size:15px"><b>应付总额</b><b id="totalText" style="color:var(--accent)">${price(goodsAmount + freight)}</b></div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-plain" data-close>再想想</button>
-          <button class="btn btn-primary btn-lg" id="submitOrder" style="flex:1">提交订单并支付</button>
-        </div>
-      </div>`, { wide: true });
-
-  const updateTotal = () => {
-    const coupon = coupons.find(c => c.id === chosenCoupon);
-    const total = goodsAmount + freight - (coupon ? coupon.amount : 0);
-    m.root.querySelector('#couponText').textContent = coupon ? `- ¥${coupon.amount}.00` : '- ¥0.00';
-    m.root.querySelector('#totalText').innerHTML = price(total);
-  };
-  const refreshAddr = () => {
-    const id = chosenAddr && chosenAddr.id;
-    m.root.querySelectorAll('[data-action="pick-addr"]').forEach(el => el.classList.toggle('active', el.dataset.id === id));
-  };
-  /* 地址区渲染：列表可随「添加地址」后的刷新重绘，选中项按 id 比对（对象引用会因重绘失效） */
-  const renderAddrOptions = () => {
-    const list = QM_STORE.addr.list();
-    const box = m.root.querySelector('#addrList');
-    if (!list.length) {
-      chosenAddr = null;
-      box.innerHTML = addrError
-        ? `<p class="hint" style="color:var(--accent-ink)">收货地址加载失败：${esc(addrError)}</p>`
-        : '<p class="hint">还没有收货地址，点右上「添加地址」</p>';
-      return;
-    }
-    if (!chosenAddr || !list.some(a => a.id === chosenAddr.id)) chosenAddr = list.find(a => a.isDefault) || list[0];
-    box.innerHTML = list.map(a => `
-      <div class="addr-option${a.id === chosenAddr.id ? ' active' : ''}" data-action="pick-addr" data-id="${esc(a.id)}">
-        <b>${esc(a.name)} ${esc(a.phone)}${a.isDefault ? ' <span class="pill pill-orange">默认</span>' : ''}${a.tag ? ` <span class="pill pill-gray">${esc(a.tag)}</span>` : ''}</b>
-        <small>${esc(a.region)} ${esc(a.detail)}</small>
-      </div>`).join('');
-  };
-  renderAddrOptions();
-  /* 「添加地址」直接弹出与个人中心一致的地址管理弹窗（core/addressModal.js），
-     保存 / 删除 / 设默认后重新拉取并刷新本弹窗的地址区 */
-  m.root.querySelector('#addrManage').onclick = () => openAddressModal({
-    onSaved: async () => {
-      try { await QM_API.addresses.list(); addrError = ''; }
-      catch (e) { addrError = (e && e.message) || '收货地址加载失败'; }
-      chosenAddr = null;   // 重新按「默认地址优先」选中：新建并设为默认的地址会被自动选中
-      renderAddrOptions();
-    }
-  });
-  m.root.querySelector('#addrList').onclick = e => {
-    const el = e.target.closest('[data-action="pick-addr"]');
-    if (!el) return;
-    chosenAddr = QM_STORE.addr.list().find(a => a.id === el.dataset.id) || null;
-    refreshAddr();
-  };
-  m.root.querySelector('#couponSel').onchange = e => { chosenCoupon = e.target.value || null; updateTotal(); };
-  m.root.querySelectorAll('[data-pay]').forEach(el => el.onclick = () => {
-    m.root.querySelectorAll('[data-pay]').forEach(x => x.classList.toggle('active', x === el));
-    payMethod = el.dataset.pay;
-  });
-  m.root.querySelector('#submitOrder').onclick = async () => {
-    if (!chosenAddr) return toast('请先选择收货地址', 'error');
-    const coupon = coupons.find(c => c.id === chosenCoupon) || null;
-    const payload = {
-      items: items.map(i => ({ productId: i.productId, sku: i.sku, qty: i.qty, price: QM_STORE.cart.unitPrice(i), title: i.product.title, img: i.img || null })),
-      address: { name: chosenAddr.name, phone: chosenAddr.phone, region: chosenAddr.region, detail: chosenAddr.detail },
-      coupon, payMethod, remark: m.root.querySelector('#orderRemark').value.trim()
-    };
-    try {
-      const result = await QM_API.orders.create(payload);
-      /* 后端按店铺拆单：用共享的 payNo 把拆出的子订单一次付清（演示自动支付）。
-         顺序上先支付再清购物车 —— 若支付失败，订单仍是 pending、购物车也还在，
-         用户能重试付款，不会出现「购物车空了、订单却没付」的难解释状态 */
-      await QM_API.orders.payBatch(result.payNo);
-      await QM_API.cart.remove(items.map(i => i.key));
-      m.close();
-      toast(result.orderCount > 1
-        ? `下单成功！已按 ${result.orderCount} 家店铺拆成 ${result.orderCount} 个订单并完成支付`
-        : '下单成功！演示订单已自动支付', 'success');
-      router.push('/orders');   // 原 QM_ROUTER.go('/orders')
-    } catch (e) { toast(e.message, 'error'); }
-  };
-}
-
 /* #cartRoot 点击事件委托（原版 mount 里 view.querySelector('#cartRoot').onclick 同款） */
 async function onCartRootClick(e) {
   const t = e.target.closest('[data-action]');
@@ -515,26 +362,6 @@ async function onCartRootClick(e) {
 onMounted(async () => {
   await renderList();
   cartRootEl.value.addEventListener('click', onCartRootClick);
-
-  /* 「立即购买」跳转而来 → 自动打开结算。
-     优先按详情页记录的 productId/sku 精确匹配（原实现取 selected.slice(-1)，
-     当该商品早已在购物车里时不改变位置，会误结算成购物车中的最后一条旧商品） */
-  let buyNow = null;
-  try { buyNow = sessionStorage.getItem('qm_v2_buynow'); } catch (e) { buyNow = null; }
-  if (buyNow) {
-    try { sessionStorage.removeItem('qm_v2_buynow'); } catch (e) { /* 忽略 */ }
-    const selected = QM_STORE.cart.selected();
-    let target = null;
-    if (buyNow.startsWith('{')) {
-      try {
-        const want = JSON.parse(buyNow);
-        target = QM_STORE.cart.list().find(i => i.productId === want.productId && (!want.sku || i.sku === want.sku))
-          || QM_STORE.cart.list().find(i => i.productId === want.productId);
-      } catch (e) { target = null; }
-    }
-    if (!target) target = selected[selected.length - 1] || null; // 兼容旧的 '1' 标记
-    if (target) setTimeout(() => openCheckout([target]), 200);
-  }
 });
 
 /* 原版 cart.js 未订阅任何 QM_STORE 事件（每次变更都在本页内发生并手动 renderList），

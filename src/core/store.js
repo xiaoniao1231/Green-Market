@@ -58,6 +58,8 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
          订单卡据此显示「售后处理中」并提供「售后进度」入口。 */
       afterSales: {},
       addresses: [],
+      /* 优惠券：GET /coupons 的本地缓存（由 api.js 写穿）。
+         券由平台在数据库配置，前端不提供任何增删入口；整单统一使用一张券。 */
       coupons: [],
       contacts: [],        // 会话联系人：由「联系卖家」创建，或从 /messages/conversations 恢复
       chats: {},
@@ -106,6 +108,8 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       QM_STORE.state.shopFavs = QM_STORE.state.shopFavs || [];
       /* 旧会话里没有售后记录字段（本轮新增）：补齐为空字典，避免读取时抛错 */
       QM_STORE.state.afterSales = QM_STORE.state.afterSales || {};
+      /* 优惠券缓存：内容以 GET /coupons 为准，这里只保证字段存在 */
+      QM_STORE.state.coupons = QM_STORE.state.coupons || [];
       /* 独立商家账号体系已移除：清理旧版 sellerUser 会话数据（店铺绑定统一挂在 user.shopId 上） */
       if (QM_STORE.state.sellerUser) { delete QM_STORE.state.sellerUser; save(); }
       /* 会话保留规则：只有「有实际聊天记录」的联系人才算会话 ——
@@ -378,7 +382,14 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
 
     /* ---------- 优惠券 ---------- */
     coupon: {
-      list() { return QM_STORE.state.coupons; }
+      list() { return QM_STORE.state.coupons; },
+      // 券是否已过期（expire 为 yyyy-MM-dd，含当天有效；为空表示长期有效）
+      isExpired(c) {
+        const e = String((c && c.expire) || '').trim();
+        if (!e) return false;
+        const t = Date.parse(e + 'T23:59:59');
+        return !isNaN(t) && t < Date.now();
+      }
     },
 
     /* ---------- 聊天 ---------- */

@@ -2,8 +2,9 @@
 /* =========================================================
    青集市 · views/OrderDetailView.vue —— 订单详情页（#/order/:id）
    数据来源：QM_API.orders.get(id)（GET /orders/{id}）；物流优先取订单内嵌轨迹，
-   为空时再调 GET /orders/{id}/logistics。支付 / 取消 / 提醒发货 / 确认收货 / 再次购买
-   与订单列表页同一套接口，成功后重新拉取本页数据。
+   为空时再调 GET /orders/{id}/logistics。取消 / 提醒发货 / 确认收货 / 再次购买
+   与订单列表页同一套接口，成功后重新拉取本页数据；未付款订单的「立即支付」
+   跳收银台 /pay（支付只有那一个入口）。
    入口：我的订单里点击商品图或商品名 → 本页。
    ========================================================= */
 import { computed, onMounted, ref, watch } from 'vue';
@@ -79,9 +80,9 @@ async function onAction(a) {
   if (acting.value) return;
   const id = orderId.value;
   if (a.action === 'order-pay') {
-    acting.value = true;
-    try { await QM_API.orders.pay(id); toast('支付成功！卖家将尽快发货', 'success'); await load(); }
-    catch (e) { toast(e.message, 'error'); } finally { acting.value = false; }
+    /* 支付统一在收银台（/pay）完成：带着订单号跳过去，不在详情页直接付款 */
+    router.push('/pay?orderId=' + encodeURIComponent(id));
+    return;
   } else if (a.action === 'order-cancel') {
     if (await confirmDialog('取消订单', '确定取消该订单吗？', '取消订单', true)) {
       acting.value = true;

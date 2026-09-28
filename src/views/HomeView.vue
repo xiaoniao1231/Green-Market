@@ -48,6 +48,13 @@ const favCount = ref(storeFavCount());
 /* 未读消息数：与会话中心同一数据源（store.contacts 的 unread 汇总），
    由 App.vue 登录后同步 + 实时消息累加，这里只负责显示 */
 const msgUnread = ref(QM_STORE.chat.unreadTotal());
+/* 各状态订单数量（GET /orders/counts）：会员卡的「待付款 / 待收货」入口显示对应数量 */
+const orderCounts = ref({});
+async function loadOrderCounts() {
+  if (!QM_STORE.state.user) { orderCounts.value = {}; return; }
+  try { orderCounts.value = (await QM_API.orders.counts()) || {}; }
+  catch (e) { /* 订单接口不可用时入口不显示数量，不影响页面其它内容 */ }
+}
 function syncMember() {
   user.value = storeUser();
   favCount.value = storeFavCount();
@@ -57,7 +64,8 @@ function syncMember() {
 const memberOffs = [
   QM_STORE.on('favorites', syncMember),
   QM_STORE.on('chat', syncMember),
-  QM_STORE.on('user', syncMember)
+  QM_STORE.on('user', () => { syncMember(); loadOrderCounts(); }),
+  QM_STORE.on('orders', () => { loadOrderCounts(); })
 ];
 
 /* ---------- 轮播 ---------- */
@@ -204,6 +212,7 @@ function scrollToSec(sec) {
 /* ---------- 页面入口（原 mount） ---------- */
 onMounted(async () => {
   syncMember();
+  loadOrderCounts();
 
   /* 轮播自动播放 */
   timers.push(setInterval(() => go(idx.value + 1), 4000));
@@ -287,9 +296,9 @@ onBeforeUnmount(() => { timers.forEach(clearInterval); memberOffs.forEach(off =>
         </div>
         <div class="member-line"></div>
         <div class="order-shortcuts">
-          <a href="#/orders"><span>◴</span>待付款</a>
-          <a href="#/orders"><span>▣</span>待收货</a>
-          <a href="#/favorites"><span>♡</span>收藏<b style="display:inline;color:var(--brand)">{{ favCount }}</b></a>
+          <a href="#/orders?status=pending"><span>◴</span>待付款<b v-if="orderCounts.pending" class="mini-badge">{{ orderCounts.pending > 99 ? '99+' : orderCounts.pending }}</b></a>
+          <a href="#/orders?status=shipped"><span>▣</span>待收货<b v-if="orderCounts.shipped" class="mini-badge">{{ orderCounts.shipped > 99 ? '99+' : orderCounts.shipped }}</b></a>
+          <a href="#/favorites"><span>♡</span>收藏<b v-if="favCount" class="mini-badge">{{ favCount > 99 ? '99+' : favCount }}</b></a>
           <a href="#/chat"><span>◌</span>消息<b v-if="msgUnread" class="mini-badge">{{ msgUnread > 99 ? '99+' : msgUnread }}</b></a>
         </div>
         <div class="notice"><b>公告</b><span>新用户下单立享 30 元优惠券</span></div>

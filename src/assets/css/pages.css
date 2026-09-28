@@ -87,6 +87,8 @@
 .detail-gallery .g-main > span { position: relative; z-index: 1; filter: drop-shadow(0 14px 24px rgba(0, 0, 0, .22)); }
 .detail-gallery .g-thumbs { display: flex; gap: 10px; margin-top: 12px; }
 .detail-gallery .g-thumb {
+  /* 同 .ck-art：artHtml 的 img.art-img 为绝对定位，容器必须自带定位并裁剪 */
+  position: relative; overflow: hidden;
   width: 68px; height: 68px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center;
   font-size: 30px; border: 2px solid transparent; cursor: pointer;
   transition: all var(--dur) var(--ease);
@@ -370,6 +372,52 @@
 .addr-option b { display: block; }
 .addr-option small { color: var(--text-3); }
 .addr-option .addr-actions { float: right; display: flex; gap: 4px; align-items: center; margin-left: 12px; }
+
+/* ---------- 确认订单页（#/checkout）：白色卡片 + 按店铺分组 + 本店优惠券 ---------- */
+.ck-card {
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.ck-card-title {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 700; color: var(--text);
+  padding-bottom: 12px; margin-bottom: 12px;
+  border-bottom: 1px dashed var(--border);
+}
+.ck-card-title small { font-weight: 400; color: var(--text-3); font-size: 12px; }
+.ck-shop-name { color: var(--brand-ink); }
+.ck-items { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.ck-item { display: flex; align-items: center; gap: 12px; }
+.ck-art {
+  /* artHtml 输出的 img.art-img 是 position:absolute + inset:0（见 components.css），
+     容器必须自带定位，否则图片会相对更上层的定位祖先铺满整屏，把页面撑爆 */
+  position: relative;
+  flex: none; width: 56px; height: 56px; border-radius: var(--radius-sm, 8px);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; overflow: hidden; border: 1px solid var(--border-strong, var(--border));
+}
+.ck-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ck-item-info { flex: 1; min-width: 0; }
+.ck-item-info h4 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.ck-item-info small { color: var(--text-3); font-size: 12px; }
+.ck-g-sum { border-top: 1px dashed var(--border); padding-top: 10px; }
+
+/* ---------- 收银台（#/pay）：待付款订单明细 + 本批合计 + 支付 ---------- */
+.pay-order { border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 12px; }
+.pay-order:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+.pay-order-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; margin-bottom: 10px; }
+.pay-order-head small { color: var(--text-3); font-size: 12px; }
+.pay-batch-foot { margin-top: 12px; }
+.pay-method-row b { color: var(--text); }
+.pay-minus { color: var(--accent-ink); }
+.pay-done { text-align: center; padding: 26px 10px; }
+.pay-done-icon { font-size: 44px; line-height: 1; margin-bottom: 12px; }
+.pay-done h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.pay-done p { font-size: 13px; color: var(--text-2); margin-bottom: 18px; }
+.pay-done-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 /* 换款式弹层（购物车条目改规格；规格 chips 复用 components.css 的 .sku-group / .sku-chip） */
 .sku-picker-head { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }

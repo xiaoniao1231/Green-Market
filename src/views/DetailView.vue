@@ -125,7 +125,7 @@ function openShopInfo() {
         <div><b>${QM_UI.sales((product.value ? product.value.sales : 0) || 0)}</b><span>累计销量</span></div>
       </div>
       <div class="modal-actions" style="margin-top:16px">
-        <button class="btn btn-primary" data-action="goto-chat" data-id="${s.userId || s.id}">联系卖家</button>
+        <button class="btn btn-primary" data-action="goto-chat" data-id="${s.userId || s.id}" data-shop-id="${s.id || ''}">联系卖家</button>
         <button class="btn btn-plain" data-action="goto-shop" data-id="${s.shopName}" data-shop-id="${s.id || ''}">进店逛逛</button>
         <button class="btn btn-plain" data-close>关闭</button>
       </div>
@@ -317,12 +317,12 @@ async function addCart() {
 }
 async function buyNow() {
   await QM_API.cart.add(product.value.id, skuText(), qty.value, curUnitPrice.value);
-  /* 记录「本次立即购买」的目标商品：购物车页据此精确结算，
+  /* 记录「本次立即购买」的目标商品：确认订单页据此精确结算，
      避免结算到购物车里最后一条（可能是无关的旧商品） */
   try {
     sessionStorage.setItem('qm_v2_buynow', JSON.stringify({ productId: product.value.id, sku: skuText() }));
-  } catch (e) { /* 存储不可用时退化为购物车页默认的结算行为 */ }
-  router.push('/cart'); // 原 QM_ROUTER.go('/cart')
+  } catch (e) { /* 存储不可用时退化为确认订单页默认的结算行为 */ }
+  router.push('/checkout'); // 原 QM_ROUTER.go('/cart')；结算已抽成确认订单页
 }
 
 /* /detail/p01 → /detail/p02 时复用本组件：按原版“重新挂载”复位并重新加载 */
@@ -443,7 +443,7 @@ onBeforeUnmount(() => {
                 <button class="buy-icon" :class="{ on: faved }" data-action="toggle-fav" :data-id="product.id" :title="faved ? '取消收藏' : '收藏商品'">
                   <span class="buy-icon-glyph">{{ faved ? '♥' : '♡' }}</span><span>收藏</span>
                 </button>
-                <button class="buy-icon" data-action="goto-chat" :data-id="serviceId" title="联系卖家">
+                <button class="buy-icon" data-action="goto-chat" :data-id="serviceId" :data-shop-id="(product && product.shop && product.shop.id) || ''" title="联系卖家">
                   <span class="buy-icon-glyph">◌</span><span>联系</span>
                 </button>
               </div>
@@ -469,7 +469,7 @@ onBeforeUnmount(() => {
               <div class="shop-stat"><b>{{ sales(shopInfo.fans) }}</b><span>粉丝</span></div>
             </div>
             <button class="btn btn-ghost" :class="{ faved: shopFaved }" :disabled="shopFavBusy" @click="toggleShopFav">{{ shopFaved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
-            <button class="btn btn-ghost" data-action="goto-chat" :data-id="serviceId">◌ 联系卖家</button>
+            <button class="btn btn-ghost" data-action="goto-chat" :data-id="serviceId" :data-shop-id="(product && product.shop && product.shop.id) || ''">◌ 联系卖家</button>
             <button class="btn btn-plain" data-action="goto-shop" :data-id="product.shop.name" :data-shop-id="product.shop.id || ''">进店逛逛 →</button>
           </aside>
         </div>

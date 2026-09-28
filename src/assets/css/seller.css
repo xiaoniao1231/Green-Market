@@ -182,6 +182,19 @@ a.stat-card:hover b { color: var(--brand); }
 /* 订单管理：状态筛选页签（沿用 .tabs 的胶囊样式，这里只调间距） */
 .seller-order-tabs { margin: 14px 0 6px; }
 
+/* 订单管理：按订单号查询 */
+.seller-order-search {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin: 10px 0 12px; box-shadow: var(--shadow-sm);
+}
+.seller-order-search input {
+  flex: 1; min-width: 220px; height: 34px; padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm, 8px); font-size: 13px;
+}
+.seller-order-search input:focus { border-color: var(--brand); outline: none; }
+.seller-order-search small { color: var(--text-3); font-size: 12px; }
+
 /* 收入明细页：概览卡 + 明细表 */
 .income-stats { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 900px) { .income-stats { grid-template-columns: repeat(2, 1fr); } }
@@ -289,7 +302,7 @@ a.stat-card:hover b { color: var(--brand); }
   margin-top: 10px; border: 1px solid var(--border); transition: all var(--dur) var(--ease);
 }
 .seller-product-row:hover { box-shadow: var(--shadow-md); border-color: #ffd2b8; }
-.seller-product-row .p-art { width: 58px; height: 58px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+.seller-product-row .p-art { position: relative; overflow: hidden; width: 58px; height: 58px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
 .seller-product-row .p-info { flex: 1; min-width: 0; }
 .seller-product-row .p-info h5 { font-size: 14px; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-weight: 500; }
 .seller-product-row .p-info small { color: var(--text-3); font-size: 12px; margin-top: 5px; display: block; }

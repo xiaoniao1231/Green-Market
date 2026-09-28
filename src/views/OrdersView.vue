@@ -4,7 +4,8 @@
    数据来源：QM_API.orders（后端接口）：
    · 列表 GET /orders?status=&page=&size=
    · 计数 GET /orders/counts（顶部各页签数量）
-   · 支付 / 取消 / 确认收货 / 提醒发货 / 物流均走接口
+   · 取消 / 确认收货 / 提醒发货 / 物流均走接口；「立即支付」跳收银台 /pay
+     （支付只有收银台一个入口，本页不再直接调支付接口）
    售后服务：入口在本页，申请记录存本机浏览器（QM_STORE.afterSales）——
    后端售后接口尚未实现，因此只做前端记录与进度回显，不产生伪造的「已提交」假象。
    ========================================================= */
@@ -138,7 +139,6 @@ function logisticsModal(o, list) {
             <div><b>${esc(l.text)}</b><small>${new Date(l.time).toLocaleString('zh-CN')}</small></div>
           </div>`).join('') || '<p class="hint">暂无物流信息</p>'}
       </div>
-      <p class="modal-sub" style="margin:14px 0 0">物流轨迹来自订单接口（GET /orders/{id}/logistics）</p>
       <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
     </div>`, { wide: true });
 }
@@ -169,7 +169,6 @@ function afterSalesModal(o) {
         <label>补充说明</label>
         <textarea id="asRemark" rows="3" maxlength="200" placeholder="选填，最多 200 字"></textarea>
       </div>
-      <p class="hint">演示说明：后端售后接口尚未实现，申请记录保存在本机浏览器，不会同步给卖家。</p>
       <div class="modal-actions">
         <button class="btn btn-plain" data-close>再想想</button>
         <button class="btn btn-primary" id="asSubmit">提交申请</button>
@@ -209,7 +208,6 @@ function afterSalesDetailModal(o, rec) {
         ${rec.remark ? `<div><span>补充说明</span><b>${esc(rec.remark)}</b></div>` : ''}
         <div><span>处理状态</span><b class="as-status">${esc(rec.statusText || '待处理')}</b></div>
       </div>
-      <p class="hint">演示说明：后端售后接口尚未实现，该记录仅保存在本机浏览器，刷新页面仍在、换设备不同步。</p>
       <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
     </div>`, { wide: true });
 }
@@ -257,8 +255,9 @@ async function onListClick(e) {
   const o = orders.value.find(x => String(x.id) === String(id));
   switch (t.dataset.action) {
     case 'order-pay':
-      try { await QM_API.orders.pay(id); toast('支付成功！卖家将尽快发货', 'success'); await refresh(); }
-      catch (err) { toast(err.message, 'error'); }
+      /* 支付统一在收银台（/pay）完成：这里只把订单号带过去，
+         不在列表页直接付款，避免出现第二个支付入口 */
+      router.push('/pay?orderId=' + encodeURIComponent(id));
       break;
     case 'order-cancel':
       if (await confirmDialog('取消订单', '确定取消该订单吗？', '取消订单', true)) {

@@ -113,7 +113,7 @@ function openShopInfo() {
         <div><b>${sales(goods.value.reduce((n, p) => n + p.sales, 0))}</b><span>累计销量</span></div>
       </div>
       <div class="modal-actions" style="margin-top:16px">
-        <button class="btn btn-primary" data-action="goto-chat" data-id="${esc(s.userId || s.id)}">联系卖家</button>
+        <button class="btn btn-primary" data-action="goto-chat" data-id="${esc(s.userId || s.id)}" data-shop-id="${esc(s.id || '')}">联系卖家</button>
         <button class="btn btn-plain" data-close>关闭</button>
       </div>
     </div>`, { wide: true });
@@ -206,7 +206,7 @@ onBeforeUnmount(() => { if (offShopFav) { offShopFav(); offShopFav = null; } });
         </div>
         <div class="shop-cover-actions">
           <button class="btn" :class="faved ? 'fav-on' : ''" :disabled="favBusy" @click="toggleFav">{{ faved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
-          <button class="btn btn-plain" data-action="goto-chat" :data-id="shop.userId">◌ 联系卖家</button>
+          <button class="btn btn-plain" data-action="goto-chat" :data-id="shop.userId" :data-shop-id="shop.id || ''">◌ 联系卖家</button>
         </div>
       </div>
 

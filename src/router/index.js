@@ -5,6 +5,8 @@ import CategoryView from '../views/CategoryView.vue';
 import SearchView from '../views/SearchView.vue';
 import DetailView from '../views/DetailView.vue';
 import CartView from '../views/CartView.vue';
+import CheckoutView from '../views/CheckoutView.vue';
+import PayView from '../views/PayView.vue';
 import OrdersView from '../views/OrdersView.vue';
 import OrderDetailView from '../views/OrderDetailView.vue';
 import ProfileView from '../views/ProfileView.vue';
@@ -22,7 +24,8 @@ import QM_STORE from '../core/store.js';
 /* 与原版 mall-web 一致的路由表（Hash 模式）：
    #/home  #/category/:catId  #/search?q=  #/detail/:id  #/cart  #/orders?status=
    #/profile  #/favorites  #/chat?peer=  #/placeholder/:feature
-   新增 #/login 独立登录/注册页、#/shop/:name 店铺主页；涉及用户数据或下单的页面需登录后才能访问。 */
+   新增 #/login 独立登录/注册页、#/shop/:name 店铺主页、#/checkout 确认订单页、
+   #/pay 收银台（独立支付页）；涉及用户数据或下单支付的页面需登录后才能访问。 */
 const routes = [
   { path: '/', redirect: '/home' },
   { path: '/home', name: 'home', component: HomeView },
@@ -31,6 +34,8 @@ const routes = [
   { path: '/login', name: 'login', component: LoginView },
   { path: '/detail/:id', name: 'detail', component: DetailView },
   { path: '/cart', name: 'cart', component: CartView },
+  { path: '/checkout', name: 'checkout', component: CheckoutView },
+  { path: '/pay', name: 'pay', component: PayView },
   { path: '/orders', name: 'orders', component: OrdersView },
   { path: '/order/:id', name: 'order-detail', component: OrderDetailView },
   { path: '/profile', name: 'profile', component: ProfileView },
@@ -48,7 +53,7 @@ const routes = [
 /* 需登录才能访问的页面：商品详情（点击商品）、店铺主页、购物车、订单、个人中心、收藏、消息中心、
    我的店铺（店铺绑定在当前用户账号下，开店后仍是这一个账号，无需独立店家账号；消息统一在消息中心处理）。
    未登录访问时重定向到登录页，并带上 redirect 参数，登录成功后回跳原目标。 */
-const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'orders', 'order-detail', 'profile', 'favorites', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-income'];
+const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'checkout', 'pay', 'orders', 'order-detail', 'profile', 'favorites', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-income'];
 
 const router = createRouter({
   history: createWebHashHistory(),

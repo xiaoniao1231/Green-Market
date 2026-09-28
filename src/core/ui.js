@@ -408,7 +408,7 @@ let currentLoginModal = null;
         /* 演示环境：后端把验证码放在 data.smsCode 返回，自动填入便于联调 */
         if (data && data.smsCode) {
           codeEl.value = String(data.smsCode);
-          hintEl.textContent = `演示环境已自动填入验证码：${data.smsCode}（正式接入短信服务后不再返回）`;
+          hintEl.textContent = `演示环境已自动填入验证码：${data.smsCode}`;
         }
       } catch (e) {
         resetSmsBtn(scene);

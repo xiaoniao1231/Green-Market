@@ -110,14 +110,54 @@
 .msg-sys { justify-content: center; }
 .msg-sys .bubble { background: #e8eaee; color: var(--text-3); font-size: 12px; box-shadow: none; border-radius: var(--radius-pill); padding: 3px 14px; }
 
-/* 商品卡片消息 */
-.goods-bubble { width: 252px; background: #fff !important; padding: 0; overflow: hidden; cursor: pointer; border-radius: 12px; box-shadow: var(--shadow-sm); transition: all var(--dur) var(--ease); }
-.goods-bubble:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-.goods-bubble .gb-art { height: 112px; display: flex; align-items: center; justify-content: center; font-size: 46px; }
-.goods-bubble .gb-info { padding: 11px 13px; }
-.goods-bubble h5 { font-size: 13px; font-weight: 400; line-height: 1.5; height: 39px; overflow: hidden; }
-.goods-bubble .price { font-size: 17px; margin-top: 5px; display: inline-block; }
-.goods-bubble .btn { width: 100%; height: 30px; font-size: 12px; margin-top: 9px; }
+/* 商品卡片消息：左右布局（左小图 + 右标题/价格/按钮），紧凑清爽 */
+.goods-bubble { display: flex; align-items: stretch; gap: 10px; width: 260px; background: #fff !important; padding: 10px; overflow: hidden; cursor: pointer; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.07); transition: all var(--dur) var(--ease); }
+.goods-bubble:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.12); }
+/* 自己发的消息气泡原本有右上角小尖角，商品卡片统一圆角 */
+.msg-row.mine .goods-bubble { border-radius: 12px; }
+/* 左：正方形小图；artHtml 的 img.art-img 是绝对定位，容器必须自带定位并裁剪 */
+.goods-bubble .gb-art { position: relative; flex: none; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; font-size: 36px; background: #f6f7f9; }
+.goods-bubble .gb-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 右：标题 + 底部价格/按钮一行 */
+.goods-bubble .gb-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.goods-bubble h5 { font-size: 13px; font-weight: 500; line-height: 1.4; height: 36px; overflow: hidden; color: var(--text); margin: 0; }
+.goods-bubble .gb-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 6px; }
+.goods-bubble .gb-price { color: var(--accent); font-size: 16px; font-weight: 700; }
+.goods-bubble .gb-go { flex: none; height: 24px; padding: 0 12px; font-size: 12px; border-radius: 12px; width: auto; margin-top: 0; }
+
+/* ---------- 消息里的订单 / 优惠券卡片 与 弹窗选择列表（消息中心分享与送券） ---------- */
+.order-bubble { width: 264px; padding: 11px 13px; }
+.order-bubble .ob-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.order-bubble .ob-status { color: var(--brand-ink); font-weight: 600; }
+.order-bubble .ob-body { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.order-bubble .ob-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--border); }
+.order-bubble .ob-foot .btn { height: 26px; padding: 0 12px; font-size: 12px; }
+
+.coupon-bubble { display: flex; align-items: center; gap: 10px; width: 296px; padding: 10px 12px; }
+.coupon-bubble .cb-left { flex: none; width: 74px; text-align: center; background: var(--brand-soft); border-radius: 8px; padding: 8px 0; }
+.coupon-bubble .cb-left b { color: var(--brand); font-size: 18px; }
+.coupon-bubble .cb-left small { display: block; color: var(--text-3); font-size: 11px; }
+.coupon-bubble .cb-info { flex: 1; min-width: 0; }
+.coupon-bubble .cb-info b { display: block; font-size: 13px; }
+.coupon-bubble .cb-info small { display: block; color: var(--text-3); font-size: 11px; margin-top: 2px; }
+.coupon-bubble .cb-use { flex: none; }
+
+.pick-list { max-height: 320px; overflow-y: auto; margin: 4px 0 12px; }
+.pick-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 11px; margin-bottom: 8px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); cursor: pointer;
+  transition: all var(--dur) var(--ease);
+}
+.pick-row:hover { border-color: var(--brand); background: var(--brand-softer, #fff8f4); }
+.pick-row.is-full { opacity: .55; cursor: not-allowed; }
+.pick-row .pick-art {
+  position: relative; flex: none; width: 46px; height: 46px; border-radius: 8px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; font-size: 22px; border: 1px solid var(--border);
+}
+.pick-row .pick-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pick-row .pick-info { flex: 1; min-width: 0; font-size: 13px; }
+.pick-row .pick-info small { display: block; color: var(--text-3); font-size: 12px; margin-top: 3px; }
+.pick-row .pick-amount { flex: none; }
 
 /* 文件消息：图片/视频是内容卡片，音频是内嵌播放条，普通文件是「图标 + 文件名 + 下载」 */
 .file-row { display: flex; align-items: center; gap: 8px; max-width: 100%; }
@@ -270,15 +310,55 @@
 .compose-row .send-btn:hover { background: var(--brand-deep); transform: translateY(-1px); }
 .compose-row .send-btn:active { transform: translateY(0); }
 
-/* 表情面板 */
+/* 表情面板（2026-09 优化：分类切换 + 最近使用 + 悬停反馈 + 网格滚动）
+   结构：#emojiPanel > .emoji-tabs（分类）+ .emoji-grid（表情格子） */
 .emoji-panel {
-  position: absolute; bottom: 48px; left: 0; z-index: 20;
-  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow-md); padding: 10px; display: grid;
-  grid-template-columns: repeat(8, 1fr); gap: 4px; width: 328px;
+  position: absolute; bottom: 46px; left: 0; z-index: 20;
+  width: 348px; max-width: calc(100vw - 44px);
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: 0 14px 34px rgba(23, 26, 31, .16);
+  display: flex; flex-direction: column; overflow: hidden;
+  transform-origin: bottom left; animation: emojiPanelIn .16s var(--ease);
 }
-.emoji-panel button { font-size: 20px; padding: 5px; border-radius: var(--radius-sm); }
-.emoji-panel button:hover { background: var(--brand-soft); }
+.emoji-panel.hidden { display: none; } /* 兜底：与 base.css 的 .hidden 同义，防止 display:flex 覆盖隐藏 */
+@keyframes emojiPanelIn {
+  from { opacity: 0; transform: translateY(6px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 分类标签栏：一行平铺，当前分类高亮 */
+.emoji-tabs {
+  display: flex; gap: 2px; padding: 6px 8px;
+  background: #fcfcfd; border-bottom: 1px solid var(--border);
+}
+.emoji-tab {
+  flex: 1; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1; border-radius: var(--radius-sm); color: var(--text-3);
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.emoji-tab:hover { background: var(--fill); }
+.emoji-tab.on { background: var(--brand-soft); color: var(--brand-ink); }
+
+/* 表情网格：定高 + 内部滚动，hover 轻微放大给出点击反馈 */
+.emoji-grid {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;
+  padding: 8px; max-height: 236px; overflow-y: auto;
+  scrollbar-width: thin; /* Firefox：细滚动条 */
+}
+.emoji-grid::-webkit-scrollbar { width: 6px; }
+.emoji-grid::-webkit-scrollbar-thumb { background: #dcdfe4; border-radius: 3px; }
+.emoji-grid::-webkit-scrollbar-thumb:hover { background: #c5c9d0; }
+.emoji-panel .emoji-item {
+  height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 21px; line-height: 1; padding: 0; border-radius: var(--radius-sm);
+  transition: background-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.emoji-panel .emoji-item:hover { background: var(--brand-soft); transform: scale(1.18); }
+.emoji-panel .emoji-item:active { transform: scale(.94); }
+.emoji-empty {
+  grid-column: 1 / -1; padding: 22px 8px; text-align: center;
+  font-size: 12px; line-height: 1.9; color: var(--text-3);
+}
 
 /* 聊天空态 */
 .chat-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-3); padding: 30px; text-align: center; }
@@ -305,4 +385,12 @@
   .chat-panel { min-height: 460px; }
   /* 窄屏布局改为纵向堆叠、外层高度自适应：消息区必须自带上限，否则同样会被内容撑高失去滚动 */
   .chat-messages { max-height: calc(100vh - 330px); min-height: 200px; }
+  /* 表情面板：宽度跟随视口收窄，少一列并压低高度，避免盖住输入框 */
+  .emoji-panel { width: min(348px, calc(100vw - 32px)); bottom: 44px; }
+  .emoji-grid { grid-template-columns: repeat(7, 1fr); max-height: 198px; }
+}
+
+@media (max-width: 480px) {
+  .emoji-grid { grid-template-columns: repeat(6, 1fr); max-height: 172px; }
+  .emoji-panel .emoji-item { height: 32px; font-size: 20px; }
 }

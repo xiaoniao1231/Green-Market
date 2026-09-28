@@ -284,7 +284,7 @@ async function onGlobalClick(e) {
       break;
     }
     case 'goto-seller': router.push('/seller'); break;
-    case 'goto-chat': router.push('/chat' + (t.dataset.id ? '?peer=' + encodeURIComponent(t.dataset.id) : '')); break;
+    case 'goto-chat': { const q = []; if (t.dataset.id) q.push('peer=' + encodeURIComponent(t.dataset.id)); if (t.dataset.shopId) q.push('shopId=' + encodeURIComponent(t.dataset.shopId)); router.push('/chat' + (q.length ? '?' + q.join('&') : '')); break; }
     case 'goto-placeholder': router.push('/placeholder/' + encodeURIComponent(t.dataset.id || '')); break;
     case 'goto-orders': router.push('/orders' + (t.dataset.id ? '?status=' + encodeURIComponent(t.dataset.id) : '')); break;
     case 'goto-cart': router.push('/cart'); break;

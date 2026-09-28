@@ -12,6 +12,7 @@
      本组件仅保留 data-action 属性、不重复实现（见移植规范第 4 条）。
    ========================================================= */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
 import QM_CFG from '../core/config.js';
@@ -20,10 +21,54 @@ import QM_CHAT_SOCKET from '../core/chatSocket.js';
 import QM_CHAT_INBOX from '../core/chatInbox.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { esc, price, artStyle, artHtml, toast, confirmDialog } = QM_UI;
+const { esc, price, artStyle, artHtml, toast, confirmDialog, modal } = QM_UI;
 const route = useRouteCompat();
+const router = useRouter();
 
-const EMOJIS = ['😀', '😂', '😍', '🤔', '😭', '😅', '👍', '🙏', '🎉', '❤️', '🌞', '🌙', '☕', '🍰', '🎁', '🛍️', '👌', '💪', '🔥', '⭐', '🐱', '🌸', '🎵', '🏃'];
+/* ---------- 表情面板数据（2026-09 优化） ----------
+   原来是 24 个表情平铺成一张表，找起来慢、选择少。
+   现在按分类组织：「最近」为动态分组（localStorage 记录最近使用，跨会话保留），
+   其余为固定分组，点顶部分类图标切换。每组内不重复，便于用下标做 key。 */
+const EMOJI_RECENT_KEY = 'qm_chat_emoji_recent';
+const EMOJI_RECENT_MAX = 16;   // 「最近」最多保留多少个
+const EMOJI_MAX_LEN = 10000;   // 与 textarea 的 maxlength 保持一致
+const EMOJI_GROUPS = [
+  {
+    key: 'common', label: '常用', icon: '⭐',
+    list: ['😀', '😂', '😍', '🥰', '😘', '😊', '😅', '🤔', '😭', '😡', '👍', '👌', '🙏', '💪', '🎉', '❤️',
+           '🔥', '🌹', '🎁', '☕', '🍰', '✅', '👏', '🤝', '😎', '🥳', '😴', '😱', '🙈', '💯', '✨', '🛍️']
+  },
+  {
+    key: 'face', label: '笑脸', icon: '😊',
+    list: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰',
+           '😘', '😗', '😙', '😚', '😋', '😜', '🤪', '😝', '🤗', '🤔', '🤨', '😐', '😑', '😶', '🙄', '😏']
+  },
+  {
+    key: 'gesture', label: '手势', icon: '👍',
+    list: ['👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '👏', '🙌', '👐', '🤝', '🙏', '💪', '🖐️', '✋', '👊',
+           '🤛', '🤜', '👋', '🫰', '🤙', '☝️', '✊', '🫡']
+  },
+  {
+    key: 'mood', label: '心情', icon: '💗',
+    list: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '💔', '💕', '💞', '💓', '💗', '💖', '💘', '💝',
+           '💟', '♥️', '💯', '🔥', '✨', '⭐', '🌟', '💫', '💥', '💦', '💨', '🎈']
+  },
+  {
+    key: 'life', label: '生活', icon: '🍰',
+    list: ['☕', '🍵', '🍺', '🍻', '🥂', '🍰', '🎂', '🍭', '🍫', '🍕', '🍔', '🍜', '🍚', '🍎', '🍉', '🍓',
+           '🍇', '🥗', '🍿', '🎁', '🛍️', '🎫', '💰', '💳', '📦', '✈️', '🚗', '🏃', '🎵', '🎮', '⚽', '🎯']
+  },
+  {
+    key: 'nature', label: '动植物', icon: '🐱',
+    list: ['🐱', '🐶', '🐼', '🐰', '🦊', '🐻', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦',
+           '🦄', '🐝', '🦋', '🐢', '🐬', '🐳', '🌸', '🌺', '🌻', '🌷', '🌱', '🌳', '🌈', '☀️', '🌙', '❄️']
+  },
+  {
+    key: 'symbol', label: '符号', icon: '✨',
+    list: ['✅', '❌', '❗', '❓', '⭕', '💯', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '➕', '➖',
+           '➡️', '⬅️', '⬆️', '⬇️', '🔔', '🔒', '🔑', '📌']
+  }
+];
 
 /* 原版 chat.js 的局部可变状态：demo 仅为功能标记（原版仅置位、未读取），
    activePeer / emojiOpen 需驱动模板，ws 保存当前 WebSocket 连接 */
@@ -32,6 +77,9 @@ const state = reactive({
   activePeer: null,
   ws: null,
   emojiOpen: false,
+  /* 表情面板：当前分类（'recent' | 分组 key，见 EMOJI_GROUPS）与「最近使用」列表 */
+  emojiTab: 'common',
+  emojiRecent: [],
   /* 文件上传中：上传期间禁用「📎 发送文件」按钮、显示进度提示，避免重复点击传多份 */
   uploading: false,
   /* 图片放大预览灯箱：{ kind:'image', url, name, size } | null —— 点气泡里的图片即打开 */
@@ -279,6 +327,16 @@ function hydrateVideoMeta() {
   });
 }
 
+/* 业务消息快照（biz_json）：商品 / 订单 / 优惠券卡片的渲染数据，后端以字符串下发 */
+function parseBiz(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+/* 服务端消息类型 → 本地内容类型：商品 / 订单 / 优惠券卡片，内容取 biz_json 快照
+   （服务端 messages.msg_type 沿用 COMM_MES / FILE_MES 的命名风格） */
+const BIZ_MSG_TYPES = { GOODS_MES: 'goods', ORDER_MES: 'order', COUPON_MES: 'coupon' };
+
 function msgHtml(m, peerObj) {
   if (m.type === 'sys') {
     return `<div class="msg-row msg-sys"><div class="bubble">${esc(m.content)}</div></div>`;
@@ -301,14 +359,50 @@ function msgHtml(m, peerObj) {
   }
   let bubble;
   if (m.type === 'goods') {
-    /* 商品推荐消息：商品信息随消息下发（m.content / m.goods 为商品 id）。
-       不再从本地商品库查找 —— 商品详情以服务端为准，没有快照时退化为可跳转的文本气泡。 */
-    const gid = m.goods;
+    /* 商品卡片：优先用后端下发的快照（biz_json），老消息回退到 m.goods（仅商品 id）。
+       后端 biz.artImg 本身就是 {img} / {e,g} 结构（与商品卡 p.art 同构），直接用即可，
+       不要再包一层 {img: g.artImg}，否则 <img src> 会变成 "[object Object]" 而破图。 */
+    const g = m.biz || {};
+    const gid = g.productId || m.goods;
+    const art = g.artImg || null;
     bubble = gid ? `
       <div class="bubble goods-bubble" data-action="open-product" data-id="${esc(gid)}">
-        <div class="gb-info"><h5 class="ellipsis-2">${esc(m.content || '商品推荐')}</h5>
-        <span class="btn btn-primary" data-action="open-product" data-id="${esc(gid)}">查看商品</span></div>
+        ${art ? `<span class="gb-art" style="${artStyle(art)}">${artHtml(art)}</span>` : ''}
+        <div class="gb-info">
+          <h5 class="ellipsis-2">${esc(g.title || m.content || '商品推荐')}</h5>
+          <div class="gb-foot">
+            ${g.price !== undefined ? `<span class="gb-price">${price(g.price)}</span>` : ''}
+            <span class="btn btn-primary gb-go" data-action="open-product" data-id="${esc(gid)}">查看商品</span>
+          </div>
+        </div>
       </div>` : `<div class="bubble">${esc(m.content)}</div>`;
+  } else if (m.type === 'order') {
+    /* 订单卡片（店家发给买家确认 / 买家发给店家）：点按钮进订单详情 */
+    const o = m.biz || {};
+    bubble = o.orderId ? `
+      <div class="bubble order-bubble">
+        <div class="ob-head"><b>订单 ${esc(o.orderNo || '')}</b><span class="ob-status">${esc(o.statusText || '')}</span></div>
+        <div class="ob-body">
+          <span class="ellipsis">${esc(o.shopName || m.content || '')}</span>
+          <span>共 ${Number(o.qty) || 0} 件</span>
+        </div>
+        <div class="ob-foot">${price(Number(o.total) || 0)}
+          <span class="btn btn-primary" data-action="open-order" data-id="${esc(o.orderId)}">查看订单</span>
+        </div>
+      </div>` : `<div class="bubble">${esc(m.content)}</div>`;
+  } else if (m.type === 'coupon') {
+    /* 优惠券卡片（店家送券）：券已进对方券包，点「去使用」回购物车下单 */
+    const c = m.biz || {};
+    bubble = `
+      <div class="bubble coupon-bubble">
+        <div class="cb-left"><b>¥${esc(c.amount || 0)}</b><small>满 ${esc(c.threshold || 0)} 可用</small></div>
+        <div class="cb-info">
+          <b class="ellipsis">${esc(c.title || '优惠券')}</b>
+          <small class="ellipsis">${esc(m.content || '')}</small>
+          ${c.expire ? `<small>有效期至 ${esc(c.expire)}</small>` : ''}
+        </div>
+        <span class="btn btn-plain cb-use" data-action="goto-cart">去使用</span>
+      </div>`;
   } else if (m.type === 'file') {
     /* 文件消息：图片 / 视频 / 音频免下载直接预览（缩略图、内嵌播放器），其他文件维持下载入口 */
     const name = m.name || m.content || '文件';
@@ -376,6 +470,81 @@ async function sendCurrent() {
   }
 }
 
+/* ---------- 发送商品卡片：POST /messages/goods { receiverId, productId } ---------- */
+
+/* 业务消息补进本地会话：发送方自己的卡片立刻出现（与文本消息同一套 pushLocal + 重绘） */
+function pushBizMsg(peerId, type, biz, content, msgId) {
+  const from = (QM_STORE.state.user && QM_STORE.state.user.userId) || 'me';
+  const msg = { from, type, biz, content, time: Date.now() };
+  if (msgId) msg.id = msgId;
+  pushLocal(peerId, msg);
+  renderActive();
+  renderContacts();
+}
+
+/* 当前会话对端对应的店铺ID：联系人自带 > 店铺档案的店主账号 > 按店名反查 */
+function peerShopId(peerId, peerName) {
+  const c = contactById(peerId);
+  if (c && c.shopId) return String(c.shopId);
+  const profile = QM_STORE.state.shopProfile || {};
+  for (const [id, ov] of Object.entries(profile)) {
+    if (ov && (ov.ownerUserId === peerId || ov.userId === peerId)) return id;
+  }
+  return QM_STORE.shopIdOf(peerName) || '';
+}
+
+/* 发商品：只挑当前聊天这家店铺的商品（用户加购后把它发给店家） */
+function openGoodsPicker() {
+  const peerId = state.activePeer;
+  if (!peerId) return;
+  const all = QM_STORE.cart.list();
+  if (!all.length) { toast('购物车是空的：先加购商品，再发给店家', 'error'); return; }
+  const peerObj = contactById(peerId);
+  const shopName = (peerObj && peerObj.name) || '';
+  const shopId = peerShopId(peerId, shopName);
+  const inShop = it => {
+    const s = (it.product && it.product.shop) || {};
+    if (shopId) return String(s.id || '') === String(shopId);
+    if (!shopName) return true;
+    return s.name === shopName || QM_STORE.displayShopName(s.name) === shopName;
+  };
+  const mine = all.filter(inShop);
+  /* 确认了店铺就只显示本店商品（本店商品不在购物车时提示为空）；识别不出这家店才退回显示全部 */
+  const items = mine.length ? mine : (shopId ? [] : all);
+  if (!items.length) { toast(`购物车里没有 ${shopName || '这家店'} 的商品`, 'error'); return; }
+  const sub = items.length < all.length
+    ? `只显示 ${shopName || '本店铺'} 的商品`
+    : '选择购物车里的商品发给对方';
+  const m = modal(`
+    <div>
+      <h3>发送商品</h3>
+      <p class="modal-sub">${esc(sub)}</p>
+      <div class="pick-list">
+        ${items.map((it, i) => {
+          const art = (it.img && { img: it.img }) || (it.product && it.product.art) || null;
+          return `<div class="pick-row" data-i="${i}">
+            <span class="pick-art" style="${artStyle(art)}">${artHtml(art)}</span>
+            <div class="pick-info"><b class="ellipsis">${esc(it.product.title)}</b><small class="ellipsis">${esc(it.sku)} · ×${it.qty}</small></div>
+            <b class="pick-amount">${price(QM_STORE.cart.unitPrice(it))}</b>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="modal-actions"><button class="btn btn-plain" data-close>取消</button></div>
+    </div>`, { wide: true });
+  m.root.querySelectorAll('.pick-row').forEach(row => row.onclick = async () => {
+    const it = items[Number(row.dataset.i)];
+    if (!it) return;
+    m.close();
+    try {
+      const data = await QM_API.chat.sendGoods(peerId, it.productId);
+      pushBizMsg(peerId, 'goods',
+        (data && data.biz) || { productId: it.productId, title: it.product.title, price: QM_STORE.cart.unitPrice(it), artImg: it.img || '' },
+        it.product.title, data && data.msgId);
+      toast('已发送商品');
+    } catch (e) { toast('发送失败：' + ((e && e.message) || '未知错误'), 'error'); }
+  });
+}
+
 /* ---------- 会话切换（原版 openPeer：重建面板 → 绑定 → 刷列表 → 滚动到底） ---------- */
 function scrollActiveMessages(force) {
   nextTick(() => {
@@ -386,7 +555,7 @@ function scrollActiveMessages(force) {
   });
 }
 
-function openPeer(peerId) {
+function openPeer(peerId, shopId) {
   if (!alive) return;
   state.emojiOpen = false; // 原版每次重建面板都会把表情面板恢复为隐藏
   state.activePeer = peerId;
@@ -402,6 +571,9 @@ function openPeer(peerId) {
       role: 'shop', presence: presenceOf(peerId), online: knownOnline.has(peerId)
     });
   }
+  /* 从商品详情/店铺页进来时带上了 shopId：记到联系人上，
+     后续「发购物车」据此只筛选本店铺的商品 */
+  if (shopId && peerObj && peerObj.shopId !== shopId) peerObj.shopId = String(shopId);
   QM_STORE.chat.markRead(peerId);
   syncRead(peerId); // 打开会话即通知服务端记录已读
   messagesBoxHtml.value = messagesHtml(peerId, peerObj);
@@ -453,13 +625,66 @@ function resizeChatInput() {
   input.style.height = Math.min(input.scrollHeight, 110) + 'px';
 }
 
+/* ---------- 表情面板：数据装载与插入（2026-09 优化） ---------- */
+/* 「最近」tab 常驻显示：有记录时列出最近用过的表情，没记录时给一句引导文案 */
+const emojiTabs = computed(() => [{ key: 'recent', label: '最近', icon: '🕘' }, ...EMOJI_GROUPS]);
+const emojiList = computed(() => {
+  if (state.emojiTab === 'recent') return state.emojiRecent;
+  const group = EMOJI_GROUPS.find(g => g.key === state.emojiTab);
+  return group ? group.list : EMOJI_GROUPS[0].list;
+});
+
+/* 读取本地最近使用的表情（隐私模式 / 禁用存储时静默降级为空列表） */
+function loadRecentEmojis() {
+  try {
+    const raw = window.localStorage.getItem(EMOJI_RECENT_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    state.emojiRecent = Array.isArray(arr)
+      ? arr.filter(x => typeof x === 'string' && x).slice(0, EMOJI_RECENT_MAX)
+      : [];
+  } catch (e) {
+    state.emojiRecent = [];
+  }
+}
+
+/* 记录一次使用：去重后置顶，只保留前 EMOJI_RECENT_MAX 个 */
+function rememberEmoji(emoji) {
+  state.emojiRecent = [emoji, ...state.emojiRecent.filter(x => x !== emoji)].slice(0, EMOJI_RECENT_MAX);
+  try {
+    window.localStorage.setItem(EMOJI_RECENT_KEY, JSON.stringify(state.emojiRecent));
+  } catch (e) { /* 存储不可用时仅本次会话生效 */ }
+}
+
+/* 把表情插入到输入框光标处（有选中内容则替换），并同步高度与最近使用 */
+function insertEmoji(emoji) {
+  const input = chatInputEl.value;
+  if (!input) return;
+  if (input.value.length + emoji.length > EMOJI_MAX_LEN) {
+    toast('最多输入 ' + EMOJI_MAX_LEN + ' 字', 'error');
+    return;
+  }
+  const start = typeof input.selectionStart === 'number' ? input.selectionStart : input.value.length;
+  const end = typeof input.selectionEnd === 'number' ? input.selectionEnd : start;
+  if (typeof input.setRangeText === 'function') {
+    input.setRangeText(emoji, start, end, 'end'); // 光标落在插入的表情之后，可连续挑表情
+  } else {
+    input.value += emoji; // 极旧浏览器兜底：退化为追加到末尾
+  }
+  input.focus();
+  resizeChatInput(); // 表情可能把内容顶到下一行：同步 textarea 高度
+  rememberEmoji(emoji);
+}
+
 function toggleEmoji() {
   state.emojiOpen = !state.emojiOpen;
+  /* 打开面板时定位到最有用的分类：用过表情就给「最近」，否则回到「常用」 */
+  if (state.emojiOpen) state.emojiTab = state.emojiRecent.length ? 'recent' : 'common';
 }
 
 /* 原版：每次 openPeer 在 bindCompose 里注册一个 document once 点击监听用于关闭表情面板。
    Vue 版改为常驻委托监听，效果一致：点击任意非 #emojiBtn 位置都会收起面板
-   （emojiBtn 点击已 stopPropagation，等同原版不会触发关闭）。 */
+   （emojiBtn 点击已 stopPropagation，等同原版不会触发关闭）。
+   2026-09 优化：面板内部的点击（选表情 / 切分类）不再收起面板，方便连续挑多个表情。 */
 function onDocEmojiClick(e) {
   if (!e.target || !e.target.closest) return;
   /* 点别处关闭 ⋮ 菜单（点菜单自身与 ⋮ 按钮时不关，各自有处理） */
@@ -467,15 +692,21 @@ function onDocEmojiClick(e) {
     state.mediaMenu = null;
   }
   if (e.target.closest('#emojiBtn')) return;
+  if (e.target.closest('#emojiPanel')) return; // 面板内操作（选表情 / 切分类）保持面板打开
   if (state.emojiOpen) state.emojiOpen = false;
 }
 
 function onEmojiPanelClick(e) {
-  const btn = e.target.closest('[data-emoji]');
-  if (btn) {
-    const input = chatInputEl.value;
-    if (input) { input.value += btn.dataset.emoji; input.focus(); }
+  if (!e.target.closest) return;
+  /* 分类标签：切换当前分组 */
+  const tab = e.target.closest('[data-emoji-tab]');
+  if (tab) {
+    state.emojiTab = tab.dataset.emojiTab;
+    return;
   }
+  /* 表情格子：插入到输入框（data-emoji 为兼容既有结构保留） */
+  const btn = e.target.closest('[data-emoji]');
+  if (btn) insertEmoji(btn.dataset.emoji);
 }
 
 function onFileBtnClick() {
@@ -539,6 +770,18 @@ function onMessagesClick(e) {
   if (!el) return;
   const action = el.dataset.action;
 
+  /* 订单卡片 / 优惠券卡片：点按钮跳订单详情、回购物车使用 */
+  if (action === 'open-order') {
+    e.preventDefault();
+    if (el.dataset.id) router.push('/order/' + encodeURIComponent(el.dataset.id));
+    return;
+  }
+  if (action === 'goto-cart') {
+    e.preventDefault();
+    router.push('/cart');
+    return;
+  }
+
   /* 视频中央播放键 / 图片：统一在弹出窗口里打开
      （以前视频是原地切原生控件，用户容易顺手点到全屏；现在一律走窗口） */
   if (action === 'play-video' || action === 'preview-media') {
@@ -573,11 +816,12 @@ function onMediaError(e) {
   tip.textContent = '图片加载失败（可能是 Bucket 非公共读或地址已失效），可点「下载」查看';
   el.replaceWith(tip);
 }
-/* Esc 关闭预览灯箱 / ⋮ 菜单 */
+/* Esc 关闭预览灯箱 / ⋮ 菜单 / 表情面板 */
 function onPreviewKeydown(e) {
   if (e.key !== 'Escape') return;
   if (state.preview) closePreview();
   if (state.mediaMenu) state.mediaMenu = null;
+  if (state.emojiOpen) state.emojiOpen = false;
 }
 
 function onPanelClick(e) {
@@ -645,7 +889,7 @@ function handleSocketFrame(payload) {
     renderContacts();
     return;
   }
-  if (['COMM_MES', 'TO_ALL', 'FILE_MES'].includes(payload.type)) {
+  if (['COMM_MES', 'TO_ALL', 'FILE_MES', 'GOODS_MES', 'ORDER_MES', 'COUPON_MES'].includes(payload.type)) {
     const myId = QM_STORE.state.user ? QM_STORE.state.user.userId : '';
     const peerId = msg.senderId === myId ? msg.receiverId : msg.senderId;
     if (!peerId) return;
@@ -654,12 +898,14 @@ function handleSocketFrame(payload) {
     QM_STORE.chat.ensureContact(peerId, msg.senderNickname || peerId, { presence: 'online', online: true });
     const ts = msg.sendTime ? new Date(String(msg.sendTime).replace(' ', 'T')).getTime() : Date.now();
     const name = msg.content || msg.fileName || '文件';
+    const bizType = BIZ_MSG_TYPES[msg.msgType] || null;
     const live = {
       from: msg.senderId === myId ? 'me' : peerId,
-      type: msg.fileUrl ? 'file' : 'text',
+      type: bizType || (msg.fileUrl ? 'file' : 'text'),
       content: msg.fileUrl ? fileMsgText(name, msg.fileSize) : (msg.content || msg.fileName || ''),
       time: ts
     };
+    if (bizType) live.biz = parseBiz(msg.bizJson) || {};
     if (msg.fileUrl) { live.name = name; live.size = msg.fileSize; live.url = msg.fileUrl; }
     if (msg.msgId) live.id = msg.msgId; // 带上服务端 msgId，历史合并时精确去重
     pushLocal(peerId, live);
@@ -686,6 +932,11 @@ function mapHistoryMsg(m, me, peerId) {
   if (m.recalled) {
     base.type = 'sys';
     base.content = '对方撤回了一条消息';
+  } else if (BIZ_MSG_TYPES[m.msgType]) {
+    /* 商品 / 订单 / 优惠券卡片：内容取后端快照，渲染交给 msgHtml */
+    base.type = BIZ_MSG_TYPES[m.msgType];
+    base.content = m.content || '';
+    base.biz = parseBiz(m.bizJson) || {};
   } else if (m.fileUrl) {
     base.type = 'file';
     base.name = m.content || m.fileName || '文件';
@@ -799,7 +1050,9 @@ async function restoreConversations() {
   convs.forEach(conv => {
     const peerId = conv.peerId;
     if (!peerId) return;
-    const contact = QM_STORE.chat.ensureContact(peerId, conv.peerName || peerId, { presence: presenceOf(peerId), online: knownOnline.has(peerId) });
+    const contact = QM_STORE.chat.ensureContact(peerId, conv.peerName || peerId, { presence: presenceOf(peerId), online: knownOnline.has(peerId), shopId: conv.shopId || '' });
+    /* 对端是店铺：联系人已存在时（可能先被实时推送创建）也要补上店铺信息，供「发商品」只显示本店商品 */
+    if (conv.shopId) { contact.shopId = conv.shopId; if (conv.peerName) contact.name = conv.peerName; }
     /* 服务端未读数 → 本地会话角标（打开会话时 markRead 清零） */
     contact.unread = conv.unreadCount || 0;
     const msgs = QM_STORE.chat.messages(peerId);
@@ -847,9 +1100,9 @@ async function initView() {
   if (!alive) return;
   renderContacts();
 
-  /* 从商品详情「联系卖家」进入（route.query.peer） */
+  /* 从商品详情「联系卖家」进入（route.query.peer，可同时带 shopId 标识这是哪家店） */
   const peerId = route.value.query.peer;
-  if (peerId) peerTimer = setTimeout(() => openPeer(peerId), 80);
+  if (peerId) peerTimer = setTimeout(() => openPeer(peerId, route.value.query.shopId || ''), 80);
 }
 
 async function onRefresh() {
@@ -863,6 +1116,7 @@ let offSocketClose = null;
 
 onMounted(() => {
   alive = true;
+  loadRecentEmojis(); // 恢复「最近使用」表情
   /* 告知全局收件箱：本页挂载期间由这里处理实时帧并渲染（全局只在其它页面兜底落库） */
   QM_CHAT_INBOX.setPageActive(true);
   docEmojiHandler = onDocEmojiClick;
@@ -944,14 +1198,29 @@ onBeforeUnmount(() => {
           <div class="chat-messages" id="chatMessages" v-html="messagesBoxHtml" @scroll="onMessagesScroll" @click="onMessagesClick"></div>
           <footer class="chat-compose">
             <div class="compose-tools" style="position:relative">
-              <button class="icon-btn" id="emojiBtn" title="表情" @click.stop="toggleEmoji">😊</button>
+              <button class="icon-btn" id="emojiBtn" title="表情" aria-haspopup="true" :aria-expanded="state.emojiOpen"
+                      @mousedown.prevent @click.stop="toggleEmoji">😊</button>
               <button class="icon-btn" id="fileBtn" :disabled="state.uploading"
                       :title="state.uploading ? '文件上传中，请稍候…' : '发送文件'"
                       @click="onFileBtnClick">{{ state.uploading ? '⏳' : '📎' }}</button>
               <input type="file" id="fileInput" class="hidden" @change="onFileInputChange" ref="fileInputEl" />
+              <!-- 发商品（购物车）：把想买的商品发给对方 -->
+              <button class="icon-btn" title="把购物车里的商品发给对方" @click.stop="openGoodsPicker">🛍️</button>
               <span class="compose-hint">Enter 发送 · Shift+Enter 换行 · 最多 10000 字</span>
+              <!-- 表情面板：顶部分类 tab（含「最近使用」，localStorage 持久化）+ 下方表情网格。
+                   点表情插入到输入框光标处且面板保持打开，点面板外或 Esc 才收起。 -->
               <div class="emoji-panel" id="emojiPanel" :class="{ hidden: !state.emojiOpen }" @click="onEmojiPanelClick">
-                <button v-for="e in EMOJIS" :key="e" type="button" :data-emoji="e">{{ e }}</button>
+                <div class="emoji-tabs">
+                  <button v-for="g in emojiTabs" :key="g.key" type="button" class="emoji-tab"
+                          :class="{ on: state.emojiTab === g.key }" :data-emoji-tab="g.key"
+                          :title="g.label" :aria-label="g.label"
+                          @mousedown.prevent>{{ g.icon }}</button>
+                </div>
+                <div class="emoji-grid">
+                  <p v-if="!emojiList.length" class="emoji-empty">还没有最近使用的表情<br>选一个表情就会记在这里～</p>
+                  <button v-for="(e, i) in emojiList" :key="state.emojiTab + '-' + i" type="button" class="emoji-item"
+                          :data-emoji="e" @mousedown.prevent>{{ e }}</button>
+                </div>
               </div>
             </div>
             <div class="compose-row">

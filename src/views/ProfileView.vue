@@ -23,7 +23,8 @@ const user = computed(() => QM_STORE.state.user);
 const favCount = computed(() => (QM_STORE.state.favorites || []).length);
 const cartCount = computed(() => (QM_STORE.state.cart || []).length);
 const orderCount = computed(() => (QM_STORE.state.orders || []).length);
-const couponCount = computed(() => QM_STORE.coupon.list().length);
+const couponTick = ref(0);   // 券列表变化时自增，驱动角标重算（store.state 非响应式）
+const couponCount = computed(() => { couponTick.value; return QM_STORE.coupon.list().length; });
 const addrCount = computed(() => QM_STORE.addr.list().length);
 /* 各状态订单数量（GET /orders/counts）：待付款 / 待发货 / 待收货 属「未完成」，
    已完成但还没评价的（done）也归入「待处理」—— 这几个数量用于「我的订单」处的角标提醒 */
@@ -36,13 +37,18 @@ async function loadOrderCounts() {
   try { orderCounts.value = (await QM_API.orders.counts()) || {}; }
   catch (e) { /* 订单接口不可用时角标不显示，不阻塞页面其它内容 */ }
 }
+/* 优惠券同理：数量来自 GET /coupons（券由平台在数据库配置），strict —— 接口失败不展示旧缓存 */
+async function loadCoupons() {
+  try { await QM_API.coupons.list(); }
+  catch (e) { QM_STORE.state.coupons = []; QM_STORE.emit('coupons'); }
+}
 /* 计数依赖的 store 事件（state 本身不是响应式的，靠这些事件驱动重算） */
 const offs = [
   QM_STORE.on('cart', () => {}), QM_STORE.on('favorites', () => {}),
   QM_STORE.on('orders', () => { loadOrderCounts(); }), QM_STORE.on('addresses', () => {}),
-  QM_STORE.on('user', () => { loadOrderCounts(); })
+  QM_STORE.on('user', () => { loadOrderCounts(); loadCoupons(); }), QM_STORE.on('coupons', () => { couponTick.value++; })
 ];
-onMounted(loadOrderCounts);
+onMounted(() => { loadOrderCounts(); loadCoupons(); });
 onBeforeUnmount(() => { offs.forEach(off => { try { off(); } catch (e) { /* 忽略 */ } }); });
 
 /* ---------- 头像：上传阿里云 OSS ----------
@@ -169,31 +175,71 @@ async function addressModal() {
   await openAddressModal();
 }
 
-/* ---------- 优惠券弹窗（原 couponModal，对应预留接口 /coupons） ---------- */
-function couponModal() {
+/* ---------- 优惠券弹窗：可领取的券（每人每张限领一次）+ 我的券 ---------- */
+async function couponModal() {
   const m = modal(`
     <div>
       <h3>我的优惠券</h3>
-      <p class="modal-sub">领取与使用状态（对应预留接口 /coupons）</p>
+      <p class="modal-sub">每张券每人只能领一次</p>
+      <div id="couponClaim"></div>
+      <h4 style="margin:16px 0 8px">我的券</h4>
       <div id="couponList"></div>
       <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
     </div>`, { wide: true });
-  const renderList = () => {
-    const list = QM_STORE.coupon.list();
-    m.root.querySelector('#couponList').innerHTML = list.map(c => `
-      <div class="addr-option" style="display:flex;align-items:center;gap:12px">
-        <div style="flex:none;width:86px;text-align:center;background:var(--brand-soft);border-radius:8px;padding:10px 0">
-          <b style="color:var(--brand);font-size:20px">¥${c.amount}</b>
-          <small style="display:block;color:var(--text-3)">满 ${c.threshold} 可用</small>
-        </div>
-        <div style="flex:1">
-          <b>${esc(c.title)}</b>
-          <small style="display:block;color:var(--text-3)">有效期至 ${esc(c.expire)}</small>
-        </div>
-        <span class="pill ${c.status === 'used' ? 'pill-gray' : 'pill-green'}">${c.status === 'used' ? '已使用' : '未使用'}</span>
-      </div>`).join('');
+  const claimBox = m.root.querySelector('#couponClaim');
+  const listBox = m.root.querySelector('#couponList');
+
+  const cardHtml = (title, amount, threshold, expire, right) => `
+    <div class="addr-option" style="display:flex;align-items:center;gap:12px">
+      <div style="flex:none;width:86px;text-align:center;background:var(--brand-soft);border-radius:8px;padding:10px 0">
+        <b style="color:var(--brand);font-size:20px">¥${amount}</b>
+        <small style="display:block;color:var(--text-3)">满 ${threshold} 可用</small>
+      </div>
+      <div style="flex:1">
+        <b>${esc(title)}</b>
+        <small style="display:block;color:var(--text-3)">有效期至 ${esc(expire || '—')}</small>
+      </div>
+      ${right}
+    </div>`;
+
+  const load = async () => {
+    claimBox.innerHTML = '<p class="hint">正在加载…</p>';
+    try {
+      const [claimable, mine] = await Promise.all([QM_API.coupons.claimable(), QM_API.coupons.list()]);
+      claimBox.innerHTML = claimable.length
+        ? claimable.map(c => cardHtml(c.title, c.amount, c.threshold, c.expire,
+            c.claimed ? '<span class="pill pill-gray">已领取</span>'
+                      : `<button class="btn btn-primary btn-sm" data-claim="${esc(c.couponId)}">领取</button>`)).join('')
+        : '<p class="hint">暂无可领取的优惠券</p>';
+      listBox.innerHTML = mine.length
+        ? mine.map(c => {
+            const expired = QM_STORE.coupon.isExpired(c);
+            const cls = (c.status === 'used' || expired) ? 'pill-gray' : 'pill-green';
+            const text = c.status === 'used' ? '已使用' : (expired ? '已过期' : '未使用');
+            return cardHtml(c.title, c.amount, c.threshold, c.expire, `<span class="pill ${cls}">${text}</span>`);
+          }).join('')
+        : '<p class="hint">还没有优惠券</p>';
+    } catch (e) {
+      claimBox.innerHTML = `<p class="hint" style="color:var(--accent-ink)">优惠券加载失败：${esc((e && e.message) || '接口不可用')}</p>`;
+      listBox.innerHTML = '';
+    }
   };
-  renderList();
+
+  claimBox.onclick = async e => {
+    const btn = e.target.closest('[data-claim]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      await QM_API.coupons.claim(btn.dataset.claim);
+      toast('领取成功', 'success');
+      await load();      // 领取后刷新「可领取」与「我的券」
+    } catch (err) {
+      btn.disabled = false;
+      toast('领取失败：' + ((err && err.message) || '未知错误'), 'error');
+    }
+  };
+
+  await load();
 }
 </script>
 

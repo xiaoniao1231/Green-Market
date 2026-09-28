@@ -6,14 +6,13 @@
    · 计数 GET /orders/counts（顶部各页签数量）
    · 取消 / 确认收货 / 提醒发货 / 物流均走接口；「立即支付」跳收银台 /pay
      （支付只有收银台一个入口，本页不再直接调支付接口）
-   售后服务：入口在本页，申请记录存本机浏览器（QM_STORE.afterSales）——
-   后端售后接口尚未实现，因此只做前端记录与进度回显，不产生伪造的「已提交」假象。
+   售后服务：入口在本页，申请与进度在独立售后页完成（#/after-sales，接口 QM_API.afterSales.*）——
+   本页只判断每张订单是否已有售后记录，据此把按钮显示成「售后服务」或「售后进度」。
    ========================================================= */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
-import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
 const { esc, price, fullTime, artStyle, artHtml, toast, modal, confirmDialog } = QM_UI;
@@ -37,13 +36,39 @@ const STATUS_TEXT = {
   canceled: { text: '已取消', cls: 'canceled' }
 };
 
-/* 售后类型 / 原因字典（售后接口后端未实现，申请只记在本机浏览器，见 store.js afterSales） */
-const AFTER_SALES_TYPES = [
-  { key: 'refund', label: '仅退款' },
-  { key: 'return', label: '退货退款' },
-  { key: 'exchange', label: '换货' }
-];
-const AFTER_SALES_REASONS = ['不想要了', '商品质量问题', '发错货 / 少件', '与商品描述不符', '快递损坏或丢失', '其他原因'];
+/* 售后状态文案（后端只回状态码，中文字典由前端维护，与售后页同一口径） */
+const AS_STATUS_TEXT = {
+  pending: '待商家处理',
+  agreed: '待买家寄回',
+  returned: '待商家收货',
+  refunded: '退款完成',
+  exchanged: '换货完成',
+  refused: '已拒绝',
+  canceled: '已撤销'
+};
+/* 可申请售后的订单状态（与后端硬校验口径一致：待付款没有钱可退，已取消不成立） */
+const AS_APPLICABLE = ['paid', 'shipped', 'done'];
+/* 售后单映射：orderId → 售后单（GET /after-sales 一次拉全后本地建索引，
+   与售后页共用同一份契约）。接口失败时静默降级为「所有可售后订单都显示『售后服务』」，
+   不打扰买家浏览订单 —— 真正点击时再由售后页如实报错 */
+const afterSalesByOrder = ref({});
+const isAfterSalesProcessing = a => ['pending', 'agreed', 'returned'].includes(a.status);
+const afterSaleOf = o => afterSalesByOrder.value[String(o.id)] || null;
+async function loadAfterSales() {
+  try {
+    const d = await QM_API.afterSales.list({ page: 1, size: 100 });
+    const map = {};
+    (d.list || []).forEach(a => {
+      const key = String(a.orderId);
+      const cur = map[key];
+      /* 同一订单可能有多条（不同商品各申请一次）：优先展示仍「进行中」的那条 */
+      if (!cur || (isAfterSalesProcessing(a) && !isAfterSalesProcessing(cur))) map[key] = a;
+    });
+    afterSalesByOrder.value = map;
+  } catch (e) {
+    afterSalesByOrder.value = {};
+  }
+}
 
 /* 底部按钮小工具：kind = plain | primary */
 const btn = (action, id, text, kind) =>
@@ -59,10 +84,12 @@ const btn = (action, id, text, kind) =>
  */
 function orderActions(o) {
   const a = [];
-  const after = QM_STORE.afterSales.get(o.id);
+  const after = afterSaleOf(o);
+  /* 售后入口：有售后记录 → 「售后进度」（点开看时间线）；无记录且订单状态可售后 → 「售后服务」；
+     待付款（还没付钱）与已取消订单不显示入口（后端同样硬校验） */
   const afterBtn = after
-    ? btn('order-after-sales-detail', o.id, '售后进度')
-    : btn('order-after-sales', o.id, '售后服务');
+    ? btn('order-after-sales-detail', o.id, isAfterSalesProcessing(after) ? '售后进度' : '售后记录')
+    : (AS_APPLICABLE.includes(o.status) ? btn('order-after-sales', o.id, '售后服务') : '');
   if (o.status === 'pending') {
     a.push(btn('order-cancel', o.id, '取消订单'), btn('order-pay', o.id, '立即支付', 'primary'));
   } else if (o.status === 'paid') {
@@ -73,7 +100,9 @@ function orderActions(o) {
   } else if (o.status === 'shipped') {
     a.push(btn('order-logistics', o.id, '查看物流'), afterBtn, btn('order-confirm', o.id, '确认收货', 'primary'));
   } else if (o.status === 'done') {
-    a.push(afterBtn, btn('goto-placeholder', '评价晒单'), btn('order-rebuy', o.id, '再次购买'));
+    /* 评价晒单：跳独立评价页并带上本单号（该页自动打开这单的待评价商品弹窗）；
+       不再走 #/placeholder 占位页 —— 评价功能已实现（见 docs/评价晒单接口文档.md） */
+    a.push(afterBtn, btn('goto-reviews', o.id, '评价晒单'), btn('order-rebuy', o.id, '再次购买'));
   } else {
     a.push(btn('order-rebuy', o.id, '再次购买'));
   }
@@ -82,7 +111,7 @@ function orderActions(o) {
 
 function orderCard(o) {
   const st = STATUS_TEXT[o.status] || STATUS_TEXT.pending;
-  const after = QM_STORE.afterSales.get(o.id);
+  const after = afterSaleOf(o);
   const items = o.items || [];
   const totalQty = items.reduce((s, i) => s + (i.qty || 0), 0);
   const freight = Number(o.freight || 0);
@@ -93,7 +122,7 @@ function orderCard(o) {
         <div class="oh-left">
           <span class="oh-time">${o.createTime ? fullTime(o.createTime).slice(0, 16) : '—'}</span>
           <span class="oh-no">订单号 ${esc(o.orderNo)}</span>
-          ${after ? `<span class="o-tag">售后${esc(after.statusText || '处理中')}</span>` : ''}
+          ${after ? `<span class="o-tag">售后${esc(AS_STATUS_TEXT[after.status] || '处理中')}</span>` : ''}
         </div>
         <span class="o-status ${st.cls}">${st.text}</span>
       </div>
@@ -143,74 +172,10 @@ function logisticsModal(o, list) {
     </div>`, { wide: true });
 }
 
-/**
- * 售后服务弹窗（申请表单：类型 / 原因 / 说明）。
- * 说明：后端售后接口尚未实现（本轮约定只改前端），提交后记录在
- * QM_STORE.state.afterSales（本机浏览器），订单卡据此显示「售后待处理」。
- */
-function afterSalesModal(o) {
-  const exist = QM_STORE.afterSales.get(o.id);
-  if (exist) { afterSalesDetailModal(o, exist); return; }
-  const m = modal(`
-    <div>
-      <h3>申请售后</h3>
-      <p class="modal-sub">订单号 ${esc(o.orderNo)} · ${esc((o.items && o.items[0] && o.items[0].title) || '')}</p>
-      <div class="form-row">
-        <label>售后类型</label>
-        <div class="tag-chips" id="asTypes">
-          ${AFTER_SALES_TYPES.map((t, i) => `<button type="button" class="tag-chip${i === 0 ? ' active' : ''}" data-type="${t.key}">${t.label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="form-row">
-        <label>售后原因</label>
-        <select id="asReason">${AFTER_SALES_REASONS.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select>
-      </div>
-      <div class="form-row">
-        <label>补充说明</label>
-        <textarea id="asRemark" rows="3" maxlength="200" placeholder="选填，最多 200 字"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-plain" data-close>再想想</button>
-        <button class="btn btn-primary" id="asSubmit">提交申请</button>
-      </div>
-    </div>`, { wide: true });
-
-  let type = AFTER_SALES_TYPES[0].key;
-  m.root.querySelectorAll('#asTypes .tag-chip').forEach(el => {
-    el.onclick = () => {
-      m.root.querySelectorAll('#asTypes .tag-chip').forEach(x => x.classList.toggle('active', x === el));
-      type = el.dataset.type;
-    };
-  });
-  m.root.querySelector('#asSubmit').onclick = () => {
-    const typeText = (AFTER_SALES_TYPES.find(t => t.key === type) || {}).label || '仅退款';
-    QM_STORE.afterSales.submit(o.id, {
-      type,
-      typeText,
-      reason: m.root.querySelector('#asReason').value,
-      remark: m.root.querySelector('#asRemark').value.trim()
-    });
-    m.close();
-    toast('售后申请已提交（本机演示）', 'success');
-    refresh();
-  };
-}
-
-/* 售后进度弹窗：已提交过售后时，入口按钮显示「售后进度」，点开看申请内容与处理状态 */
-function afterSalesDetailModal(o, rec) {
-  modal(`
-    <div>
-      <h3>售后进度</h3>
-      <p class="modal-sub">订单号 ${esc(o.orderNo)} · 申请时间 ${fullTime(rec.createTime).slice(0, 16)}</p>
-      <div class="as-detail">
-        <div><span>售后类型</span><b>${esc(rec.typeText)}</b></div>
-        <div><span>售后原因</span><b>${esc(rec.reason)}</b></div>
-        ${rec.remark ? `<div><span>补充说明</span><b>${esc(rec.remark)}</b></div>` : ''}
-        <div><span>处理状态</span><b class="as-status">${esc(rec.statusText || '待处理')}</b></div>
-      </div>
-      <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
-    </div>`, { wide: true });
-}
+/* 售后服务不再有本页弹窗：申请 / 进度 / 撤销 / 寄回物流全部在独立售后页完成
+   （#/after-sales，契约见 docs/售后服务接口文档.md）——本页只保留入口按钮，
+   点击时带上 orderId 跳过去，由售后页自动打开该订单的申请弹窗或进度弹窗。
+   旧实现把申请写进浏览器存储（提示「本机演示」），店家看不到、后端也没有记录，已删除。 */
 
 /* 当前激活页签（初始来自 route.query.status；原版点击页签仅本地切换、不改 URL） */
 const tab = ref(route.value.query.status || '');
@@ -231,6 +196,9 @@ async function refresh() {
     orders.value = [];
     counts.value = {};
   }
+  /* 售后单映射（决定每张订单卡显示「售后服务」还是「售后进度」）：
+     失败时静默降级，不影响订单列表本身 */
+  await loadAfterSales();
   renderList();
 }
 
@@ -287,13 +255,11 @@ async function onListClick(e) {
       }
       break;
     case 'order-after-sales':
-      if (o) afterSalesModal(o);
-      break;
     case 'order-after-sales-detail':
-      if (o) {
-        const rec = QM_STORE.afterSales.get(o.id);
-        if (rec) afterSalesDetailModal(o, rec);
-      }
+      /* 售后服务统一在独立售后页完成（#/after-sales，契约见 docs/售后服务接口文档.md）：
+         带上订单号跳过去，售后页会自动打开该订单的「申请售后」弹窗
+         （已有售后记录时则打开该条的进度弹窗） */
+      router.push('/after-sales?orderId=' + encodeURIComponent(id));
       break;
     case 'order-rebuy':
       if (o) {

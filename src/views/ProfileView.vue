@@ -4,16 +4,17 @@
    移植自 mall-web/js/pages/profile.js（页面结构 / 交互逻辑不变）
    含：登录入口（data-action=open-login/logout 由 App.vue 全局代理处理）、
    地址管理弹窗（新增 / 编辑 / 删除 / 设默认，接口见 docs/地址簿接口文档.md）、
-   优惠券展示弹窗（对应预留接口 /coupons）。
+   优惠券展示弹窗（对应预留接口 /coupons）、账户设置入口（#/account）。
+   资料编辑（昵称 / 头像 / 性别 / 签名）已**整合进账户设置页**的「基本资料」表单，
+   本页不再单独提供「编辑资料」按钮，避免同一件事有两个入口。
    ========================================================= */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import QM_UI from '../core/ui.js';
 import QM_STORE from '../core/store.js';
 import QM_API from '../core/api.js';
-import { refreshView } from '../core/viewRefresh.js';
 import openAddressModal from '../core/addressModal.js';
 
-const { esc, toast, modal, confirmDialog } = QM_UI;
+const { esc, toast, modal } = QM_UI;
 
 /* ---------- 页面数据：登录态与各项计数 ----------
    原实现是「视图创建时读一次的常量快照」：新增/删除地址、加入购物车后，
@@ -51,10 +52,10 @@ const offs = [
 onMounted(() => { loadOrderCounts(); loadCoupons(); });
 onBeforeUnmount(() => { offs.forEach(off => { try { off(); } catch (e) { /* 忽略 */ } }); });
 
-/* ---------- 头像：上传阿里云 OSS ----------
+/* ---------- 头像展示 ----------
    user.avatar 存的是图片完整地址（旧数据可能是 emoji 字符，显示时兼容回退；
-   底色调色盘已移除，不再有 avatarColor 字段）。 */
-const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 头像图片大小上限 5MB
+   底色调色盘已移除，不再有 avatarColor 字段）。
+   头像上传 / 资料保存统一在账户设置页（#/account）的「基本资料」表单里完成。 */
 /* 判断头像是否为图片地址：https 为 OSS 落库地址，blob: 为弹窗内本地预览地址 */
 const isAvatarImage = (v) => typeof v === 'string' && /^(https?:|blob:)/i.test(v.trim());
 
@@ -68,104 +69,6 @@ function userProfileText() {
   else parts.push('保密');
   if (me.signature) parts.push('「' + me.signature + '」');
   return parts.join(' · ');
-}
-
-/* ---------- 编辑资料弹窗（昵称 / 头像 / 性别 / 个性签名） ---------- */
-function profileModal() {
-  const me = user.value; // computed 在 script 中不会自动解包，必须取 .value
-  if (!me) return toast('请先登录', 'error');
-  const m = modal(`
-    <div>
-      <h3>编辑资料</h3>
-      <p class="modal-sub">修改昵称、头像、性别与个性签名</p>
-      <div class="form-row"><label>昵称</label><input id="pfNickname" maxlength="20" /></div>
-      <div class="form-row"><label>性别</label>
-        <div class="gender-row">
-          <label class="gender-opt"><input type="radio" name="pfGender" value="male" />男</label>
-          <label class="gender-opt"><input type="radio" name="pfGender" value="female" />女</label>
-          <label class="gender-opt"><input type="radio" name="pfGender" value="secret" />保密</label>
-        </div>
-      </div>
-      <div class="form-row"><label>头像</label>
-        <div class="avatar-upload">
-          <span id="pfAvatarPreview" class="member-avatar big avatar-preview"></span>
-          <div class="avatar-upload-actions">
-            <button type="button" class="btn btn-plain" id="pfPickAvatar">选择图片</button>
-            <small>支持 jpg / png / webp / gif，不超过 5MB；图片将上传至阿里云 OSS</small>
-            <input type="file" id="pfAvatarFile" accept="image/*" class="hidden" />
-          </div>
-        </div>
-      </div>
-      <div class="form-row"><label>个性签名</label><input id="pfSignature" maxlength="40" placeholder="一句话介绍自己" /></div>
-      <div class="modal-actions" style="margin-top:0">
-        <button class="btn btn-plain" data-close>取消</button>
-        <button class="btn btn-primary" id="pfSave">保存资料</button>
-      </div>
-    </div>`);
-
-  let avatar = (me.avatar || '').trim();        // 当前头像（旧数据可能是 emoji）
-  let pickedFile = null;                        // 本次新选的头像文件（点保存时才上传）
-  let objectUrl = null;                         // 本地预览 URL（关闭 / 保存后释放）
-  const preview = m.root.querySelector('#pfAvatarPreview');
-  const fileInput = m.root.querySelector('#pfAvatarFile');
-  const renderPreview = () => {
-    preview.innerHTML = '';
-    if (isAvatarImage(avatar)) preview.innerHTML = `<img src="${esc(avatar)}" alt="头像" />`;
-    else preview.textContent = avatar || (me.nickname || '语').slice(0, 1);
-  };
-  /* 预填注册时已有的昵称 / 性别 / 签名 / 头像 */
-  m.root.querySelector('#pfNickname').value = me.nickname || '';
-  const gender = ['male', 'female', 'secret'].includes(me.gender) ? me.gender : 'secret';
-  const g = m.root.querySelector('input[name="pfGender"][value="' + gender + '"]');
-  if (g) g.checked = true;
-  m.root.querySelector('#pfSignature').value = me.signature || '';
-  renderPreview();
-  /* 关闭弹窗（取消 / 保存）时释放本地预览 URL，避免内存泄漏 */
-  m.root.addEventListener('click', e => {
-    if (e.target.closest('[data-close]') && objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
-  });
-  m.root.querySelector('#pfPickAvatar').onclick = () => fileInput.click();
-  fileInput.onchange = () => {
-    const f = fileInput.files && fileInput.files[0];
-    if (!f) return;
-    if (!/^image\//.test(f.type)) return toast('请选择图片文件', 'error');
-    if (f.size > AVATAR_MAX_SIZE) return toast('头像图片不能超过 5MB', 'error');
-    if (objectUrl) URL.revokeObjectURL(objectUrl); // 换图时先释放上一张预览
-    pickedFile = f;
-    objectUrl = URL.createObjectURL(f);
-    avatar = objectUrl;
-    renderPreview();
-  };
-  m.root.querySelector('#pfSave').onclick = async () => {
-    const nickname = m.root.querySelector('#pfNickname').value.trim();
-    if (!nickname) return toast('昵称不能为空', 'error');
-    const picked = m.root.querySelector('input[name="pfGender"]:checked');
-    const signature = m.root.querySelector('#pfSignature').value.trim();
-    const btn = m.root.querySelector('#pfSave');
-    btn.disabled = true; btn.textContent = '保存中…';
-    try {
-      /* ① 选过新图 → 先上传到阿里云 OSS，拿到图片地址（multipart → POST /users/avatar） */
-      if (pickedFile) {
-        const data = await QM_API.user.uploadAvatar(pickedFile);
-        const url = data && (data.url || data.avatar || data.fileUrl);
-        if (!url) throw new Error('头像上传成功但未返回图片地址');
-        avatar = url;
-      }
-      /* ② 资料（含头像地址）提交后端落库（PUT /users/profile），成功后同步本地登录态 */
-      const payload = { nickname, gender: picked ? picked.value : 'secret', avatar, signature };
-      await QM_API.user.updateProfile(payload);
-      QM_STORE.user.update(payload);
-      if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
-      toast('资料已更新', 'success');
-      m.close();
-      refreshView(); // 重挂载本页刷新封面头像 / 昵称 / 性别 / 签名
-    } catch (e) {
-      /* 保存失败：保留弹窗与本地预览（不释放 objectUrl），便于用户重试 */
-      toast(e.message || '保存失败', 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = '保存资料';
-    }
-  };
 }
 
 /* ---------- 地址管理弹窗 ----------
@@ -253,7 +156,7 @@ async function couponModal() {
         <p>{{ user ? '账号 @' + user.userId + (userProfileText() ? ' · ' + userProfileText() : '') : '登录后享受完整服务 · 记录每一次心动的发现' }}</p>
       </div>
       <div class="cover-actions">
-        <button v-if="user" class="btn" @click="profileModal">编辑资料</button>
+        <button v-if="user" class="btn" data-action="goto-account">账户设置</button>
         <button v-if="user" class="btn btn-plain" data-action="logout">退出登录</button>
         <button v-else class="btn" data-action="open-login">立即登录</button>
       </div>
@@ -279,7 +182,7 @@ async function couponModal() {
           <span v-if="orderCounts.shipped" class="s-badge">{{ orderCounts.shipped }}</span>
           <span class="s-icon">▤</span><b>待收货</b><small>物流实时可查</small>
         </button>
-        <button data-action="goto-orders" data-id="done">
+        <button data-action="goto-reviews">
           <span v-if="orderCounts.done" class="s-badge">{{ orderCounts.done }}</span>
           <span class="s-icon">♧</span><b>评价晒单</b><small>分享你的体验</small>
         </button>
@@ -293,9 +196,9 @@ async function couponModal() {
         <button data-action="open-coupon" @click="couponModal"><span class="s-icon">🎫</span><b>优惠券</b><small>{{ couponCount }} 张可用</small></button>
         <button data-action="goto-chat"><span class="s-icon">◌</span><b>联系卖家</b><small>从商品详情页发起咨询</small></button>
         <button data-action="goto-seller"><span class="s-icon">🏪</span><b>我的店铺</b><small>{{ user && user.shopId ? '管理我的店铺' : '一个账号，既能买也能卖' }}</small></button>
-        <button data-action="goto-placeholder" data-id="浏览足迹"><span class="s-icon">👣</span><b>浏览足迹</b><small>功能预留</small></button>
-        <button data-action="goto-placeholder" data-id="账户设置"><span class="s-icon">⚙</span><b>账户设置</b><small>功能预留</small></button>
-        <button data-action="goto-placeholder" data-id="售后服务"><span class="s-icon">📋</span><b>售后服务</b><small>功能预留</small></button>
+        <button data-action="goto-footprints"><span class="s-icon">👣</span><b>浏览足迹</b><small>最近看过的商品</small></button>
+        <button data-action="goto-account"><span class="s-icon">⚙</span><b>账户设置</b><small>资料编辑 · 手机号 · 密码</small></button>
+        <button data-action="goto-after-sales"><span class="s-icon">📋</span><b>售后服务</b><small>申请 · 退款 · 换货</small></button>
       </div>
     </div>
   </div>

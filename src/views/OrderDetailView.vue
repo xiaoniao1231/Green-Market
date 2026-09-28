@@ -30,7 +30,31 @@ const orderId = computed(() => route.value.params[0] || '');
 const phase = ref('loading');     // loading / missing / ready
 const order = ref(null);
 const logistics = ref([]);
+const afterSales = ref([]);       // 本单的售后单（GET /after-sales/order/{orderId}）
 const acting = ref(false);
+
+/* 可申请售后的订单状态（与后端硬校验口径一致：待付款没有钱可退，已取消不成立） */
+const AS_APPLICABLE = ['paid', 'shipped', 'done'];
+const AS_PROCESSING = ['pending', 'agreed', 'returned'];
+const canApplyAfterSales = computed(() => AS_APPLICABLE.includes((order.value || {}).status));
+/* 按 productId + sku 匹配条目已有的售后记录（前端不依赖后端条目 id） */
+function afterSaleOfItem(it) {
+  return afterSales.value.find(a => String(a.productId) === String(it.productId)
+    && String(a.sku || '默认') === String(it.sku || '默认')) || null;
+}
+/* 按钮文案：无记录 → 申请售后；处理中 → 售后进度；已了结 → 售后记录 */
+function afterSaleBtnText(it) {
+  const a = afterSaleOfItem(it);
+  if (!a) return '申请售后';
+  return AS_PROCESSING.includes(a.status) ? '售后进度' : '售后记录';
+}
+/* 跳售后页：已有记录则只带 orderId（售后页直接打开进度），否则带条目信息打开申请弹窗 */
+function openAfterSales(it) {
+  const a = afterSaleOfItem(it);
+  let url = '/after-sales?orderId=' + encodeURIComponent(orderId.value);
+  if (!a && it) url += '&productId=' + encodeURIComponent(it.productId) + '&sku=' + encodeURIComponent(it.sku || '默认');
+  router.push(url);
+}
 
 const st = computed(() => STATUS_TEXT[(order.value || {}).status] || STATUS_TEXT.pending);
 const items = computed(() => (order.value && order.value.items) || []);
@@ -40,16 +64,20 @@ const goodsAmount = computed(() => Number((order.value && order.value.goodsAmoun
 const freight = computed(() => Number((order.value && order.value.freight) || 0));
 const discount = computed(() => Number((order.value && order.value.discount) || 0));
 
-/* 底部操作：按订单状态给可用动作（与列表页一致） */
+/* 底部操作：按订单状态给可用动作（与列表页一致）；
+   可申请售后的状态额外给一个「售后服务」入口（整单维度：进售后页后选择要售后的商品） */
 const actions = computed(() => {
   const s = (order.value || {}).status;
+  const asBtn = { action: 'order-after-sales', text: '售后服务' };
   if (s === 'pending') return [{ action: 'order-pay', text: '立即支付', kind: 'primary' }, { action: 'order-cancel', text: '取消订单' }];
   if (s === 'paid') {
     /* 催过就换文案（remindCount 由订单详情接口带出），买家一眼看出已经催过了 */
     const n = Number((order.value || {}).remindCount || 0);
-    return [{ action: 'order-remind', text: n > 0 ? `已提醒卖家 ×${n}` : '提醒发货' }];
+    return [{ action: 'order-remind', text: n > 0 ? `已提醒卖家 ×${n}` : '提醒发货' }, asBtn];
   }
-  if (s === 'shipped') return [{ action: 'order-logistics', text: '刷新物流' }, { action: 'order-confirm', text: '确认收货', kind: 'primary' }];
+  if (s === 'shipped') return [{ action: 'order-logistics', text: '刷新物流' }, asBtn, { action: 'order-confirm', text: '确认收货', kind: 'primary' }];
+  /* 已完成：可评价晒单（跳 #/reviews?orderId=，评价页自动打开本单的评价弹窗） */
+  if (s === 'done') return [{ action: 'order-review', text: '评价晒单', kind: 'primary' }, asBtn, { action: 'order-rebuy', text: '再次购买' }];
   return [{ action: 'order-rebuy', text: '再次购买' }];
 });
 
@@ -57,12 +85,18 @@ async function load() {
   phase.value = 'loading';
   order.value = null;
   logistics.value = [];
+  afterSales.value = [];
   try {
     const o = await QM_API.orders.get(orderId.value);
     if (!o || !o.id) { phase.value = 'missing'; return; }
     order.value = o;
     logistics.value = (o.logistics || []).slice();
     phase.value = 'ready';
+    /* 本单售后记录（决定每条商品显示「申请售后」还是「售后进度」）：
+       接口不可用时静默降级为空，不影响订单详情本身 */
+    try {
+      afterSales.value = await QM_API.afterSales.byOrder(orderId.value);
+    } catch (e) { afterSales.value = []; }
     /* 订单内嵌轨迹为空时再单独拉一次物流接口（后端发货时写入） */
     if (!logistics.value.length) {
       try {
@@ -105,6 +139,12 @@ async function onAction(a) {
   } else if (a.action === 'order-logistics') {
     await load();
     toast(logistics.value.length ? '物流信息已刷新' : '暂无物流信息，卖家发货后可查看');
+  } else if (a.action === 'order-review') {
+    /* 评价晒单统一在独立评价页完成（星级 / 内容 / 晒图 / 追评），本页只负责跳转 */
+    router.push('/reviews?orderId=' + encodeURIComponent(id));
+  } else if (a.action === 'order-after-sales') {
+    /* 售后服务统一在独立售后页完成：带订单号过去，售后页自动打开该订单的申请弹窗 */
+    router.push('/after-sales?orderId=' + encodeURIComponent(id));
   } else if (a.action === 'order-rebuy') {
     try {
       for (const it of items.value) await QM_API.cart.add(it.productId, it.sku, it.qty, it.price);
@@ -169,6 +209,8 @@ watch(orderId, () => load());
           <div class="oi-right">
             <span class="oi-price" v-html="price(it.price)"></span>
             <span class="oi-qty">×{{ it.qty }}</span>
+            <button v-if="canApplyAfterSales || afterSaleOfItem(it)"
+                    class="btn btn-plain btn-sm" @click="openAfterSales(it)">{{ afterSaleBtnText(it) }}</button>
           </div>
         </div>
       </section>

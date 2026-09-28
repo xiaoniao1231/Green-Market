@@ -28,10 +28,10 @@ const FEATURES = {
       { h: '说明', p: '本项目仅用于课程演示与学习交流，商品、店铺、订单等数据均来自自建后端数据库，不涉及真实交易。' }
     ]
   },
-  '联系卖家': { icon: '💬', desc: '与开店的用户沟通商品、物流与售后', apis: [['POST', '/chat/private'], ['GET', '/chat/history']] },
-  '评价晒单': { icon: '⭐', desc: '订单评价、追评与晒图', apis: [['POST', '/orders/{id}/comment'], ['GET', '/orders/{id}/comment']] },
-  '浏览足迹': { icon: '👣', desc: '最近浏览商品记录与清空管理', apis: [['GET', '/footprints'], ['DELETE', '/footprints']] },
-  '账户设置': { icon: '⚙', desc: '头像昵称、密码修改与账号安全', apis: [['GET', '/users/me'], ['PUT', '/users/me'], ['POST', '/password/change']] }
+  '联系卖家': { icon: '💬', desc: '与开店的用户沟通商品、物流与售后', apis: [['POST', '/chat/private'], ['GET', '/chat/history']] }
+  /* 「账户设置」占位条目已于 2026-10-02 删除：功能已真实落地为 #/account 账户设置页
+     （资料 / 绑定手机号 / 修改密码 / 收货地址，契约见 docs/账户设置接口文档.md），
+     个人中心的入口相应从 goto-placeholder 改为 goto-account */
 };
 
 const route = useRouteCompat();

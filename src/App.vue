@@ -275,6 +275,20 @@ async function onGlobalClick(e) {
       }
       break;
     }
+    case 'remove-footprint': {
+      /* 足迹页商品卡的单条删除：足迹没有本地缓存，删除成功后强制重挂载当前视图，
+         由足迹页 onMounted 重新拉取列表（等价于收藏页订阅 store 事件的刷新效果）。
+         契约见 docs/历史足迹接口文档.md 2.3。 */
+      if (!requireLogin()) return;
+      try {
+        await QM_API.footprints.remove(t.dataset.id);
+        toast('已删除该足迹');
+        viewKey.value++;
+      } catch (e) {
+        toast((e && e.message) || '删除足迹失败，请稍后重试', 'error');
+      }
+      break;
+    }
     case 'goto-category': router.push('/category/' + encodeURIComponent(t.dataset.id)); break;
     case 'goto-search': router.push('/search?q=' + encodeURIComponent(t.dataset.q || '')); break;
     case 'goto-shop': {
@@ -287,8 +301,25 @@ async function onGlobalClick(e) {
     case 'goto-chat': { const q = []; if (t.dataset.id) q.push('peer=' + encodeURIComponent(t.dataset.id)); if (t.dataset.shopId) q.push('shopId=' + encodeURIComponent(t.dataset.shopId)); router.push('/chat' + (q.length ? '?' + q.join('&') : '')); break; }
     case 'goto-placeholder': router.push('/placeholder/' + encodeURIComponent(t.dataset.id || '')); break;
     case 'goto-orders': router.push('/orders' + (t.dataset.id ? '?status=' + encodeURIComponent(t.dataset.id) : '')); break;
+    /* 评价晒单：#/reviews（带 orderId 时自动打开该订单的评价弹窗） */
+    case 'goto-reviews': router.push('/reviews' + (t.dataset.id ? '?orderId=' + encodeURIComponent(t.dataset.id) : '')); break;
+    /* 售后服务：#/after-sales（带 orderId 自动打开该订单的申请 / 进度弹窗，
+       再带 productId + sku 时直接定位到该商品的申请） */
+    case 'goto-after-sales': {
+      const q = [];
+      if (t.dataset.id) q.push('orderId=' + encodeURIComponent(t.dataset.id));
+      if (t.dataset.productId) q.push('productId=' + encodeURIComponent(t.dataset.productId));
+      if (t.dataset.sku) q.push('sku=' + encodeURIComponent(t.dataset.sku));
+      router.push('/after-sales' + (q.length ? '?' + q.join('&') : ''));
+      break;
+    }
     case 'goto-cart': router.push('/cart'); break;
     case 'goto-fav': router.push('/favorites'); break;
+    /* 浏览足迹：#/footprints（个人中心「浏览足迹」入口，契约见 docs/历史足迹接口文档.md） */
+    case 'goto-footprints': router.push('/footprints'); break;
+    /* 账户设置：#/account（个人中心「账户设置」入口 —— 资料 / 手机号 / 密码 / 收货地址，
+       契约见 docs/账户设置接口文档.md） */
+    case 'goto-account': router.push('/account'); break;
   }
 }
 
@@ -464,7 +495,7 @@ onBeforeUnmount(() => {
         <span class="logo-mark">青</span>
         <div><b>青集市</b><p>发现值得买的日常</p></div>
       </div>
-      <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/placeholder/物流查询">物流查询</a><a href="#/placeholder/售后服务">售后服务</a></div>
+      <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/account">账号设置</a><a href="#/after-sales">售后服务</a></div>
       <div class="footer-col"><b>关于我们</b><a href="#/placeholder/平台介绍">平台介绍</a><a href="#/seller">卖家入驻</a><a href="#/chat">联系我们</a></div>
     </div>
     <p class="copyright">© 2026 青集市 · 课程演示项目 · 前后端分离，数据全部来自后端接口</p>

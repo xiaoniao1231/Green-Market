@@ -53,10 +53,10 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
          目前这三项仍由本地存储承载（后端 /orders 等接口尚未实现），
          用户实际产生数据后才有内容；后端接口落地后改为服务端数据源。 */
       orders: [],
-      /* 售后申请记录：{ [订单id]: { orderId, type, typeText, reason, remark, status, statusText, createTime } }
-         后端售后接口尚未实现（本轮约定只改前端），申请记录落在本机浏览器存储：
-         订单卡据此显示「售后处理中」并提供「售后进度」入口。 */
-      afterSales: {},
+      /* 售后服务不再有本地记录：售后单（申请 / 状态 / 时间线）全部来自后端
+         QM_API.afterSales.*（契约见 docs/售后服务接口文档.md）。
+         旧的 state.afterSales 本地假实现已删除 —— 它只写浏览器存储，
+         店家永远看不到，刷新即消失，属于典型的假成功。 */
       addresses: [],
       /* 优惠券：GET /coupons 的本地缓存（由 api.js 写穿）。
          券由平台在数据库配置，前端不提供任何增删入口；整单统一使用一张券。 */
@@ -106,8 +106,8 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       if (!QM_STORE.state.chats) QM_STORE.state.chats = {};
       if (!QM_STORE.state.contacts) QM_STORE.state.contacts = [];
       QM_STORE.state.shopFavs = QM_STORE.state.shopFavs || [];
-      /* 旧会话里没有售后记录字段（本轮新增）：补齐为空字典，避免读取时抛错 */
-      QM_STORE.state.afterSales = QM_STORE.state.afterSales || {};
+      /* 旧会话可能残留 afterSales 本地假售后（本轮已改为走后端接口）：直接清理，避免脏数据 */
+      if (QM_STORE.state.afterSales) { delete QM_STORE.state.afterSales; save(); }
       /* 优惠券缓存：内容以 GET /coupons 为准，这里只保证字段存在 */
       QM_STORE.state.coupons = QM_STORE.state.coupons || [];
       /* 独立商家账号体系已移除：清理旧版 sellerUser 会话数据（店铺绑定统一挂在 user.shopId 上） */
@@ -344,26 +344,9 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
       }
     },
 
-    /* ---------- 售后服务（前端本地记录，不动后端） ---------- */
-    afterSales: {
-      get(orderId) { return QM_STORE.state.afterSales[String(orderId)] || null; },
-      list() { return Object.values(QM_STORE.state.afterSales); },
-      /** 提交售后申请：同一订单重复提交覆盖上一条（只保留最新进度） */
-      submit(orderId, { type, typeText, reason, remark }) {
-        const rec = {
-          orderId: String(orderId),
-          type, typeText, reason,
-          remark: remark || '',
-          status: 'pending',
-          statusText: '待处理',
-          createTime: Date.now()
-        };
-        QM_STORE.state.afterSales[String(orderId)] = rec;
-        persist();
-        emit('afterSales', rec);
-        return rec;
-      }
-    },
+    /* ---------- 售后服务 ----------
+       本地已不再保存任何售后数据：申请 / 撤销 / 寄回 / 进度全部走后端接口
+       QM_API.afterSales.*（`#/after-sales` 页面），本 store 不再提供 afterSales 模块。 */
 
     /* ---------- 地址 ---------- */
     addr: {

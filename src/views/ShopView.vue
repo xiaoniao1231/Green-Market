@@ -38,11 +38,13 @@ const goods = computed(() => {
 });
 const goodsHtml = computed(() => goods.value.map(p => productCard(p)).join(''));
 
-/* 店铺平均分：当前商品评分的均值（无商品时取 4.8） */
+/* 店铺评分兜底：后端 shops.score 已是「本店全部商品评分的平均值」（见 docs/评价晒单接口文档.md §1.2），
+   GET /shops/{id} 返回 score 时以它为准（load() 里 hit 覆盖在最后）；
+   档案接口不可用时，用本店已加载商品的 rating（商品评分）求平均兜底，一件有评分的商品都没有 → 「暂无评分」 */
 const avgScore = computed(() => {
-  const list = rawGoods.value;
-  if (!list.length) return '4.8';
-  return (list.reduce((s, p) => s + Number((p.shop && p.shop.score) || 0), 0) / list.length).toFixed(1);
+  const list = rawGoods.value.filter(p => p.rating !== undefined && p.rating !== null && p.rating !== '');
+  if (!list.length) return '暂无评分';
+  return (list.reduce((s, p) => s + Number(p.rating), 0) / list.length).toFixed(1);
 });
 
 async function loadGoods(shopIdValue) {

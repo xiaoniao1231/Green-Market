@@ -258,6 +258,65 @@ function noteOnline(online) {
       finishTime: o.finishTime ? fullTime(o.finishTime) : null
     });
   }
+  /* 接口评价 → 页面结构：时间字符串 → millis（页面统一用 fullTime 渲染）；
+     晒单图 / 追评 / 回复 / 评价人信息做兜底，避免后端字段缺失时页面报错。
+     评分口径由后端保证：商品评分 = 全部评价平均分，店铺评分 = 全部商品评分平均分。 */
+  function reviewFromApi(r) {
+    if (!r) return null;
+    return Object.assign({}, r, {
+      score: Number(r.score) || 0,
+      images: Array.isArray(r.images) ? r.images.filter(Boolean) : [],
+      anonymous: !!r.anonymous,
+      user: r.user || { userId: '', nickname: '匿名用户', avatar: '' },
+      createdAt: parseTime(r.createdAt),
+      append: r.append ? { content: r.append.content || '', time: parseTime(r.append.time) } : null,
+      reply: r.reply ? { content: r.reply.content || '', time: parseTime(r.reply.time) } : null
+    });
+  }
+  /* 接口售后单 → 页面结构：时间字符串 → millis（页面统一用 fullTime 渲染）；
+     凭证图 / 店铺 / 买家 / 寄回物流 / 协商时间线全部做兜底，避免后端字段缺失时页面报错。
+     件数与退款金额由后端定格（退款金额 = 条目单价 × 件数），前端只读、绝不上报。 */
+  function afterSaleFromApi(a) {
+    if (!a) return null;
+    return Object.assign({}, a, {
+      id: a.id,
+      orderId: a.orderId,
+      itemId: a.itemId !== undefined && a.itemId !== null ? a.itemId : (a.orderItemId || null),
+      qty: Number(a.qty) || 1,
+      price: Number(a.price) || 0,
+      refundAmount: Number(a.refundAmount) || 0,
+      images: Array.isArray(a.images) ? a.images.filter(Boolean) : [],
+      art: a.art || null,
+      shop: a.shop || { shopId: a.shopId || '', name: '' },
+      buyer: a.buyer || { userId: a.userId || '', nickname: a.userId || '' },
+      express: a.express
+        ? Object.assign({}, a.express, { time: parseTime(a.express.time) })
+        : (a.buyerTrackingNo ? { company: a.buyerCompany || '', trackingNo: a.buyerTrackingNo, time: parseTime(a.buyerShipTime) } : null),
+      reship: a.reship
+        ? Object.assign({}, a.reship, { time: parseTime(a.reship.time) })
+        : (a.reshipNo ? { company: a.reshipCompany || '', trackingNo: a.reshipNo, time: parseTime(a.reshipTime) } : null),
+      logs: (a.logs || []).map(l => Object.assign({}, l, { time: parseTime(l.time) })),
+      createdAt: parseTime(a.createdAt),
+      updatedAt: parseTime(a.updatedAt),
+      finishTime: a.finishTime ? parseTime(a.finishTime) : null
+    });
+  }
+  /* 售后列表统一转换（列表 / 订单维度查询共用） */
+  function afterSaleListFromApi(raw) {
+    return (raw || []).map(afterSaleFromApi).filter(Boolean);
+  }
+  /* 接口足迹 → 页面结构（详见 docs/历史足迹接口文档.md 1.1）：
+     足迹商品对象 = 商品对象 + browseTime（最近浏览时间）+ browseCount（累计浏览次数）。
+     browseTime 字符串 → millis（页面统一用 fullTime / 相对时间渲染）；
+     后端只回商品对象（缺 browseTime）时按 0 处理，页面回退为「—」不报错。 */
+  function footprintFromApi(f) {
+    if (!f) return null;
+    return Object.assign({}, f, {
+      id: (f.id !== undefined && f.id !== null) ? f.id : f.productId,
+      browseTime: parseTime(f.browseTime) || 0,
+      browseCount: Number(f.browseCount) || 1
+    });
+  }
 
   const QM_API = {
     get online() { return state.online; },
@@ -590,6 +649,282 @@ function noteOnline(online) {
       }
     },
 
+    /* ================= 评价晒单（strict：评价与评分全部以后端为准） =================
+       契约要点（详见 docs/评价晒单接口文档.md，后端代码见《评价晒单后端实现代码与教程.md》）：
+       · GET    /reviews/pending?page=&size=   → {total,page,size,orders:[{id,orderNo,finishTime,items:[…]}]}
+                                                 （已完成订单，条目带 reviewed 标记）
+       · GET    /reviews/mine?page=&size=      → {total,page,size,list:[评价对象]}
+       · POST   /reviews                       → body {orderId,productId,score,content,images,anonymous}
+       · POST   /reviews/image                 → multipart 字段 file → {url}（晒单图上传 OSS）
+       · POST   /reviews/{reviewId}/append     → body {content}（每条评价一次，不改评分）
+       · DELETE /reviews/{reviewId}            → {deleted:true}（软删除并重算评分）
+       · POST   /reviews/{reviewId}/reply      → body {content}（仅店主）
+       · GET    /products/{productId}/reviews  → {total,page,size,list,summary}（**免登录**，商品详情评价页签）
+       · GET    /products/{productId}/rating   → 评分汇总（**免登录**）
+
+       评分口径（后端计算，前端只读、绝不上报）：
+       · 商品评分 = 该商品全部评价的平均分（无评价时后端返回 null → 页面显示「暂无评分」）；
+       · 店铺评分 = 该店铺全部商品评分的平均值。
+
+       ⚠ 一律 strict，**不做本地离线回退**：评价是交易完成后的用户数据（还会改动商品 / 店铺评分），
+       接口失败必须如实报错。历史教训同收藏 / 地址 —— 静默写进浏览器存储并提示「已评价」，
+       数据库里根本没有这条记录，刷新就消失，评分也永远不会变。 */
+    reviews: {
+      /* 待评价订单：已完成订单 + 条目（reviewed=true 的条目前端置灰） */
+      async pending(opts = {}) {
+        const data = await call(
+          { name: '待评价订单', method: 'GET', path: '/reviews/pending', query: { page: opts.page || 1, size: opts.size || 10 }, token: tokenOf() },
+          null, { strict: true }
+        );
+        const d = data || {};
+        /* 契约字段是 orders；兼容后端把订单数组放在 list 的实现 */
+        const raw = d.orders || d.list || [];
+        return {
+          total: Number(d.total) || 0,
+          page: Number(d.page) || opts.page || 1,
+          size: Number(d.size) || opts.size || 10,
+          orders: raw.map(o => Object.assign({}, o, {
+            id: o.id,
+            orderNo: o.orderNo || '',
+            finishTime: o.finishTime ? parseTime(o.finishTime) : null,
+            items: (o.items || []).map(it => Object.assign({}, it, {
+              reviewed: !!it.reviewed,
+              art: it.art || (it.artImg ? { img: it.artImg } : null)
+            }))
+          }))
+        };
+      },
+      /* 我的评价（含晒图 / 追评 / 商家回复） */
+      async mine(opts = {}) {
+        const data = await call(
+          { name: '我的评价', method: 'GET', path: '/reviews/mine', query: { page: opts.page || 1, size: opts.size || 10 }, token: tokenOf() },
+          null, { strict: true }
+        );
+        const d = data || {};
+        const list = (d.list || []).map(reviewFromApi).filter(Boolean);
+        return { total: Number(d.total) || list.length, page: Number(d.page) || opts.page || 1, size: Number(d.size) || opts.size || 10, list };
+      },
+      /* 发表评价：payload { orderId, productId, score, content, images, anonymous }
+         → 返回新建评价对象（含 id）；后端在同一事务里重算商品评分与店铺评分 */
+      async create(payload) {
+        const data = await call(
+          { name: '发表评价', method: 'POST', path: '/reviews', body: payload || {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        return reviewFromApi(data);
+      },
+      /* 晒单图上传：multipart 字段 file（与商品图 / 头像同一条 OSS 链路）→ { url } */
+      async uploadImage(file) {
+        if (!file) throw new Error('文件不能为空');
+        const form = new FormData();
+        form.append('file', file, file.name);
+        try {
+          return await call(
+            { name: '上传晒单图', method: 'POST', path: '/reviews/image', timeout: QM_CFG.UPLOAD_TIMEOUT, body: form, token: tokenOf() },
+            null, { strict: true }
+          );
+        } catch (e) {
+          throw formatUploadError(e);
+        }
+      },
+      /* 追评（每条评价仅一次，追评不改变评分） */
+      async append(reviewId, content) {
+        const data = await call(
+          { name: '追评', method: 'POST', path: '/reviews/' + encodeURIComponent(reviewId) + '/append', body: { content }, token: tokenOf() },
+          null, { strict: true }
+        );
+        return reviewFromApi(data);
+      },
+      /* 删除自己的评价（软删除 + 后端重算评分）→ { deleted: true } */
+      remove(reviewId) {
+        return call(
+          { name: '删除评价', method: 'DELETE', path: '/reviews/' + encodeURIComponent(reviewId), body: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 商家回复（仅该评价所属店铺的店主；每条评价一次） */
+      async reply(reviewId, content) {
+        const data = await call(
+          { name: '回复评价', method: 'POST', path: '/reviews/' + encodeURIComponent(reviewId) + '/reply', body: { content }, token: tokenOf() },
+          null, { strict: true }
+        );
+        return reviewFromApi(data);
+      },
+      /* 商品评价列表（公开接口，商品详情页「商品评价」页签）
+         opts: { page, size, score, hasImage, sort: 'new' | 'score' }
+         返回 { total, page, size, list, summary:{ rating, reviewCount, goodRate, distribution, shopScore } } */
+      async listByProduct(productId, opts = {}) {
+        const data = await call(
+          {
+            name: '商品评价列表',
+            method: 'GET',
+            path: '/products/' + encodeURIComponent(productId) + '/reviews',
+            query: { page: opts.page || 1, size: opts.size || 10, score: opts.score, hasImage: opts.hasImage ? 'true' : undefined, sort: opts.sort }
+          },
+          null, { strict: true }
+        );
+        const d = data || {};
+        const list = (d.list || []).map(reviewFromApi).filter(Boolean);
+        const s = d.summary || {};
+        return {
+          total: Number(d.total) || list.length,
+          page: Number(d.page) || opts.page || 1,
+          size: Number(d.size) || opts.size || 10,
+          list,
+          summary: {
+            rating: (s.rating === undefined || s.rating === null || s.rating === '') ? null : Number(s.rating),
+            reviewCount: Number(s.reviewCount) || 0,
+            goodRate: Number(s.goodRate) || 0,
+            distribution: s.distribution || {},
+            shopScore: (s.shopScore === undefined || s.shopScore === null) ? null : Number(s.shopScore)
+          }
+        };
+      },
+      /* 商品评分汇总（轻量刷新评分栏；免登录） */
+      async rating(productId) {
+        const data = await call(
+          { name: '商品评分', method: 'GET', path: '/products/' + encodeURIComponent(productId) + '/rating', query: {} },
+          null, { strict: true }
+        );
+        const s = data || {};
+        return {
+          productId: s.productId !== undefined ? s.productId : productId,
+          rating: (s.rating === undefined || s.rating === null || s.rating === '') ? null : Number(s.rating),
+          reviewCount: Number(s.reviewCount) || 0,
+          goodRate: Number(s.goodRate) || 0,
+          distribution: s.distribution || {},
+          shopScore: (s.shopScore === undefined || s.shopScore === null) ? null : Number(s.shopScore)
+        };
+      }
+    },
+
+    /* ================= 售后服务（strict：售后申请与处理全部以后端为准） =================
+       契约要点（详见 docs/售后服务接口文档.md，后端代码见《售后服务后端实现代码与教程.md》）：
+       · GET    /after-sales?status=&page=&size=  → {total,page,size,list}
+       · GET    /after-sales/counts               → {all,processing,refunded,exchanged,refused,canceled}
+       · GET    /after-sales/order/{orderId}      → [售后对象]（订单详情页逐条商品判断）
+       · GET    /after-sales/{afterSaleId}        → 售后对象（含 logs 协商时间线）
+       · POST   /after-sales                      → body {orderId,productId,sku,type,reason,description,images,qty}
+       · POST   /after-sales/image                → multipart 字段 file → {url}（凭证图上传 OSS）
+       · POST   /after-sales/{id}/cancel          → 撤销申请（仅 pending）
+       · POST   /after-sales/{id}/ship            → body {company,trackingNo}（仅 agreed，非仅退款）
+       · POST   /after-sales/{id}/message         → body {content}（留言，不改状态）
+
+       金额与件数口径（后端计算，前端只读）：
+       · 退款金额 = 订单条目单价 × 售后件数（换货为 0），前端**不提交金额**；
+       · 件数上限 = 该条目下单数量（order_items.qty）。
+
+       状态机：pending 待商家处理 →（同意）refunded 已退款 / agreed 待买家寄回
+               agreed →（买家寄回）returned 待商家收货 →（商家确认）refunded / exchanged
+               pending → refused 已拒绝 / canceled 已撤销（终态，可再次申请，复用同一条售后记录）
+
+       ⚠ 一律 strict，**不做本地离线回退**：售后是交易凭证（还牵涉退款金额），
+       静默写进浏览器存储只会造出「前端提示已提交、数据库里没有、店家永远看不到」的假象。
+       旧的本地假售后（QM_STORE.afterSales.submit，提示「售后申请已提交（本机演示）」）已删除。 */
+    afterSales: {
+      /* 我的售后列表（status 为空 = 全部；页签的「处理中」分组由页面按状态自行拆分） */
+      async list(opts = {}) {
+        const data = await call(
+          {
+            name: '售后列表',
+            method: 'GET',
+            path: '/after-sales',
+            query: { status: opts.status, page: opts.page || 1, size: opts.size || 20 },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        const d = data || {};
+        return {
+          total: Number(d.total) || 0,
+          page: Number(d.page) || opts.page || 1,
+          size: Number(d.size) || opts.size || 20,
+          list: afterSaleListFromApi(d.list)
+        };
+      },
+      /* 各状态计数（页签角标）：接口失败时调用方按 0 处理，不阻塞列表 */
+      counts() {
+        return call(
+          { name: '售后计数', method: 'GET', path: '/after-sales/counts', query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      /* 某订单下的全部售后单（订单详情页逐条商品判断「申请售后 / 售后进度」） */
+      async byOrder(orderId) {
+        const data = await call(
+          { name: '订单售后', method: 'GET', path: '/after-sales/order/' + encodeURIComponent(orderId), query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        /* 契约是数组；兼容后端把数组放在 { list } 里的实现 */
+        return afterSaleListFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
+      },
+      /* 售后详情（含协商时间线 logs） */
+      async get(afterSaleId) {
+        const data = await call(
+          { name: '售后详情', method: 'GET', path: '/after-sales/' + encodeURIComponent(afterSaleId), query: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 申请售后：payload { orderId, productId, sku, type, reason, description, images, qty }
+         → 返回新建（或复用后重置）的售后对象；后端在同一事务里写申请日志 */
+      async create(payload) {
+        const data = await call(
+          { name: '申请售后', method: 'POST', path: '/after-sales', body: payload || {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 凭证图上传：multipart 字段 file（与商品图 / 头像 / 晒单图同一条 OSS 链路）→ { url } */
+      async uploadImage(file) {
+        if (!file) throw new Error('文件不能为空');
+        const form = new FormData();
+        form.append('file', file, file.name);
+        try {
+          return await call(
+            { name: '上传凭证图', method: 'POST', path: '/after-sales/image', timeout: QM_CFG.UPLOAD_TIMEOUT, body: form, token: tokenOf() },
+            null, { strict: true }
+          );
+        } catch (e) {
+          throw formatUploadError(e);
+        }
+      },
+      /* 撤销申请（仅「待商家处理」可撤销）
+         ⚠ 2026-10-01 契约：该接口**无业务返回数据**（后端 Result.success() 无参 → data=null），
+         因此本方法返回 null。调用方（AfterSalesView.vue）只需 await 成功后 refresh() 重拉列表；
+         这里仍走 afterSaleFromApi(data)，是为了兼容后端「返回更新后的售后对象」的旧实现。 */
+      async cancel(afterSaleId) {
+        const data = await call(
+          { name: '撤销售后', method: 'POST', path: '/after-sales/' + encodeURIComponent(afterSaleId) + '/cancel', body: {}, token: tokenOf() },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 填写寄回物流（仅「待买家寄回」且非仅退款）
+         ⚠ 2026-10-01 契约：**无业务返回数据**（data=null）→ 返回 null，调用方 await 后 refresh() */
+      async ship(afterSaleId, payload = {}) {
+        const data = await call(
+          {
+            name: '填写寄回物流',
+            method: 'POST',
+            path: '/after-sales/' + encodeURIComponent(afterSaleId) + '/ship',
+            body: { company: payload.company || '', trackingNo: payload.trackingNo || '' },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 追加留言（买卖双方同一入口，后端按归属判断身份；不改变状态） */
+      async message(afterSaleId, content) {
+        const data = await call(
+          { name: '售后留言', method: 'POST', path: '/after-sales/' + encodeURIComponent(afterSaleId) + '/message', body: { content }, token: tokenOf() },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      }
+    },
+
     /* ================= 优惠券（strict：平台配置，用户在「我的优惠券」里领取） =================
        · GET  /coupons           → 我的券 [{ id, title, threshold, amount, expire, status, receivedAt }]
                                     id 是 user_coupons.id，下单时原样回传，后端据此核销
@@ -698,6 +1033,57 @@ function noteOnline(online) {
         QM_STORE.state.favorites.length = 0;
         QM_STORE.saveNow();
         QM_STORE.emit('favorites');
+      }
+    },
+
+    /* ================= 浏览足迹（strict：足迹全部以后端为准，不做本地回退） =================
+       契约要点（详见 docs/历史足迹接口文档.md，后端代码见《历史足迹后端实现代码与教程.md》）：
+       · GET    /footprints?page=&size=   → {total,page,size,list:[足迹商品对象]}
+                                             （商品对象 + browseTime + browseCount，最近浏览在前）
+       · POST   /footprints               → body {productId}，记录一次浏览（同一商品幂等累加次数）
+       · DELETE /footprints/{productId}   → 删除单条足迹（未浏览过也幂等成功）
+       · DELETE /footprints               → 清空全部足迹
+       三个写接口成功后均无业务数据（data 为空），前端只按 code 判断成败。
+
+       ⚠ 一律 strict，**不做本地离线回退**：足迹由服务端按账号保存（详情页浏览时上报、
+       足迹页读取），接口失败必须如实抛出。历史教训同收藏 / 地址 —— 静默写进浏览器存储
+       再提示「已记录」，换个标签页（store 走 sessionStorage）或换设备记录就凭空消失，
+       数据库里根本没有这条数据。
+       · 详情页的 record() 是**静默上报**（fire-and-forget）：调用方自行 catch，
+         足迹记录失败绝不影响商品详情的正常浏览；
+       · 足迹页的 list / remove / clear 失败则如实 toast，不做本地假成功。 */
+    footprints: {
+      async list(page = 1, size = 100) {
+        const data = await call(
+          { name: '浏览足迹列表', method: 'GET', path: '/footprints', query: { page, size }, token: tokenOf() },
+          null, { strict: true }
+        );
+        const list = ((data && data.list) || []).map(footprintFromApi).filter(Boolean);
+        return {
+          total: (data && data.total) || list.length,
+          page: (data && data.page) || page,
+          size: (data && data.size) || size,
+          list
+        };
+      },
+      /* 记录一次浏览：同一商品只保留一条足迹，后端把 browse_count +1、updated_at 刷新为当前时间 */
+      async record(productId) {
+        await call(
+          { name: '记录浏览足迹', method: 'POST', path: '/footprints', body: { productId }, token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      async remove(productId) {
+        await call(
+          { name: '删除足迹', method: 'DELETE', path: '/footprints/' + encodeURIComponent(productId), token: tokenOf() },
+          null, { strict: true }
+        );
+      },
+      async clear() {
+        await call(
+          { name: '清空足迹', method: 'DELETE', path: '/footprints', body: {}, token: tokenOf() },
+          null, { strict: true }
+        );
       }
     },
 
@@ -879,6 +1265,102 @@ function noteOnline(online) {
           { name: '订单发货', method: 'PUT', path: '/seller/orders/' + encodeURIComponent(orderId) + '/ship', body: {}, token: tokenOf() },
           null, { strict: true }
         );
+      },
+      /* ================= 店家售后管理（strict，契约见 docs/售后服务接口文档.md 第 3 章） =================
+         · GET  /seller/after-sales?status=&afterNo=&page=&size= → {total,page,size,list}
+         · PUT  /seller/after-sales/{id}/approve  body {returnAddress,remark}
+                仅退款 → status=refunded（同意即退款完成）；退货 / 换货 → status=agreed（需寄回地址）
+         · PUT  /seller/after-sales/{id}/refuse   body {reason}       仅 pending → refused
+         · PUT  /seller/after-sales/{id}/receive  body {remark,reshipCompany,reshipNo}
+                仅 returned：退货退款 → refunded；换货 → exchanged（必须给换货重发物流）
+         · POST /seller/after-sales/{id}/message  body {content}      留言，不改状态
+         店铺身份由后端按 shops.owner_user_id 解析，前端不传 shopId（传了也不采纳）。 */
+      async afterSales(opts = {}) {
+        const data = await call(
+          {
+            name: '店家售后列表',
+            method: 'GET',
+            path: '/seller/after-sales',
+            query: {
+              page: opts.page || 1,
+              size: opts.size || 100,
+              status: opts.status,
+              afterNo: opts.afterNo
+            },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        const d = data || {};
+        return {
+          total: Number(d.total) || 0,
+          page: Number(d.page) || opts.page || 1,
+          size: Number(d.size) || opts.size || 100,
+          list: afterSaleListFromApi(d.list)
+        };
+      },
+      /* 同意售后：payload { returnAddress, remark }（returnAddress 在退货 / 换货时必填）
+         ⚠ 2026-10-01 契约：**无业务返回数据**（data=null）→ 返回 null，调用方 await 后 refresh() */
+      async afterSaleApprove(afterSaleId, payload = {}) {
+        const data = await call(
+          {
+            name: '同意售后',
+            method: 'PUT',
+            path: '/seller/after-sales/' + encodeURIComponent(afterSaleId) + '/approve',
+            body: { returnAddress: payload.returnAddress || '', remark: payload.remark || '' },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 拒绝售后：必须给拒绝原因（买家端会原样看到）
+         ⚠ 2026-10-01 契约：**无业务返回数据**（data=null）→ 返回 null，调用方 await 后 refresh() */
+      async afterSaleRefuse(afterSaleId, reason) {
+        const data = await call(
+          {
+            name: '拒绝售后',
+            method: 'PUT',
+            path: '/seller/after-sales/' + encodeURIComponent(afterSaleId) + '/refuse',
+            body: { reason },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 确认收货：payload { remark, reshipCompany, reshipNo }（换货时后两个必填）
+         ⚠ 2026-10-01 契约：**无业务返回数据**（data=null）→ 返回 null，调用方 await 后 refresh() */
+      async afterSaleReceive(afterSaleId, payload = {}) {
+        const data = await call(
+          {
+            name: '售后确认收货',
+            method: 'PUT',
+            path: '/seller/after-sales/' + encodeURIComponent(afterSaleId) + '/receive',
+            body: {
+              remark: payload.remark || '',
+              reshipCompany: payload.reshipCompany || '',
+              reshipNo: payload.reshipNo || ''
+            },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
+      },
+      /* 卖家回复买家（不改状态） */
+      async afterSaleMessage(afterSaleId, content) {
+        const data = await call(
+          {
+            name: '回复售后',
+            method: 'POST',
+            path: '/seller/after-sales/' + encodeURIComponent(afterSaleId) + '/message',
+            body: { content },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        return afterSaleFromApi(data);
       }
     },
 
@@ -936,10 +1418,16 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 用户资料（头像上传 OSS / 资料更新） =================
-       契约（后端实现见 docs/用户头像上传OSS与资料更新-后端实现教程.md）：
-       · POST /users/avatar —— multipart 字段 file，后端上传阿里云 OSS 后返回 { url }；
-       · PUT  /users/profile —— JSON { nickname, gender, avatar, signature }，返回更新后的用户。 */
+    /* ================= 账户设置（资料 / 手机号 / 密码） =================
+       契约见 docs/账户设置接口文档.md，后端可落地代码见 docs/账户设置后端实现代码与教程.md：
+       · GET  /users/me       —— 当前登录账号的完整资料（账户设置页 #/account 的数据源）；
+       · POST /users/avatar   —— multipart 字段 file，后端上传阿里云 OSS 后返回 { url }；
+       · PUT  /users/profile  —— JSON { nickname, gender, avatar, signature }，只报成败（不回带用户对象）；
+       · POST /users/phone    —— JSON { phone, smsCode, password }，绑定 / 换绑手机号
+                                 （**写接口无业务返回数据**：成功即 code=1 + data=null，
+                                  服务端真值由随后的 GET /users/me 刷新）；
+       · PUT  /users/password —— JSON { oldPassword, newPassword }，改密后返回新令牌。
+       全部 strict：账户数据以服务端为唯一真相，接口失败如实报错，绝不在浏览器里伪造成功。 */
     user: {
       /* 头像上传：multipart 提交（字段 file），后端把图片传到阿里云 OSS，返回 { url } */
       async uploadAvatar(file) {
@@ -956,13 +1444,82 @@ function noteOnline(online) {
           throw formatUploadError(e);
         }
       },
-      /* 资料更新：PUT /users/profile，body { nickname, gender, avatar, signature } */
+      /* 资料更新：PUT /users/profile，body { nickname, gender, avatar, signature }
+         只提交资料四件套：手机号 / 密码 / 账号名都不走这个接口（各自有专用接口，防越权改写）。
+         响应不带 data（写接口只报成败）：调用方保存后重拉 GET /users/me 取服务端真值。 */
       updateProfile(payload) {
         return call(
           { name: '更新资料', method: 'PUT', path: '/users/profile', body: payload, token: tokenOf() },
           null,
           { strict: true }
         );
+      },
+      /* 当前账号资料：GET /users/me（strict）。成功即把服务端资料写穿到本地登录态，
+         这样刷新页面后个人中心 / 顶部条也能显示真实昵称与头像（登录响应不含手机号等字段）。
+         返回 { userId, nickname, avatar, gender, signature, phoneNumber, phoneBound,
+                phoneBoundAt, shopId, createdAt, updatedAt, lastPwdChangeAt } */
+      async me() {
+        const data = await call(
+          { name: '账号资料', method: 'GET', path: '/users/me', query: {}, token: tokenOf() },
+          null,
+          { strict: true }
+        );
+        const u = data || {};
+        const patch = {};
+        /* 只写穿后端确实返回的字段：undefined 不覆盖本地已有值（后端是旧版本时不至于把资料抹空） */
+        ['nickname', 'avatar', 'gender', 'signature', 'shopId', 'phoneNumber'].forEach(k => {
+          if (u[k] !== undefined) patch[k] = u[k];
+        });
+        if (u.userId !== undefined) patch.userId = u.userId;
+        if (u.phoneNumber !== undefined) patch.phoneBound = !!u.phoneNumber;
+        if (Object.keys(patch).length && QM_STORE.state.user) {
+          QM_STORE.user.update(patch);
+        }
+        return u;
+      },
+      /* 绑定 / 换绑手机号：POST /users/phone，body { phone, smsCode, password }
+         · phone    新手机号（11 位），验证码 scene 用 'bind'（发给新手机号）；
+         · password 当前登录密码：已绑定手机号的账号换绑时后端强制要求（二次身份确认）。
+         后端按项目惯例**不返回业务数据**（成功即 code=1 + data=null）：这里用提交的 phone
+         写穿本地登录态（不重新签发令牌：账号名 userId 不随手机号变化），随后账户设置页会
+         重拉 GET /users/me，以服务端返回的手机号与绑定时间为准。 */
+      async bindPhone({ phone, smsCode, password }) {
+        const data = await call(
+          {
+            name: '绑定手机号',
+            method: 'POST',
+            path: '/users/phone',
+            body: { phone, smsCode, password: password || '' },
+            token: tokenOf()
+          },
+          null,
+          { strict: true }
+        );
+        /* data 为空（data=null）也能工作：用提交的手机号兜底；返回体若带了手机号则优先采用 */
+        const phoneNumber = (data && (data.phoneNumber || data.phone)) || phone;
+        if (QM_STORE.state.user) QM_STORE.user.update({ phoneNumber, phoneBound: !!phoneNumber });
+        return Object.assign({ phoneNumber, phoneBound: !!phoneNumber }, data || {});
+      },
+      /* 修改密码：PUT /users/password，body { oldPassword, newPassword }
+         后端改密时 users.pwd_version + 1 → 此前签发的所有令牌立即失效（TokenFilter 会按 pv 拒绝）。
+         因此后端在响应里**重新签发**令牌（data.token），这里立刻换到本地登录态：
+         当前标签页无需重新登录；其它设备上的旧令牌全部作废（这正是改密应有的效果）。
+         返回 { token, pwdVersion }：token 为空表示后端没有重发令牌，调用方须引导重新登录。 */
+      async changePassword({ oldPassword, newPassword }) {
+        const data = await call(
+          {
+            name: '修改密码',
+            method: 'PUT',
+            path: '/users/password',
+            body: { oldPassword, newPassword },
+            token: tokenOf()
+          },
+          null,
+          { strict: true }
+        );
+        const token = (data && (data.token || data.jwt)) || '';
+        if (token && QM_STORE.state.user) QM_STORE.user.update({ token });
+        return { token, pwdVersion: data ? data.pwdVersion : undefined };
       }
     },
 

@@ -319,6 +319,9 @@ function nameConflict(name) {
           <div class="seller-nav-grid">
             <a class="seller-nav-card" href="#/seller/products"><span class="s-icon">◈</span><b>商品管理</b><small>上架 · 编辑 · 新增</small></a>
             <a class="seller-nav-card" href="#/seller/orders"><span class="s-icon">▣</span><b>订单管理</b><small>查看订单 · 发货</small></a>
+            <!-- 售后管理：买家申请后在这里同意 / 拒绝 / 确认收货并退款或换货
+                 （契约见 docs/售后服务接口文档.md 第 3 章） -->
+            <a class="seller-nav-card" href="#/seller/after-sales"><span class="s-icon">📋</span><b>售后管理</b><small>退款 · 退货 · 换货</small></a>
             <a class="seller-nav-card" :href="shopHref"><span class="s-icon">🏪</span><b>店铺主页</b><small>买家看到的样子</small></a>
             <a class="seller-nav-card" href="#/chat"><span class="s-icon">◌</span><b>买家咨询</b><small>在消息中心回复</small></a>
           </div>

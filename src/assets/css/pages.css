@@ -507,6 +507,37 @@
 .as-detail b { color: var(--text); font-weight: 500; word-break: break-all; }
 .as-detail .as-status { color: var(--brand-ink); }
 
+/* ---------- 售后服务（买家 #/after-sales / 店家 #/seller/after-sales 共用） ---------- */
+/* 协商时间线：最早在最上（像对话记录，从头读到尾才看得懂来龙去脉） */
+.as-log-title { font-size: 13px; font-weight: 600; margin: 14px 0 8px; }
+.as-log { position: relative; }
+.as-log-item { position: relative; padding: 0 0 14px 22px; }
+.as-log-item:last-child { padding-bottom: 0; }
+.as-log-item::before { content: ""; position: absolute; left: 3px; top: 15px; bottom: 0; width: 1px; background: var(--border); }
+.as-log-item:last-child::before { display: none; }
+.as-log-dot { position: absolute; left: 0; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-4); }
+.as-log-dot.buyer { background: var(--brand); }
+.as-log-dot.seller { background: #34b37a; }
+.as-log-item b { font-size: 13px; color: var(--text); font-weight: 600; }
+.as-log-item p { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-top: 3px; word-break: break-word; }
+.as-log-item small { font-size: 12px; color: var(--text-3); }
+/* 售后信息网格（原因 / 状态 / 寄回地址 / 物流单号） */
+.as-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; padding: 10px 0 2px; }
+@media (max-width: 720px) { .as-info { grid-template-columns: minmax(0, 1fr); } }
+.as-info > div { display: flex; gap: 8px; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed #f4f4f4; }
+.as-info span { color: var(--text-4); flex: none; }
+.as-info b { color: var(--text-2); font-weight: 500; word-break: break-all; }
+.as-info .as-status { color: var(--brand-ink); font-weight: 600; }
+/* 凭证图（沿用评价晒单的 .review-img 缩略图样式，只调外边距） */
+.as-imgs { margin: 8px 0 4px; }
+/* 只带订单号进入售后页时，先选一件商品 */
+.as-pick { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.as-pick-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; cursor: pointer; transition: all var(--dur) var(--ease); }
+.as-pick-row:hover { border-color: var(--brand); background: var(--brand-softer); }
+.as-pick-info { flex: 1; min-width: 0; }
+.as-pick-info b { display: block; font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.as-pick-info small { font-size: 12px; color: var(--text-3); }
+
 /* 物流时间线 */
 .logistics { padding: 8px 4px; }
 .logi-item { display: flex; gap: 12px; position: relative; padding-bottom: 20px; }
@@ -568,6 +599,13 @@
 /* ---------- 收藏页 ---------- */
 .fav-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 
+/* ---------- 浏览足迹页（#/footprints，契约见 docs/历史足迹接口文档.md） ---------- */
+/* 工具栏右侧说明：同一商品重复浏览只保留一条记录、只累加次数 */
+.fp-tip { color: var(--text-3); font-size: 12px; }
+/* 商品卡底部的「最近浏览」时间行 —— productCard 的 extra 插槽，渲染在 .pc-info 之后 */
+.fp-time { display: flex; align-items: center; gap: 4px; padding: 9px 13px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--text-2); }
+.fp-time small { color: var(--text-3); }
+
 /* ---------- 预留页 ---------- */
 .placeholder-page { text-align: center; padding: 84px 20px; }
 .placeholder-orb {
@@ -600,18 +638,18 @@
 .profile-cover .cover-actions .btn-plain { background: rgba(255, 255, 255, .16); color: #fff; border-color: rgba(255, 255, 255, .5); }
 .profile-cover .cover-actions .btn-plain:hover { background: rgba(255, 255, 255, .3); color: #fff; }
 
-/* ---------- 编辑资料弹窗：性别单选 ---------- */
+/* ---------- 资料编辑：性别单选（账户设置页「基本资料」内嵌表单使用） ---------- */
 .gender-row { display: flex; gap: 8px; }
 .gender-opt { display: inline-flex; align-items: center; gap: 5px; padding: 8px 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); cursor: pointer; font-size: 13px; color: var(--text-2); transition: all var(--dur) var(--ease); }
 .gender-opt:hover { border-color: var(--brand); color: var(--brand-ink); }
 .gender-opt:has(input:checked) { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; }
 .gender-opt input { width: auto; height: auto; margin: 0; accent-color: var(--brand); }
 
-/* ---------- 编辑资料弹窗：头像上传（阿里云 OSS，底色选择已移除） ---------- */
+/* ---------- 资料编辑：头像上传（阿里云 OSS；账户设置页内嵌表单使用，底色选择已移除） ---------- */
 .avatar-upload { display: flex; align-items: center; gap: 16px; }
 .avatar-upload .avatar-preview { flex: none; }
-/* 弹窗内的头像预览用稍小尺寸（72→56），让编辑弹窗在常规视口下不用滚动 */
-#pfAvatarPreview { width: 56px; height: 56px; font-size: 24px; }
+/* 账户设置页的头像预览用稍小尺寸（72→56），让资料表单在常规视口下不用滚动 */
+.acct-form .avatar-preview { width: 56px; height: 56px; font-size: 24px; }
 .avatar-upload-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .avatar-upload-actions small { color: var(--text-3); font-size: 12px; line-height: 1.5; }
 
@@ -623,3 +661,125 @@
   .cart-summary { position: static; }
   .service-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* =========================================================
+   评价晒单（评价页 #/reviews + 商品详情「商品评价」页签）
+   · 评分展示 / 星级选择 / 晒单图上传与预览 / 评价卡
+   ========================================================= */
+/* 星级：金色，字距略放开便于逐颗辨认 */
+.stars { color: #ffb400; letter-spacing: 2px; font-weight: 600; }
+
+/* 商品详情 · 评价页签的评分汇总条 */
+.review-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 6px 0 16px; border-bottom: 1px dashed var(--border); margin-bottom: 6px; }
+.review-summary .rs-score { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.review-summary .rs-score b { font-size: 30px; font-weight: 700; color: var(--brand-ink); font-family: var(--font-num); }
+.review-summary .rs-score small { color: var(--text-3); font-size: 12px; }
+.review-summary .rs-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.review-summary .rs-filters button { padding: 6px 13px; font-size: 12px; color: var(--text-2); border: 1px solid var(--border); border-radius: var(--radius-pill); background: #fff; transition: all var(--dur) var(--ease); }
+.review-summary .rs-filters button:hover { border-color: var(--brand); color: var(--brand-ink); }
+.review-summary .rs-filters button.active { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-soft); font-weight: 600; }
+
+/* 评价列表的加载 / 空 / 错误状态 */
+.review-state { padding: 26px 0; text-align: center; color: var(--text-3); font-size: 13px; }
+.review-state-error { color: #c0392b; }
+.review-more { text-align: center; padding: 8px 0 4px; }
+
+/* 追评 / 商家回复块（评价卡与详情页共用） */
+.review-append, .review-reply { margin-top: 8px; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 13px; }
+.review-append { background: #fff8f3; border-left: 3px solid var(--brand); }
+.review-reply { background: #f6f8fb; border-left: 3px solid #9fb4d0; }
+.review-append b, .review-reply b { font-size: 12px; color: var(--text-2); display: block; margin-bottom: 3px; }
+.review-append p, .review-reply p { color: var(--text-2); line-height: 1.7; margin: 0; }
+
+/* 评价弹窗 · 星级选择器 */
+.star-picker { display: flex; align-items: center; gap: 4px; }
+.star-picker .star { font-size: 26px; line-height: 1; color: #ddd; background: none; border: none; padding: 0 2px; cursor: pointer; transition: color var(--dur) var(--ease), transform var(--dur) var(--ease); }
+.star-picker .star:hover { transform: scale(1.08); }
+.star-picker .star.on { color: #ffb400; }
+.star-picker .star-text { margin-left: 10px; font-size: 13px; color: var(--text-2); }
+
+/* 评价弹窗 · 晒单图上传 */
+.review-uploader { display: flex; flex-direction: column; gap: 10px; }
+.review-upload-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.review-upload-actions small { color: var(--text-3); font-size: 12px; }
+.review-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-imgs:empty { display: none; }
+.review-imgs.static { margin-top: 8px; }
+.review-img { position: relative; width: 72px; height: 72px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); background: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.review-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.review-img .rv-del { position: absolute; top: 0; right: 0; width: 20px; height: 20px; border: none; border-radius: 0 0 0 6px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px; line-height: 1; cursor: pointer; }
+.review-img .rv-del:hover { background: rgba(0, 0, 0, .75); }
+
+/* 表单小提示与匿名单选行 */
+.form-tip { display: block; margin-top: 5px; font-size: 12px; color: var(--text-3); }
+.checkbox-row { display: inline-flex !important; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; margin-bottom: 0 !important; }
+.checkbox-row input { width: auto; height: auto; margin: 0; accent-color: var(--brand); }
+
+/* 评价晒单页（#/reviews） */
+.review-order-body { padding: 4px 18px 12px; }
+.reviewed-tag { font-size: 12px; color: var(--text-3); background: var(--fill); border-radius: var(--radius-pill); padding: 5px 12px; }
+.review-card-head { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, #fcfcfd, #f8f9fa); }
+.review-card-art { position: relative; overflow: hidden; width: 56px; height: 56px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; font-size: 24px; flex: none; border: 1px solid var(--border); background: #fff; }
+.review-card-title { flex: 1; min-width: 0; }
+.review-card-title h4 { font-size: 14px; font-weight: 400; color: var(--text); margin-bottom: 4px; }
+.review-card-title small { font-size: 12px; color: var(--text-3); }
+.review-card-score { flex: none; text-align: right; }
+.review-card-score b { display: block; font-size: 15px; }
+.review-card-score small { font-size: 12px; color: var(--text-3); }
+.review-card-body { padding: 14px 18px 4px; }
+.review-text { font-size: 13px; color: var(--text-2); line-height: 1.75; word-break: break-word; }
+.review-text-empty { color: var(--text-4); font-style: italic; }
+.review-meta { margin-top: 8px; }
+.review-meta small { color: var(--text-4); font-size: 12px; }
+
+/* =========================================================
+   账户设置（#/account 账户设置页 + 绑定手机号 / 修改密码弹窗）
+   · 左栏账号概览卡 + 右栏设置项（资料 / 手机号 / 密码 / 地址）
+   · 接口不可用时的顶部提示条 .acct-alert
+   契约见 docs/账户设置接口文档.md
+   ========================================================= */
+.acct-alert {
+  background: #fff8ef; border: 1px solid #ffe3c8; border-radius: var(--radius);
+  padding: 13px 16px; margin-bottom: 16px; font-size: 13px; color: var(--text-2); line-height: 1.8;
+}
+.acct-alert b { display: block; color: var(--brand-ink); margin-bottom: 4px; }
+.acct-alert .btn { margin-top: 10px; }
+
+.acct-layout { display: grid; grid-template-columns: 248px 1fr; gap: 16px; align-items: start; }
+
+.acct-side {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 22px 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+}
+.acct-side .member-avatar.big { background: var(--brand-soft); color: var(--brand-ink); }
+.acct-side h3 { font-size: 16px; }
+.acct-account { font-size: 12px; color: var(--text-3); }
+.acct-sign { font-size: 12px; color: var(--text-2); line-height: 1.7; min-height: 18px; }
+.acct-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.acct-side .btn { width: 100%; }
+
+.acct-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.acct-main .profile-panel { margin-top: 0; }
+
+/* 基本资料内嵌表单（原「编辑资料」弹窗整合到此页）：表单区 + 底部操作按钮 */
+.acct-form .form-row:last-of-type { margin-bottom: 10px; }
+.acct-form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+.acct-rows { display: flex; flex-direction: column; }
+.acct-rows li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+.acct-rows li:last-child { border-bottom: none; }
+.acct-rows .acct-label { width: 78px; flex: none; color: var(--text-3); }
+.acct-rows .acct-value { flex: 1; min-width: 0; color: var(--text); font-weight: 500; word-break: break-all; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.acct-rows .acct-note { flex: none; max-width: 260px; font-size: 12px; color: var(--text-4); text-align: right; font-style: normal; }
+.acct-rows .btn { flex: none; }
+.acct-tip { font-size: 12px; color: var(--text-3); line-height: 1.8; margin-top: 10px; }
+
+/* 弹窗内的短信验证码按钮（账户设置弹窗使用；LoginView 自带 scoped 同名样式，互不影响） */
+.sms-btn { flex: none; width: auto; height: 40px; padding: 0 14px; white-space: nowrap; font-size: 13px; }
+
+@media (max-width: 1080px) {
+  .acct-layout { grid-template-columns: 1fr; }
+  .acct-rows .acct-note { display: none; }
+}
+

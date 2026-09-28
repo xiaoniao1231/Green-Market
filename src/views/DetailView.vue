@@ -19,7 +19,7 @@ import QM_API from '../core/api.js';
 import QM_STORE from '../core/store.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { artStyle, artHtml, sales, productCard, toast, avatarHtml, isImage } = QM_UI;
+const { artStyle, artHtml, sales, productCard, toast, avatarHtml, isImage, fullTime } = QM_UI;
 const route = useRouteCompat();
 const router = useRouter();
 
@@ -54,6 +54,101 @@ const tab = ref('desc');        // desc 图文详情 / spec 规格参数 / comme
 const relatedList = ref([]);
 const favTick = ref(0);         // QM_STORE 非响应式：用版本号驱动收藏按钮重算
 
+/* ---------- 商品评价（GET /products/{id}/reviews，公开接口，见 docs/评价晒单接口文档.md） ----------
+   页面只读评分：商品评分 = 该商品全部评价的平均分（后端 products.rating，
+   无评价为 null → 显示「暂无评分」）；店铺评分 = 该店铺全部商品评分的平均值
+   （后端 shops.score，由商品对象里的 shop.score 下发）。
+   接口失败时如实提示并空态（strict），不使用任何本地演示评价。 */
+const reviewPhase = ref('idle');   // idle / loading / ready / error
+const reviews = ref([]);           // 当前页评价
+const reviewTotal = ref(0);
+const reviewSummary = ref(null);   // { rating, reviewCount, goodRate, distribution, shopScore }
+const reviewFilter = ref(0);       // 0 全部 / 5 五星 / 4 四星 / 3 三星
+const reviewHasImage = ref(false); // 只看有晒单图
+const reviewPage = ref(1);
+const REVIEW_SIZE = 6;
+
+/* 星级文本（评价卡渲染：★×n + ☆×(5-n)） */
+const stars = n => {
+  const v = Math.max(0, Math.min(5, Number(n) || 0));
+  return '★'.repeat(v) + '☆'.repeat(5 - v);
+};
+
+/* 商品评分文案：优先商品对象的 rating（后端冗余列），其次评价汇总，都没有 → 暂无评分 */
+const productRatingText = computed(() => {
+  const raw = product.value ? product.value.rating : null;
+  const r = (raw === undefined || raw === null || raw === '') ? null : Number(raw);
+  if (r !== null && Number.isFinite(r)) return r.toFixed(1);
+  const s = reviewSummary.value;
+  if (s && s.rating !== null && s.rating !== undefined) return Number(s.rating).toFixed(1);
+  return '暂无评分';
+});
+/* 是否有评分（决定是否显示星级与好评率） */
+const hasRating = computed(() => {
+  const raw = product.value ? product.value.rating : null;
+  if (raw !== undefined && raw !== null && raw !== '') return Number.isFinite(Number(raw));
+  const s = reviewSummary.value;
+  return !!(s && s.reviewCount > 0 && s.rating !== null);
+});
+/* 店铺评分文案：后端 shops.score = 本店全部商品评分的平均值（保留 2 位，页面上取 1 位） */
+const shopScoreText = computed(() => {
+  const s = (product.value && product.value.shop) ? Number(product.value.shop.score) : NaN;
+  return Number.isFinite(s) && s > 0 ? s.toFixed(1) : '暂无评分';
+});
+/* 好评率：来自评价汇总（score >= 4 占比），无评价时显示「—」 */
+const goodRate = computed(() => {
+  const s = reviewSummary.value;
+  return (s && s.reviewCount > 0) ? s.goodRate : 0;
+});
+/* 评分对应的星级（四舍五入，用于汇总栏的 ★ 展示；无评分时 0 星） */
+const ratingStars = computed(() => {
+  if (!hasRating.value) return 0;
+  const s = reviewSummary.value;
+  const raw = (s && s.rating !== null && s.rating !== undefined) ? s.rating
+    : (product.value ? product.value.rating : null);
+  return Math.round(Number(raw) || 0);
+});
+/* 是否还有下一页（「加载更多」按钮） */
+const reviewHasMore = computed(() => reviews.value.length < reviewTotal.value);
+
+/* 拉取评价列表：追加模式供「加载更多」复用 */
+async function loadReviews(pid, mySeq, append = false) {
+  if (!append) reviewPhase.value = 'loading';
+  try {
+    const d = await QM_API.reviews.listByProduct(pid, {
+      page: reviewPage.value,
+      size: REVIEW_SIZE,
+      score: reviewFilter.value || undefined,
+      hasImage: reviewHasImage.value,
+      sort: 'new'
+    });
+    if (disposed || mySeq !== seq) return;
+    reviews.value = append ? reviews.value.concat(d.list) : d.list;
+    reviewTotal.value = d.total;
+    reviewSummary.value = d.summary;
+    reviewPhase.value = 'ready';
+  } catch (e) {
+    if (disposed || mySeq !== seq) return;
+    if (!append) { reviews.value = []; reviewTotal.value = 0; reviewSummary.value = null; }
+    reviewPhase.value = 'error';
+  }
+}
+/* 切换筛选（评分档位 / 有图）后回到第一页重新拉取 */
+function setReviewFilter(score) {
+  reviewFilter.value = score;
+  reviewPage.value = 1;
+  loadReviews(id.value, seq);
+}
+function toggleReviewImage() {
+  reviewHasImage.value = !reviewHasImage.value;
+  reviewPage.value = 1;
+  loadReviews(id.value, seq);
+}
+function loadMoreReviews() {
+  reviewPage.value += 1;
+  loadReviews(id.value, seq, true);
+}
+
 /* 价格两段式拆分（复刻 ui.js price() 的输出结构，避免在 DOM 上多包一层） */
 function priceParts(n) {
   n = Number(n || 0);
@@ -77,7 +172,6 @@ const curUnitPrice = computed(() => {
 });
 const curPrice = computed(() => priceParts(curUnitPrice.value));
 const origPrice = computed(() => priceParts(product.value.original));
-const goodRate = computed(() => Math.round((product.value.shop.score / 5) * 100));
 
 /* 店铺的开店用户 id（详情页「联系卖家」→ 对端就是这位用户，由消息中心创建会话）
    卖家账号由后端随商品下发（shop.userId / shop.ownerUserId），
@@ -265,7 +359,22 @@ async function load() {
   selected.value = p.skus.map(() => 0);
   dTitle.value = p.title;
   phase.value = 'ready';
+  /* 浏览足迹上报（POST /footprints，契约见 docs/历史足迹接口文档.md 2.2）。
+     静默 fire-and-forget：足迹是辅助数据，接口异常（含后端未实现 404）绝不能打断
+     商品浏览，因此不 await、不 toast，只 catch 掉；同一商品重复打开由后端
+     累加浏览次数并刷新时间，不会产生重复记录。未登录时不发请求（详情页需登录，
+     这里是防御性判断：分享链接直达 / 本地登录态被清时用户仍在页面上）。 */
+  if (QM_STORE.state.user) QM_API.footprints.record(pid).catch(() => {});
   loadRelated(pid, mySeq);
+  /* 评价与商品详情并行加载：评价接口（公开）失败不影响详情主体，只让评价页签显示错误态 */
+  reviews.value = [];
+  reviewTotal.value = 0;
+  reviewPhase.value = 'idle';
+  reviewPage.value = 1;
+  reviewFilter.value = 0;
+  reviewHasImage.value = false;
+  reviewSummary.value = null;
+  loadReviews(pid, mySeq);
 }
 
 /* 相关推荐（原版 mount 里异步追加到 #relatedList） */
@@ -393,7 +502,7 @@ onBeforeUnmount(() => {
               <div class="price-meta">
                 <span>销量 {{ sales(product.sales) }}</span>
                 <span>库存 {{ product.stock }} 件</span>
-                <span>好评率 {{ goodRate }}%</span>
+                <span>好评率 {{ hasRating ? goodRate + '%' : '—' }}</span>
               </div>
             </div>
 
@@ -464,8 +573,8 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <div class="shop-stats">
-              <div class="shop-stat"><b>{{ product.shop.score }}</b><span>店铺评分</span></div>
-              <div class="shop-stat"><b>4.8</b><span>商品评分</span></div>
+              <div class="shop-stat"><b>{{ shopScoreText }}</b><span>店铺评分</span></div>
+              <div class="shop-stat"><b>{{ productRatingText }}</b><span>商品评分</span></div>
               <div class="shop-stat"><b>{{ sales(shopInfo.fans) }}</b><span>粉丝</span></div>
             </div>
             <button class="btn btn-ghost" :class="{ faved: shopFaved }" :disabled="shopFavBusy" @click="toggleShopFav">{{ shopFaved ? '♥ 已关注' : '♡ 关注店铺' }}</button>
@@ -480,7 +589,7 @@ onBeforeUnmount(() => {
             <div class="detail-tabs" id="detailTabs">
               <button :class="{ active: tab === 'desc' }" data-tab="desc" @click="setTab('desc')">图文详情</button>
               <button :class="{ active: tab === 'spec' }" data-tab="spec" @click="setTab('spec')">规格参数</button>
-              <button :class="{ active: tab === 'comment' }" data-tab="comment" @click="setTab('comment')">商品评价（{{ (product.comments || []).length }}）</button>
+              <button :class="{ active: tab === 'comment' }" data-tab="comment" @click="setTab('comment')">商品评价（{{ reviewTotal }}）</button>
             </div>
             <div id="tabDesc" class="detail-desc" :class="{ hidden: tab !== 'desc' }">
               <p v-if="product.desc">{{ product.desc }}</p>
@@ -496,14 +605,52 @@ onBeforeUnmount(() => {
               <tr v-for="(p, i) in product.params" :key="i"><td>{{ p[0] }}</td><td>{{ p[1] }}</td></tr>
             </table>
             <div id="tabComment" :class="{ hidden: tab !== 'comment' }">
-              <div v-for="(c, i) in product.comments" :key="i" class="comment-item">
-                <span class="c-avatar">{{ c.user.slice(0, 1) }}</span>
-                <div>
-                  <b>{{ c.user }} <span style="color:#ffb400">{{ '★'.repeat(c.rate) }}{{ '☆'.repeat(5 - c.rate) }}</span></b>
-                  <p>{{ c.text }}</p>
-                  <small>{{ c.time }} · 颜色款式：默认</small>
+              <!-- 评分汇总：商品评分 / 星级 / 评价数 / 好评率 / 店铺评分（全部来自后端） -->
+              <div class="review-summary">
+                <div class="rs-score">
+                  <b>{{ productRatingText }}</b>
+                  <span class="stars">{{ stars(ratingStars) }}</span>
+                  <small>{{ (reviewSummary && reviewSummary.reviewCount) || 0 }} 条评价 · 好评率 {{ hasRating ? goodRate + '%' : '—' }}</small>
+                  <small>店铺评分 {{ shopScoreText }}</small>
+                </div>
+                <div class="rs-filters">
+                  <button :class="{ active: reviewFilter === 0 && !reviewHasImage }" @click="setReviewFilter(0)">全部</button>
+                  <button :class="{ active: reviewFilter === 5 }" @click="setReviewFilter(5)">5 星</button>
+                  <button :class="{ active: reviewFilter === 4 }" @click="setReviewFilter(4)">4 星</button>
+                  <button :class="{ active: reviewFilter === 3 }" @click="setReviewFilter(3)">3 星</button>
+                  <button :class="{ active: reviewHasImage }" @click="toggleReviewImage">有图</button>
                 </div>
               </div>
+
+              <div v-if="reviewPhase === 'loading'" class="review-state">评价加载中…</div>
+              <div v-else-if="reviewPhase === 'error'" class="review-state review-state-error">
+                评价加载失败：后端评价接口暂不可用（契约见《评价晒单接口文档》）
+              </div>
+              <template v-else>
+                <div v-for="r in reviews" :key="r.id" class="comment-item">
+                  <span class="c-avatar">{{ (r.user.nickname || '匿').slice(0, 1) }}</span>
+                  <div>
+                    <b>{{ r.user.nickname }} <span class="stars">{{ stars(r.score) }}</span></b>
+                    <p v-if="r.content">{{ r.content }}</p>
+                    <div v-if="r.images && r.images.length" class="review-imgs static">
+                      <span v-for="(u, i) in r.images" :key="i" class="review-img"><img :src="u" alt="晒单图" loading="lazy" /></span>
+                    </div>
+                    <small>{{ r.createdAt ? fullTime(r.createdAt) : '' }} · 颜色款式：{{ r.sku }}</small>
+                    <div v-if="r.append" class="review-append">
+                      <b>追评（{{ r.append.time ? fullTime(r.append.time).slice(0, 16) : '' }}）</b>
+                      <p>{{ r.append.content }}</p>
+                    </div>
+                    <div v-if="r.reply" class="review-reply">
+                      <b>商家回复<template v-if="r.reply.time">（{{ fullTime(r.reply.time).slice(0, 16) }}）</template></b>
+                      <p>{{ r.reply.content }}</p>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="!reviews.length" class="review-state">该筛选条件下暂无评价</div>
+                <div v-if="reviewHasMore" class="review-more">
+                  <button class="btn btn-plain" @click="loadMoreReviews">加载更多评价</button>
+                </div>
+              </template>
             </div>
           </div>
           <!-- 相关推荐为空时整块隐藏，避免只留一个「看了又看」空标题 -->

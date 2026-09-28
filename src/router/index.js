@@ -9,14 +9,19 @@ import CheckoutView from '../views/CheckoutView.vue';
 import PayView from '../views/PayView.vue';
 import OrdersView from '../views/OrdersView.vue';
 import OrderDetailView from '../views/OrderDetailView.vue';
+import ReviewsView from '../views/ReviewsView.vue';
+import AfterSalesView from '../views/AfterSalesView.vue';
 import ProfileView from '../views/ProfileView.vue';
+import AccountView from '../views/AccountView.vue';
 import FavoritesView from '../views/FavoritesView.vue';
+import FootprintsView from '../views/FootprintsView.vue';
 import ChatView from '../views/ChatView.vue';
 import PlaceholderView from '../views/PlaceholderView.vue';
 import LoginView from '../views/LoginView.vue';
 import SellerView from '../views/SellerView.vue';
 import SellerProductsView from '../views/SellerProductsView.vue';
 import SellerOrdersView from '../views/SellerOrdersView.vue';
+import SellerAfterSalesView from '../views/SellerAfterSalesView.vue';
 import SellerIncomeView from '../views/SellerIncomeView.vue';
 import ShopView from '../views/ShopView.vue';
 import QM_STORE from '../core/store.js';
@@ -25,7 +30,7 @@ import QM_STORE from '../core/store.js';
    #/home  #/category/:catId  #/search?q=  #/detail/:id  #/cart  #/orders?status=
    #/profile  #/favorites  #/chat?peer=  #/placeholder/:feature
    新增 #/login 独立登录/注册页、#/shop/:name 店铺主页、#/checkout 确认订单页、
-   #/pay 收银台（独立支付页）；涉及用户数据或下单支付的页面需登录后才能访问。 */
+   #/pay 收银台（独立支付页）、#/account 账户设置页；涉及用户数据或下单支付的页面需登录后才能访问。 */
 const routes = [
   { path: '/', redirect: '/home' },
   { path: '/home', name: 'home', component: HomeView },
@@ -38,13 +43,25 @@ const routes = [
   { path: '/pay', name: 'pay', component: PayView },
   { path: '/orders', name: 'orders', component: OrdersView },
   { path: '/order/:id', name: 'order-detail', component: OrderDetailView },
+  { path: '/reviews', name: 'reviews', component: ReviewsView },
+  /* 售后服务（买家）：申请 / 撤销 / 寄回 / 进度，契约见 docs/售后服务接口文档.md；
+     带 ?orderId=&productId=&sku= 进入时自动打开该商品的申请弹窗 */
+  { path: '/after-sales', name: 'after-sales', component: AfterSalesView },
   { path: '/profile', name: 'profile', component: ProfileView },
+  /* 账户设置：修改资料（含头像）/ 绑定换绑手机号 / 修改密码 / 收货地址
+     （契约见 docs/账户设置接口文档.md） */
+  { path: '/account', name: 'account', component: AccountView },
   { path: '/favorites', name: 'favorites', component: FavoritesView },
+  /* 浏览足迹：详情页浏览时静默上报（POST /footprints），本页读取 / 删除 / 清空
+     （契约见 docs/历史足迹接口文档.md） */
+  { path: '/footprints', name: 'footprints', component: FootprintsView },
   { path: '/chat', name: 'chat', component: ChatView },
   { path: '/shop/:name', name: 'shop', component: ShopView },
   { path: '/seller', name: 'seller', component: SellerView },
   { path: '/seller/products', name: 'seller-products', component: SellerProductsView },
   { path: '/seller/orders', name: 'seller-orders', component: SellerOrdersView },
+  /* 店家售后管理：同意 / 拒绝 / 确认收货并退款或换货（契约同 docs/售后服务接口文档.md 第 3 章） */
+  { path: '/seller/after-sales', name: 'seller-after-sales', component: SellerAfterSalesView },
   { path: '/seller/income', name: 'seller-income', component: SellerIncomeView },
   { path: '/placeholder/:feature', name: 'placeholder', component: PlaceholderView },
   { path: '/:pathMatch(.*)*', redirect: '/home' }
@@ -53,7 +70,7 @@ const routes = [
 /* 需登录才能访问的页面：商品详情（点击商品）、店铺主页、购物车、订单、个人中心、收藏、消息中心、
    我的店铺（店铺绑定在当前用户账号下，开店后仍是这一个账号，无需独立店家账号；消息统一在消息中心处理）。
    未登录访问时重定向到登录页，并带上 redirect 参数，登录成功后回跳原目标。 */
-const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'checkout', 'pay', 'orders', 'order-detail', 'profile', 'favorites', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-income'];
+const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'checkout', 'pay', 'orders', 'order-detail', 'reviews', 'after-sales', 'profile', 'account', 'favorites', 'footprints', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-after-sales', 'seller-income'];
 
 const router = createRouter({
   history: createWebHashHistory(),

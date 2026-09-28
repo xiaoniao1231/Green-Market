@@ -6,17 +6,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.web03.exception.BusinessException;
-import org.web03.mapper.CartMapper;
-import org.web03.mapper.EmpMapper;
-import org.web03.mapper.OrderMapper;
-import org.web03.mapper.ProductMapper;
-import org.web03.mapper.SellerReminderMapper;
-import org.web03.mapper.ShopMapper;
+import org.web03.mapper.*;
+import org.web03.pojo.Coupon.UserCoupon;
 import org.web03.pojo.Messages.WsMessage;
 import org.web03.pojo.Order.*;
 import org.web03.pojo.Product.Product;
 import org.web03.pojo.Shop.Shop;
 import org.web03.service.OrderService;
+import org.web03.utils.CouponUtils;
 import org.web03.utils.CurrentHolder;
 import org.web03.utils.JsonUtils;
 import org.web03.websocket.ChatWebSocketHandler;
@@ -51,6 +48,8 @@ public class OrderServiceImpl implements OrderService {
     private EmpMapper empMapper;
     @Autowired
     private ChatWebSocketHandler chatWebSocketHandler;
+    @Autowired
+    private CouponMapper couponMapper;
 
     //最大数量限制999
     private static final int MAX_QTY = 999;
@@ -106,21 +105,22 @@ public class OrderServiceImpl implements OrderService {
             goodsAmount = goodsAmount.add(p.getPrice().multiply(BigDecimal.valueOf(qty)));
         }
 
-        //优惠券
+        //优惠券：整单统一一张；前端只回传 user_coupons.id，券的归属 / 状态 / 门槛一律以库为准
         BigDecimal discount = BigDecimal.ZERO;
         Map<String, Object> coupon = request.getCoupon();
+        Integer userCouponId = null;
         if (coupon != null && !coupon.isEmpty()) {
-            // 获取优惠券金额
-            Object amountObj = coupon.get("amount");
-            if (amountObj == null) throw new BusinessException("优惠券参数无效");
-            //把对象**转换成字符串**，再转换成BigDecimal
-            BigDecimal amount = new BigDecimal(String.valueOf(amountObj));
-            Object thresholdObj = coupon.get("threshold");
-            //校验使用门槛，抵扣金额不超商品金额
-            if (thresholdObj != null && goodsAmount.compareTo(new BigDecimal(String.valueOf(thresholdObj))) < 0) {
+            userCouponId = parseCouponId(coupon.get("id"));
+            /* 传了券却给不出持有记录 id（旧格式只带 amount / threshold，或 id 是脏值）直接拒绝：
+               否则会落成「订单快照写着用了券、抵扣却是 0」，用户以为自己已经享受优惠。 */
+            if (userCouponId == null) throw new BusinessException("优惠券参数无效");
+            UserCoupon uc = couponMapper.findUserCoupon(userCouponId, userId);
+            if (uc == null || !"unused".equals(uc.getStatus())) throw new BusinessException("优惠券不可用");
+            if (CouponUtils.isExpired(uc.getExpire())) throw new BusinessException("优惠券已过期");
+            if (uc.getThreshold() != null && goodsAmount.compareTo(uc.getThreshold()) < 0)
                 throw new BusinessException("优惠券不满足使用条件");
-            }
-            discount = amount.min(goodsAmount);
+            discount = uc.getAmount().min(goodsAmount);
+            coupon = JsonUtils.parseMap(JsonUtils.toJson(uc));   // 快照统一以库里的券为准
         }
 
         //按店铺分组
@@ -186,6 +186,13 @@ public class OrderServiceImpl implements OrderService {
             sumDiscount = sumDiscount.add(groupDiscount);
             sumFreight = sumFreight.add(groupFreight);
             sumTotal = sumTotal.add(groupTotal);
+        }
+
+        //核销优惠券
+        if (userCouponId != null && !orders.isEmpty()) {
+            if (couponMapper.markUsed(userCouponId, userId, orders.get(0).getId()) == 0) {
+                throw new BusinessException("优惠券不可用");
+            }
         }
 
         for (OrderItem oi : items) {
@@ -254,7 +261,22 @@ public class OrderServiceImpl implements OrderService {
         for (OrderItem it : orderMapper.listItems(id)) {
             productMapper.restoreStock(it.getProductId(), it.getQty());
         }
+        restoreCoupon(order);
         log.info("取消订单: {} 订单号={}（已回补库存）", currentUser(), order.getOrderNo());
+    }
+
+    // 取消订单退券：同一次下单拆出的子订单全部取消后，把券退回未使用
+    private void restoreCoupon(Order order) {
+        Map<String, Object> c = JsonUtils.parseMap(order.getCouponJson());
+        if (c == null || c.get("id") == null) return;
+        if (StringUtils.hasLength(order.getPayNo())) {
+            for (Order o : orderMapper.listByPayNo(order.getUserId(), order.getPayNo())) {
+                if (!S_CANCELED.equals(o.getStatus())) return;
+            }
+        }
+        if (couponMapper.restoreCoupon(Integer.valueOf(String.valueOf(c.get("id"))), order.getUserId()) > 0) {
+            log.info("取消订单退回优惠券: {} 持有记录ID={}", order.getUserId(), c.get("id"));
+        }
     }
 
     //查询订单列表
@@ -400,16 +422,18 @@ public class OrderServiceImpl implements OrderService {
 
     //查询店铺订单列表
     @Override
-    public Map<String, Object> sellerList(String status, Integer page, Integer size) {
+    public Map<String, Object> sellerList(String status, Integer page, Integer size, String orderNo) {
         String shopId = requireShopId();
         int p = page == null || page < 1 ? 1 : page;
         int s = size == null ? 20 : Math.min(Math.max(size, 1), 100);
         String st = StringUtils.hasLength(status) ? status.trim() : null;
+        // 订单号模糊查询（店家端搜索框）：空串按「不筛选」处理，避免 like '%%' 白跑一趟
+        String no = StringUtils.hasLength(orderNo) ? orderNo.trim() : null;
         // 店家端条目只取本店商品
-        List<OrderVO> list = orderMapper.sellerList(shopId, st, (p - 1) * s, s)
+        List<OrderVO> list = orderMapper.sellerList(shopId, st, (p - 1) * s, s, no)
                 .stream().map(o -> toVO(o, orderMapper.listItemsByShop(o.getId(), shopId)))
                 .collect(Collectors.toList());
-        long total = orderMapper.sellerCount(shopId, st);
+        long total = orderMapper.sellerCount(shopId, st, no);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("page", p);
@@ -474,6 +498,18 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException("数量必须在1-" + MAX_QTY + "之间");
         }
         return quantity;
+    }
+
+    //请求体里的优惠券持有记录 id：缺失 / 空白 / 非数字一律返回 null（由调用方给出业务提示）
+    private Integer parseCouponId(Object raw) {
+        if (raw == null) return null;
+        String s = String.valueOf(raw).trim();
+        if (!StringUtils.hasLength(s)) return null;
+        try {
+            return Integer.valueOf(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     //数据库行 → 接口对象

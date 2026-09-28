@@ -26,4 +26,6 @@ public class Messages {
 
     private String fileUrl;    // 文件在阿里云 OSS 的访问地址
     private Long fileSize;     // 文件大小（字节）
+
+    private String bizJson;   // 业务快照 JSON
 }

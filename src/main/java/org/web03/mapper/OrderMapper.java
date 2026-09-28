@@ -55,12 +55,14 @@ public interface OrderMapper {
 
     /* ------------------------------------- 店家 ----------------------------------- */
 
-    // 卖家---根据店铺和状态查找订单
+    // 卖家---根据店铺和状态查找订单（orderNo 可选：按订单号模糊筛选）
     List<Order> sellerList(@Param("shopId") String shopId, @Param("status") String status,
-                           @Param("offset") int offset, @Param("size") int size);
+                           @Param("offset") int offset, @Param("size") int size,
+                           @Param("orderNo") String orderNo);
 
-    // 卖家---统计订单数量
-    long sellerCount(@Param("shopId") String shopId, @Param("status") String status);
+    // 卖家---统计订单数量（筛选条件与 sellerList 保持一致）
+    long sellerCount(@Param("shopId") String shopId, @Param("status") String status,
+                     @Param("orderNo") String orderNo);
 
     // 卖家---根据订单和店铺查找订单条目
     @Select("select * from order_items where order_id = #{orderId} and shop_id = #{shopId} order by id")

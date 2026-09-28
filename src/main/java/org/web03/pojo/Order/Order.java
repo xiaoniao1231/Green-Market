@@ -33,8 +33,6 @@ public class Order {
     private LocalDateTime shipTime;   // 发货时间
     private LocalDateTime finishTime; // 完成时间（确认收货）
     private LocalDateTime createdAt;  // 下单时间
-
-
     private Integer remindCount;          // 买家催发货次数
     private LocalDateTime lastRemindTime; // 最近一次催发货时间
 }

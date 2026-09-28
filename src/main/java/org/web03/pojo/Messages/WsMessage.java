@@ -5,7 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * WebSocket 推送帧的 message 部分（统一帧结构 {type, message:{...}}，见接口文档 4.1.3）
+ * WebSocket 推送帧的 message 部分
  */
 
 @Data
@@ -17,10 +17,13 @@ public class WsMessage {
     private String senderNickname;  // 发送方昵称
     private String receiverId;      // 接收方账号
     private String content;         // 消息内容
+    private String msgType;         // 消息类型（COMM_MES / GOODS_MES / ORDER_MES / COUPON_MES ...）
     private String sendTime;        // 发送时间
     private String fileName;        // 文件名
     private Long fileSize;          // 文件大小
     private String fileUrl;    // 文件在阿里云 OSS 的访问地址
+
+    private String bizJson;   // 业务快照 JSON
 
     //消息构造函数
     public WsMessage(String msgId, String senderId, String senderNickname, String receiverId,

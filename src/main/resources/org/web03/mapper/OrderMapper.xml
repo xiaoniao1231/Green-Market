@@ -38,13 +38,14 @@
 
 
                                         <!--- 店家    -->
-    <!-- 卖家订单列表 -->
+    <!-- 卖家订单列表（orderNo 可选：订单号模糊查询，与 sellerCount 条件保持一致） -->
     <select id="sellerList" resultType="org.web03.pojo.Order.Order">
         select o.*, r.remind_count, r.last_remind_time
                         from orders o
                         left join seller_reminders r on r.order_id = o.id
                         where exists (select 1 from order_items i where i.order_id = o.id and i.shop_id = #{shopId})
                         <if test='status != null'>  and o.status = #{status}</if>
+                        <if test='orderNo != null'>  and o.order_no like concat('%', #{orderNo}, '%')</if>
         order by o.id desc
         limit #{offset}, #{size}
     </select>
@@ -54,6 +55,7 @@
         select count(*) from orders o
                         where exists (select 1 from order_items i where i.order_id = o.id and i.shop_id = #{shopId})
                         <if test='status != null'>  and o.status = #{status}</if>
+                        <if test='orderNo != null'>  and o.order_no like concat('%', #{orderNo}, '%')</if>
     </select>
 
     <!-- 同一支付单号下的所有子订单 -->

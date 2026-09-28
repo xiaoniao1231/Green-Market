@@ -20,7 +20,7 @@ public interface OrderService {
 
     Map<String, Object> counts();
 
-    Map<String, Object> sellerList(String status, Integer page, Integer size);
+    Map<String, Object> sellerList(String status, Integer page, Integer size, String orderNo);
 
     void ship(Integer orderId);
 

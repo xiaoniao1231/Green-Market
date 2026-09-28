@@ -3,24 +3,25 @@ package org.web03.service.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
 import org.web03.mapper.MessageMapper;
+import org.web03.mapper.ShopMapper;
 
 import org.web03.pojo.Messages.*;
+import org.web03.pojo.Shop.Shop;
 import org.web03.service.MessageService;
 import org.web03.utils.AliyunOSSOperator;
+import org.web03.utils.CurrentHolder;
+import org.web03.utils.JsonUtils;
 import org.web03.websocket.ChatWebSocketHandler;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * 消息模块业务逻辑实现类
@@ -34,6 +35,8 @@ public class MessageServiceImpl implements MessageService {
     private EmpMapper empMapper;
     @Autowired
     private MessageMapper messageMapper;
+    @Autowired
+    private ShopMapper shopMapper;
     @Autowired
     private ChatWebSocketHandler chatWebSocketHandler;
     @Autowired
@@ -192,12 +195,16 @@ public class MessageServiceImpl implements MessageService {
         }
         for (Messages m : messageMapper.selectConversations(myUserId)) {
             String peerId = m.getSenderId().equals(myUserId) ? m.getReceiverId() : m.getSenderId();
-            String peerName = empMapper.findNicknameByUserId(peerId);
+            /* 对端若是店铺店主：昵称显示店铺名，并带上 shopId（前端据此只展示本店商品） */
+            Shop peerShop = shopMapper.findByOwnerUserId(peerId);
+            String peerName = peerShop != null && StringUtils.hasLength(peerShop.getName())
+                    ? peerShop.getName() : empMapper.findNicknameByUserId(peerId);
             int unread = ((Number) unreadMap.getOrDefault(peerId, 0L)).intValue();
             result.add(new ConversationResult(peerId,
                     StringUtils.hasLength(peerName) ? peerName : peerId,
                     m.getMsgId(), m.getSenderId(), m.getMsgType(), m.getContent(),
-                    m.getSendTime(), m.getRecalled(), unread));
+                    m.getSendTime(), m.getRecalled(), unread,
+                    peerShop == null ? null : peerShop.getShopId()));
         }
         return result;
     }
@@ -211,6 +218,47 @@ public class MessageServiceImpl implements MessageService {
         messageMapper.upsertReadState(myUserId, peerId);
     }
 
+    //发送业务消息
+    @Override
+    @Transactional
+    public Map<String, Object> sendBiz(String receiverId, String msgType, String content, Map<String, Object> biz) {
+        String myUserId = CurrentHolder.getCurrentUserId();
+        String msgId = "m-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 6);
+        String sendTime = LocalDateTime.now().format(TIME_FORMATTER);
+        String bizJson = JsonUtils.toJson(biz);
+
+        Messages m = new Messages();
+        m.setMsgId(msgId);
+        m.setSenderId(myUserId);
+        m.setReceiverId(receiverId);
+        m.setMsgType(msgType);
+        m.setContent(content);
+        m.setBizJson(bizJson);
+        m.setSendTime(LocalDateTime.now());
+        m.setRecalled(false);
+        messageMapper.insert(m);
+
+        WsMessage ws = new WsMessage();
+        ws.setMsgId(msgId);
+        ws.setSenderId(myUserId);
+        ws.setSenderNickname( empMapper.findNicknameByUserId(myUserId));
+        ws.setReceiverId(receiverId);
+        ws.setContent(content);
+        ws.setMsgType(msgType);
+        ws.setSendTime(sendTime);
+        ws.setBizJson(bizJson);
+        boolean online = chatWebSocketHandler.isOnline(receiverId);
+        if (online) chatWebSocketHandler.pushTo(receiverId, msgType, ws);   // 帧 type 与 msg_type 同值
+        else chatWebSocketHandler.pushTo(myUserId, "SYSTEM",
+                new WsMessage("", "系统", "系统", myUserId, "对方不在线，消息已保存", sendTime));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("msgId", msgId);
+        data.put("sendTime", sendTime);
+        data.put("isOnline", online);
+        data.put("biz", biz);
+        return data;
+    }
 
     //发送者上下文校验
     public void requireSender(String myUserId) {

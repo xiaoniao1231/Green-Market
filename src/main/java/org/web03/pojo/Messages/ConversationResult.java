@@ -24,4 +24,5 @@ public class ConversationResult {
     private LocalDateTime lastTime; // 最后一条消息时间
     private Boolean lastRecalled;   // 最后一条消息是否已撤回
     private Integer unreadCount;    // 未读消息计数
+    private String shopId;          // 对端若是店铺店主，则为其店铺ID（前端据此只展示本店商品）
 }

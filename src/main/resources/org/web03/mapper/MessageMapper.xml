@@ -17,11 +17,12 @@
         <result column="is_recalled" property="recalled"/>
         <result column="file_url"  property="fileUrl"/>
         <result column="file_size" property="fileSize"/>
+        <result column="biz_json"  property="bizJson"/>
     </resultMap>
 
     <insert id="insert" parameterType="org.web03.pojo.Messages.Messages">
-        insert into messages(msg_id, sender_id, receiver_id, msg_type, content, file_url, file_size, send_time, is_recalled)
-        values(#{msgId}, #{senderId}, #{receiverId}, #{msgType}, #{content}, #{fileUrl}, #{fileSize}, #{sendTime}, 0)
+        insert into messages(msg_id, sender_id, receiver_id, msg_type, content, file_url, file_size, biz_json, send_time, is_recalled)
+        values(#{msgId}, #{senderId}, #{receiverId}, #{msgType}, #{content}, #{fileUrl}, #{fileSize}, #{bizJson}, #{sendTime}, 0)
     </insert>
 
     <!-- 幂等查重：msg_id 上有唯一约束 -->

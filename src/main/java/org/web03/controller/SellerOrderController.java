@@ -19,12 +19,13 @@ public class SellerOrderController {
     private OrderService orderService;
 
 
-    //订单列表
+    //订单列表（orderNo 可选：按订单号模糊查询本店订单）
     @GetMapping
     public Result list(@RequestParam(required = false) String status,
                        @RequestParam(defaultValue = "1") Integer page,
-                       @RequestParam(defaultValue = "20") Integer size) {
-        return Result.success(orderService.sellerList(status, page, size));
+                       @RequestParam(defaultValue = "20") Integer size,
+                       @RequestParam(required = false) String orderNo) {
+        return Result.success(orderService.sellerList(status, page, size, orderNo));
     }
 
 

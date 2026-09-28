@@ -9,6 +9,7 @@ import org.web03.pojo.Messages.SendPrivateResult;
 //import org.web03.pojo.Messages.HistoryResult;
 
 import java.util.List;
+import java.util.Map;
 
 
 public interface MessageService {
@@ -23,4 +24,6 @@ public interface MessageService {
     MessagesFile sendFile(String myUserId, MultipartFile file, String receiverId);
 
     void markRead(String currentUserId, String peerId);
+
+    Map<String, Object> sendBiz(String receiverId, String msgType, String content, Map<String, Object> biz);
 }

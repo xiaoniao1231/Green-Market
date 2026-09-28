@@ -101,7 +101,17 @@ public class LongServiceImpl implements LongService {
             String jwt = JwtUtils.generateToken(claims);
 
             String shopId = shopMapper.findShopIdByOwner(login.getUserId());
-            return new LoginInfo(login.getId(), login.getUserId(), login.getNickname(), jwt, shopId);
+            /* 资料三件套随登录响应一起下发：前端据此重建本地登录态，
+               否则重新登录后性别 / 头像 / 签名会丢失（页面回落成「保密」）。 */
+            return new LoginInfo(
+                    login.getId(),
+                    login.getUserId(),
+                    login.getNickname(),
+                    jwt,
+                    shopId,
+                    login.getGender(),
+                    login.getAvatar(),
+                    login.getSignature());
         }
         return null;
     }

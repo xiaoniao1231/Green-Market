@@ -73,6 +73,18 @@ public class UsersController {
     }
 
 
+    //当前登录账号的完整资料
+    @GetMapping("/me")
+    public Result me() {
+        String myUserId = CurrentHolder.getCurrentUserId();
+        if (myUserId == null) return Result.error("用户未登录");
+        User me = empMapper.findByUserId(myUserId);
+        if (me == null) return Result.error("用户不存在");
+        me.setPassword(null);   // 返回体不携带密码
+        return Result.success(me);
+    }
+
+
     //修改用户信息
     @PutMapping("/profile")
     public Result updateProfile(@RequestBody User user) {
@@ -81,10 +93,7 @@ public class UsersController {
         if (user.getNickname() != null && user.getNickname().trim().isEmpty())return Result.error("用户昵称不能为空");
         user.setUserId(myUserId);
         empMapper.updateProfile(user);
-        User updated = empMapper.findByUserId(myUserId);
-        if (updated == null) return Result.error("用户不存在");
-        updated.setPassword(null);   // 返回体不携带密码
-        return Result.success(updated);
+        return Result.success();
     }
 
 }

@@ -197,8 +197,17 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         const p = item && item.product;
         return (p && Number(p.price)) || 0;
       },
-      /* 条目小计 = 单价 × 数量 */
-      subTotal(item) { return QM_STORE.cart.unitPrice(item) * ((item && item.qty) || 0); },
+      /* 条目小计：秒杀价限 1 件（后端下发 flashQty），其余按到手价 —— 与后端下单拆行口径一致 */
+      subTotal(item) {
+        const qty = (item && item.qty) || 0;
+        const unit = QM_STORE.cart.unitPrice(item);
+        const flashQty = Math.min(Number(item && item.flashQty) || 0, qty);
+        const flashPrice = Number(item && item.flashPrice);
+        if (flashQty > 0 && Number.isFinite(flashPrice) && flashPrice > 0) {
+          return flashPrice * flashQty + unit * (qty - flashQty);
+        }
+        return unit * qty;
+      },
       setQty(key, qty) {
         const item = QM_STORE.state.cart.find(i => i.key === key);
         if (item) { item.qty = Math.max(1, Math.min(999, qty)); save(); emit('cart'); }

@@ -121,6 +121,16 @@
   padding: 4px 8px; border-radius: 4px; letter-spacing: .5px;
   box-shadow: 0 2px 6px rgba(255, 59, 48, .25);
 }
+/* 「限时秒杀」标：白底描边小牌，跟在价格标签后，提示当前价是秒杀价 */
+.detail-price-card .flash-flag {
+  background: #fff; color: #e8481f; border: 1px solid #ffc7ae;
+  font-size: 12px; font-weight: 600; line-height: 1;
+  padding: 4px 8px; border-radius: 4px; letter-spacing: .5px;
+}
+/* 秒杀价今日已用完：转灰提示，价格已回落到到手价 */
+.detail-price-card .flash-flag.used {
+  background: #f4f5f7; color: #6f7784; border-color: #dfe2e7;
+}
 /* 划线原价：降为灰色小字（现价一半字号），只作价格锚点，不抢现价视线。
    注意 <del> 自身是正文大小、内部 .price 却被放大到 32px，而 line-through 的位置
    取「声明划线那个元素」的字体度量 —— 沿用 <del> 默认划线会按小字号基线绘制、
@@ -341,6 +351,8 @@
 .ci-price .price { font-size: 15px; font-weight: 700; }
 .ci-price .ci-orig { font-size: 12px; }
 .ci-price .ci-orig .price { font-size: 12px; font-weight: 400; color: var(--text-3); }
+/* 秒杀提示：小计里已按 1 件秒杀价抵扣 */
+.ci-price .ci-flash-tip { font-size: 11px; color: #c92900; }
 .cart-item .price { font-size: 15px; font-weight: 700; }
 /* 点击热区 ≥ 24px：删除按钮加内边距并保持视觉轻量 */
 .cart-item .ci-del {
@@ -603,7 +615,7 @@
 .fav-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 
 /* ---------- 浏览足迹页（#/footprints，契约见 docs/历史足迹接口文档.md） ---------- */
-/* 工具条：左侧「按天查看」胶囊 + 时间筛选 chips + 右侧说明 */
+/* 工具条：时间筛选 chips（全部 / 今天 / 近 7 天 / 近 30 天） */
 .fp-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .fp-chip {
   height: 30px; padding: 0 14px; border-radius: var(--radius-pill);
@@ -614,8 +626,6 @@
 .fp-chip.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
 /* 请求进行中：chips 禁用，避免连点造成请求竞态（后到的旧响应覆盖新筛选） */
 .fp-chip:disabled { opacity: .6; cursor: not-allowed; }
-/* 工具条说明：同一商品重复浏览只保留一条记录、只刷新时间 */
-.fp-tip { color: var(--text-3); font-size: 12px; margin-left: auto; }
 
 /* 按天分组：每组 = 日期标题（左描边 + 当日件数）+ 当日商品网格 */
 .fp-group { margin-bottom: 24px; }
@@ -623,14 +633,6 @@
 .fp-group-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; padding-left: 12px; border-left: 3px solid var(--brand); }
 .fp-group-head b { font-size: 15px; color: var(--text); }
 .fp-group-head small { font-size: 12px; color: var(--text-3); }
-
-/* 商品卡底部的浏览时刻行 —— productCard 的 extra 插槽，渲染在 .pc-info 之后 */
-.fp-time { display: flex; align-items: center; gap: 4px; padding: 9px 13px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--text-2); }
-.fp-time small { color: var(--text-3); }
-@media (max-width: 1080px) {
-  /* 窄屏：说明文案换行到 chips 下方，不再右对齐挤压筛选按钮 */
-  .fp-tip { margin-left: 0; flex-basis: 100%; }
-}
 
 /* ---------- 预留页 ---------- */
 .placeholder-page { text-align: center; padding: 84px 20px; }

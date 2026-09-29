@@ -157,10 +157,18 @@ function priceParts(n) {
   return { int, dec: dec !== undefined ? '.' + dec : '' };
 }
 
-/* 成交价：按当前选中的款式取价 —— 多个规格组都有款式价时，**靠后的组覆盖靠前的组**
-   （即「最后一个设置了价格的已选款式」生效）；都没设款式价 → 用商品默认价。
-   该规则与商品管理页、后端 priceMin / priceMax 计算保持一致，详见 docs/店家中心商品管理接口文档.md 1.3 */
-const curUnitPrice = computed(() => {
+/* 当日秒杀价：后端判定为秒杀商品、且该账号今日还有资格时才有值（用完了就按到手价） */
+const flashPrice = computed(() => {
+  const p = product.value;
+  if (!p || p.flashUsed === true) return null;
+  const n = Number(p.flashPrice);
+  return Number.isFinite(n) && n > 0 ? n : null;
+});
+/* 该账号今日已用完这件商品的秒杀价 */
+const flashUsed = computed(() => !!(product.value && product.value.flashUsed === true));
+
+/* 款式价（不含秒杀）：加入购物车按它计价，秒杀优惠在下单时按「限 1 件」体现 */
+const skuUnitPrice = computed(() => {
   const p = product.value;
   if (!p) return 0;
   let unit = Number(p.price) || 0;
@@ -170,8 +178,19 @@ const curUnitPrice = computed(() => {
   });
   return unit;
 });
+
+/* 成交价：秒杀商品展示秒杀价（限 1 件）；其余按当前选中的款式取价 —— 多个规格组都有款式价时，
+   **靠后的组覆盖靠前的组**（即「最后一个设置了价格的已选款式」生效）；都没设款式价 → 用商品默认价。
+   该规则与商品管理页、后端 priceMin / priceMax 计算保持一致，详见 docs/店家中心商品管理接口文档.md 1.3 */
+const curUnitPrice = computed(() => (flashPrice.value !== null ? flashPrice.value : skuUnitPrice.value));
 const curPrice = computed(() => priceParts(curUnitPrice.value));
-const origPrice = computed(() => priceParts(product.value.original));
+/* 划线价：秒杀时划掉原到手价，平时划商品原价 */
+const strikePrice = computed(() => {
+  const p = product.value;
+  if (!p) return 0;
+  return flashPrice.value !== null ? (Number(p.price) || 0) : (Number(p.original) || 0);
+});
+const origPrice = computed(() => priceParts(strikePrice.value));
 
 /* 店铺的开店用户 id（详情页「联系卖家」→ 对端就是这位用户，由消息中心创建会话）
    卖家账号由后端随商品下发（shop.userId / shop.ownerUserId），
@@ -359,9 +378,12 @@ async function load() {
   selected.value = p.skus.map(() => 0);
   dTitle.value = p.title;
   phase.value = 'ready';
-  /* 浏览足迹：本模块只保留查询接口（GET /footprints），前端不再上报 ——
-     足迹写入由后端在商品详情查询链路里顺带完成（见 docs/历史足迹接口文档.md），
-     因此这里只有相关推荐，没有任何足迹请求。 */
+  /* 浏览足迹：登录用户加载详情成功后向后端上报一次浏览（POST /footprints，
+     body {productId}，userId 由后端从登录 token 取）。未登录 / 上报失败都不影响
+     详情主流程（足迹只是顺带记录，不能因为上报失败拖垮商品详情）。 */
+  if (QM_STORE.state && QM_STORE.state.user) {
+    QM_API.footprints.record(pid).catch(() => { /* 足迹失败静默，详情照常 */ });
+  }
   loadRelated(pid, mySeq);
   /* 评价与商品详情并行加载：评价接口（公开）失败不影响详情主体，只让评价页签显示错误态 */
   reviews.value = [];
@@ -416,13 +438,13 @@ function stepQty(dir) { setQty(qty.value + dir); }
 function onQtyInput(e) { setQty(parseInt(e.target.value, 10) || 1); }
 
 async function addCart() {
-  /* 第 4 个参数是「当前选中款式的成交价」：购物车按它计价（留空 / 无款式价时用商品默认价）。
-     加购只走后端（strict）：接口失败如实报错，不做本地假加购。 */
-  await QM_API.cart.add(product.value.id, skuText(), qty.value, curUnitPrice.value);
+  /* 第 4 个参数是「当前选中款式的到手价」：购物车按它计价（留空 / 无款式价时用商品默认价），
+     秒杀优惠由后端在下单时按「限 1 件」抵扣。加购只走后端（strict）：失败如实报错，不做本地假加购。 */
+  await QM_API.cart.add(product.value.id, skuText(), qty.value, skuUnitPrice.value);
   toast('已加入购物车 🛒', 'success');
 }
 async function buyNow() {
-  await QM_API.cart.add(product.value.id, skuText(), qty.value, curUnitPrice.value);
+  await QM_API.cart.add(product.value.id, skuText(), qty.value, skuUnitPrice.value);
   /* 记录「本次立即购买」的目标商品：确认订单页据此精确结算，
      避免结算到购物车里最后一条（可能是无关的旧商品） */
   try {
@@ -493,8 +515,10 @@ onBeforeUnmount(() => {
             <div class="detail-price-card">
               <div class="price-row">
                 <span class="price"><i>¥</i>{{ curPrice.int }}<em v-if="curPrice.dec">{{ curPrice.dec }}</em></span>
-                <span class="price-badge">到手价</span>
-                <del v-if="product.original > 0"><span class="price"><i>¥</i>{{ origPrice.int }}<em v-if="origPrice.dec">{{ origPrice.dec }}</em></span></del>
+                <span class="price-badge">{{ flashPrice !== null ? '秒杀价' : '到手价' }}</span>
+                <span v-if="flashPrice !== null" class="flash-flag">限时秒杀 · 限 1 件</span>
+                <span v-else-if="flashUsed" class="flash-flag used">今日秒杀价已用完，现按到手价</span>
+                <del v-if="strikePrice > 0"><span class="price"><i>¥</i>{{ origPrice.int }}<em v-if="origPrice.dec">{{ origPrice.dec }}</em></span></del>
               </div>
               <div class="price-meta">
                 <span>销量 {{ sales(product.sales) }}</span>

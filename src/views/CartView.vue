@@ -91,6 +91,11 @@ function cartRow(item) {
   const statusBadge = statusLabel ? `<span class="ci-status-badge">${statusLabel}</span>` : '';
   const unitPrice = QM_STORE.cart.unitPrice(item);
   const subTotal = QM_STORE.cart.subTotal(item);
+  /* 秒杀优惠：本条目可享 1 件秒杀价，小计里已按它抵扣，这里提示一句 */
+  const flashQty = Math.min(Number(item.flashQty) || 0, item.qty || 0);
+  const flashPrice = Number(item.flashPrice);
+  const flashTip = (flashQty > 0 && Number.isFinite(flashPrice) && flashPrice > 0)
+    ? `<small class="ci-flash-tip">含 1 件秒杀价 ¥${moneyText(flashPrice)}</small>` : '';
   /* 划线原价：成交价低于商品原价时才显示；金额随数量一起走（原价 × 数量） */
   const origPrice = Number(p && p.original) || 0;
   const origSubTotal = origPrice > unitPrice ? origPrice * item.qty : 0;
@@ -105,6 +110,7 @@ function cartRow(item) {
       <div class="ci-price">
         ${price(subTotal)}
         ${origSubTotal ? `<del class="ci-orig">${price(origSubTotal)}</del>` : ''}
+        ${flashTip}
       </div>
       <span class="stepper">
         <button data-action="cart-qty" data-dir="-1" data-key="${esc(item.key)}">−</button>

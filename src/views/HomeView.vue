@@ -80,21 +80,31 @@ const mm = ref('00');
 const ss = ref('00');
 const flashPct = ref(0);
 
+const PAGE_SIZE = 15;    // 猜你喜欢每页商品数
+
+/* 当日商品池：秒杀商品从推荐池里剔除，两区块不重复 */
+let recPool = [];
+let poolOk = false;      // 商品池是否拉到（拉不到时推荐区如实提示失败）
+const flashIds = new Set();
+
 function flashCard(p) {
-  /* 折扣显示：原价与秒杀价之比（299/459 → 6.5 折）。
-     原实现为 Math.round((1 - price/original) * 100)，算的是「降价百分比」，
-     会把 6.5 折显示成「35 折」。 */
-  const discount = p.original ? (p.price / p.original * 10) : 10;
-  const discountText = (Math.round(discount * 10) / 10).toFixed(1).replace(/\.0$/, '');
+  const base = Number(p.price) || 0;
+  const flash = Number(p.flashPrice) || 0;
+  /* 该账号今日已用过这件商品的秒杀价：按到手价展示，并提示已用完 */
+  const used = p.flashUsed === true;
+  /* 折扣角标按后端下发的秒杀价反算（到手价 5 折 → 5折） */
+  const rate = base > 0 && flash > 0 ? Math.round(flash / base * 10) : 0;
   return `
-    <div class="product-card" data-action="open-product" data-id="${esc(p.id)}">
+    <div class="product-card${used ? ' is-flash-used' : ''}" data-action="open-product" data-id="${esc(p.id)}">
       <div class="pc-art" style="${artStyle(p.art)}">
-        <span class="pc-tag">${discountText}折</span>${artHtml(p.art)}
+        <span class="pc-tag${used ? ' used' : ''}">${used ? '已用完' : (rate > 0 ? rate + '折' : '秒杀')}</span>${artHtml(p.art)}
       </div>
       <div class="pc-info">
         <h3 class="ellipsis-2">${esc(p.title)}</h3>
-        <div class="pc-price-row">${price(p.price)}<del>${price(p.original)}</del></div>
-        <div class="pc-meta"><span>已抢 ${Math.round(p.sales / 20)} 件</span><span>仅剩 ${Math.min(p.stock, 60)} 件</span></div>
+        <div class="pc-price-row">${price(used ? base : (flash || base))}${used ? '' : `<del>${price(base)}</del>`}</div>
+        <div class="pc-meta">${used
+          ? '<span class="flash-used-tip">今日秒杀价已用完，现按到手价</span>'
+          : `<span>已抢 ${Math.round(p.sales / 20)} 件</span><span>仅剩 ${Math.min(p.stock, 60)} 件</span>`}</div>
       </div>
     </div>`;
 }
@@ -116,18 +126,31 @@ function flashEndSave(end) {
 
 async function loadFlash() {
   let endTime = flashEndLocal();
-  try {
-    const data = await QM_API.products.flash();
-    flashCardsHtml.value = (data.list || []).map(p => flashCard(p)).join('');
+  /* 秒杀商品与秒杀价由后端下发（/home/flash），商品池只用于把秒杀商品从推荐里剔除 */
+  const [poolRes, flashRes] = await Promise.allSettled([
+    QM_API.products.list({ page: 1, size: 100 }),
+    QM_API.products.flash()
+  ]);
+  const pool = poolRes.status === 'fulfilled' ? ((poolRes.value && poolRes.value.list) || []) : [];
+  poolOk = poolRes.status === 'fulfilled';
+  let flashList = [];
+  if (flashRes.status === 'fulfilled') {
+    flashList = (flashRes.value && flashRes.value.list) || [];
     /* 后端下发的场次结束时间优先（字符串 yyyy-MM-dd HH:mm:ss 或毫秒时间戳） */
-    const remote = data && data.endTime;
+    const remote = flashRes.value && flashRes.value.endTime;
     if (remote) {
       const t = typeof remote === 'number' ? remote : Date.parse(String(remote).replace(' ', 'T'));
       if (!isNaN(t) && t > Date.now()) { endTime = t; flashEndSave(endTime); }
     }
-  } catch (e) {
-    flashCardsHtml.value = emptyState('⚡', '秒杀商品加载失败', '接口暂时不可达，请稍后重试');
   }
+
+  flashIds.clear();
+  flashList.forEach(p => flashIds.add(String(p.id)));
+  recPool = pool.filter(p => !flashIds.has(String(p.id)));
+
+  flashCardsHtml.value = flashList.length
+    ? flashList.map(flashCard).join('')
+    : emptyState('⚡', '秒杀商品加载失败', '接口暂时不可达，请稍后重试');
   flashReady.value = true;
   const tick = () => {
     let left = Math.max(0, endTime - Date.now());
@@ -148,27 +171,30 @@ async function loadFlash() {
   timers.push(setInterval(tick, 1000));
 }
 
-/* ---------- 猜你喜欢 ---------- */
+/* ---------- 猜你喜欢（取自同一商品池，已剔除当日秒杀商品） ---------- */
 const recFilter = ref('全部');
-const recGridHtml = ref('');   // 骨架期为空，加载后填充（与原版 innerHTML 流程一致）
-const moreVisible = ref(true); // 骨架期「加载更多」按钮默认可见（原版同款）
-let page = 1;
+const recGridHtml = ref('');
+const moreVisible = ref(false);
+let recList = [];   // 当前分类下的完整列表
+let recShown = 0;   // 已渲染数量
 
-async function loadRecommend(filter) {
-  try {
-    const res = await QM_API.products.recommend({ page: 1, size: 15 });
-    let list = (res && res.list) || [];
-    if (filter !== '全部') list = list.filter(p => p.category === filter);
-    recGridHtml.value = list.length
-      ? list.map(p => productCard(p)).join('')
-      : emptyState('🔍', '该分类暂无推荐', '去其他分类看看吧');
-    const btnShow = list.length >= 15 && filter === '全部';
-    moreVisible.value = btnShow;
-    if (btnShow) page = 1;
-  } catch (e) {
+function renderRec() {
+  const list = recList.slice(0, recShown);
+  recGridHtml.value = list.length
+    ? list.map(p => productCard(p)).join('')
+    : emptyState('🔍', '该分类暂无推荐', '去其他分类看看吧');
+}
+
+function loadRecommend(filter) {
+  if (!poolOk) {
     recGridHtml.value = emptyState('🔍', '推荐商品加载失败', '接口暂时不可达，请稍后重试');
     moreVisible.value = false;
+    return;
   }
+  recList = filter === '全部' ? recPool : recPool.filter(p => p.category === filter);
+  recShown = Math.min(PAGE_SIZE, recList.length);
+  renderRec();
+  moreVisible.value = recList.length > recShown;
 }
 
 function onRecTab(c) {
@@ -176,29 +202,12 @@ function onRecTab(c) {
   loadRecommend(c);
 }
 
-const onLoadMore = (() => {
-  /* 防抖 + 串行：连续点击「加载更多」时原实现会并发请求并把结果乱序 += 拼接（重复/错序商品）。
-     这里用 loading 标志保证同一时刻只有一个分页请求在飞，加载中直接忽略后续点击。 */
-  const moreLoading = ref(false);
-  async function loadMore() {
-    if (moreLoading.value || !moreVisible.value) return;
-    moreLoading.value = true;
-    try {
-      const next = page + 1;
-      const res = await QM_API.products.recommend({ page: next, size: 15 });
-      const extra = (res && res.list) || [];
-      if (!extra.length) { moreVisible.value = false; return; }
-      page = next;
-      recGridHtml.value += extra.map(p => productCard(p)).join('');
-      if (extra.length < 15) moreVisible.value = false;
-    } catch (e) {
-      /* 加载失败保留按钮，用户可重试 */
-    } finally {
-      moreLoading.value = false;
-    }
-  }
-  return loadMore;
-})();
+/* 本地展开下一页：池子已按日洗牌且不含秒杀商品，直接切片即可 */
+function onLoadMore() {
+  recShown = Math.min(recShown + PAGE_SIZE, recList.length);
+  renderRec();
+  moreVisible.value = recList.length > recShown;
+}
 
 /* ---------- 锚点定位（#/home?sec=flash / recommend） ---------- */
 function scrollToSec(sec) {

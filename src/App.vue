@@ -133,13 +133,21 @@ const valPrice = v => {
 };
 const moneyText = n => (Number.isInteger(Number(n)) ? String(Number(n)) : Number(n).toFixed(2));
 function skuTextOf(skus, pick) { return skus.map((g, gi) => valOf(g.values[pick[gi]])).join(' / '); }
-function skuPriceOf(product, pick) {
+function skuListPriceOf(product, pick) {
   let unit = Number(product.price) || 0;
   (product.skus || []).forEach((g, gi) => {
     const sp = valPrice((g.values || [])[pick[gi]]);
     if (sp !== null) unit = sp;
   });
   return unit;
+}
+const isFlash = product => {
+  const flash = Number(product && product.flashPrice);
+  return Number.isFinite(flash) && flash > 0 && product.flashUsed !== true;
+};
+/* 展示价：当日秒杀且该账号今日还有资格时显示秒杀价（限 1 件） */
+function skuPriceOf(product, pick) {
+  return isFlash(product) ? Number(product.flashPrice) : skuListPriceOf(product, pick);
 }
 function pickArtOf(product, pick, lastGroup) {
   const skus = (product && Array.isArray(product.skus)) ? product.skus : [];
@@ -166,7 +174,7 @@ function openSkuPickerForAdd(p) {
         <span id="skuPickArt" class="ci-art" style="${artStyle(pickArt)}">${artHtml(pickArt)}</span>
         <div class="sku-picker-info">
           <h3 class="ellipsis-2">${esc(p.title)}</h3>
-          <p class="sku-picker-price">款式价：¥<b id="skuPickPrice">${esc(moneyText(skuPriceOf(p, pick)))}</b></p>
+          <p class="sku-picker-price">${isFlash(p) ? '秒杀价（限 1 件）' : '款式价'}：¥<b id="skuPickPrice">${esc(moneyText(skuPriceOf(p, pick)))}</b></p>
         </div>
       </div>
       <div class="sku-picker-body">
@@ -199,7 +207,7 @@ function openSkuPickerForAdd(p) {
   });
   m.root.querySelector('#skuPickConfirm').onclick = async () => {
     try {
-      await QM_API.cart.add(p.id, skuTextOf(skus, pick), 1, skuPriceOf(p, pick));
+      await QM_API.cart.add(p.id, skuTextOf(skus, pick), 1, skuListPriceOf(p, pick));
       m.close();
       toast('已加入购物车 🛒', 'success');
     } catch (e) { toast((e && e.message) || '加入购物车失败，请稍后重试', 'error'); }

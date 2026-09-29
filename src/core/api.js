@@ -212,6 +212,9 @@ function noteOnline(online) {
       qty: it.qty,
       checked: prev[it.itemKey] !== undefined ? prev[it.itemKey].checked : false,
       price: (it.price === undefined || it.price === null) ? null : Number(it.price),
+      flashPrice: (it.flashPrice === undefined || it.flashPrice === null) ? null : Number(it.flashPrice),
+      flashQty: Number(it.flashQty) || 0,
+      flashUsed: it.flashUsed === true,
       img: it.img || skuImgFromProduct(it.product, it.sku) || (prev[it.itemKey] ? prev[it.itemKey].img : null),
       product: it.product || null
     }));
@@ -306,15 +309,16 @@ function noteOnline(online) {
     return (raw || []).map(afterSaleFromApi).filter(Boolean);
   }
   /* 接口足迹 → 页面结构（详见 docs/历史足迹接口文档.md 1.1）：
-     足迹商品对象 = 商品对象 + browseTime（最近浏览时间）+ browseCount（累计浏览次数）。
-     browseTime 字符串 → millis（页面统一用 fullTime / 相对时间渲染）；
-     后端只回商品对象（缺 browseTime）时按 0 处理，页面回退为「—」不报错。 */
+     足迹商品对象 = 商品对象 + browseTime（最近浏览时间）。
+     browseTime 字符串 → millis（页面按天分组 + 渲染时刻）；
+     后端只回商品对象（缺 browseTime）时按 0 处理，页面回退为「时间未知」不报错。
+     ⚠ 累计浏览次数（browseCount）**前端不消费**（2026-10-01 按需求移除展示），
+     这里不再归一到页面对象；后端是否继续下发该字段由后端侧决定。 */
   function footprintFromApi(f) {
     if (!f) return null;
     return Object.assign({}, f, {
       id: (f.id !== undefined && f.id !== null) ? f.id : f.productId,
-      browseTime: parseTime(f.browseTime) || 0,
-      browseCount: Number(f.browseCount) || 1
+      browseTime: parseTime(f.browseTime) || 0
     });
   }
 
@@ -371,27 +375,29 @@ function noteOnline(online) {
 
     /* ================= 商品模块（strict：严格对接后端，无本地演示回退） ================= */
     products: {
+      /* 浏览类接口也带上令牌（未登录时为 null）：后端据此识别账号 —— 首页秒杀要标记
+         「本账号今日已用过秒杀价」、商品详情要按资格给秒杀价 */
       list(opts = {}) {
         return call(
-          { name: '商品列表', method: 'GET', path: '/products', query: { page: opts.page || 1, size: opts.size || 20, category: opts.category, sub: opts.sub, sort: opts.sort, keyword: opts.keyword, shopId: opts.shopId } },
+          { name: '商品列表', method: 'GET', path: '/products', query: { page: opts.page || 1, size: opts.size || 20, category: opts.category, sub: opts.sub, sort: opts.sort, keyword: opts.keyword, shopId: opts.shopId }, token: tokenOf() },
           null, { strict: true }
         );
       },
       get(id) {
         return call(
-          { name: '商品详情', method: 'GET', path: '/products/' + encodeURIComponent(id) },
+          { name: '商品详情', method: 'GET', path: '/products/' + encodeURIComponent(id), token: tokenOf() },
           null, { strict: true }
         );
       },
       search(q, opts = {}) {
         return call(
-          { name: '商品搜索', method: 'GET', path: '/products/search', query: { q, page: opts.page || 1, size: opts.size || 20, sort: opts.sort } },
+          { name: '商品搜索', method: 'GET', path: '/products/search', query: { q, page: opts.page || 1, size: opts.size || 20, sort: opts.sort }, token: tokenOf() },
           null, { strict: true }
         );
       },
       flash() {
         return call(
-          { name: '限时秒杀', method: 'GET', path: '/home/flash' },
+          { name: '限时秒杀', method: 'GET', path: '/home/flash', token: tokenOf() },
           null, { strict: true }
         );
       },
@@ -1039,18 +1045,21 @@ function noteOnline(online) {
     /* ================= 浏览足迹（strict：足迹全部以后端为准，不做本地回退） =================
        契约要点（详见 docs/历史足迹接口文档.md，后端代码见《历史足迹后端实现代码与教程.md》）：
        · GET /footprints?range=&page=&size=  → {total,page,size,list:[足迹商品对象]}
-                                              （商品对象 + browseTime + browseCount，最近浏览在前）
-       · range 是**时间筛选**枚举：all（默认，全部）/ today（今天）/ week（近 7 天）/ month（近 30 天）；
-         非法值由后端静默按 all 处理。时间边界全部由服务端计算，前端不传时间戳。
-       本模块**只提供查询**：记录浏览（写入）不在前端契约内 —— 足迹由后端在商品详情
-       查询链路里顺带落库（见后端教程 §9），因此前端没有任何「记录 / 删除 / 清空」请求。
+                                             （商品对象 + browseTime，最近浏览在前）
+       · 页面**固定 range=all&page=1&size=200 一次取满**（每账号足迹上限 200 条），
+         「全部 / 今天 / 近 7 天 / 近 30 天」的时间筛选在 FootprintsView.vue **本地完成**
+         （自然日边界与后端 range 同口径）；本方法保留 range 参数仅为兼容后端契约
+         （后端接口不动），当前调用方不传。
+       本模块提供查询 + 写入：写入 POST /footprints（body {productId}，userId 由后端
+       从登录 token 取）。商品详情页在加载成功后调用 record() 上报一次，未登录不上报
+       （见 DetailView.vue）。
 
        ⚠ 一律 strict，**不做本地离线回退**：足迹由服务端按账号保存，接口失败必须如实抛出
        （历史教训同收藏 / 地址 —— 静默用浏览器存储兜底只会让用户以为记录还在，
        换个标签页（store 走 sessionStorage）或换设备就凭空消失，数据库里根本没有这条数据）。 */
     footprints: {
-      /* range：all / today / week / month；page、size 保留分页语义
-         （前端固定 page=1、size=200 —— 每账号足迹上限就是 200 条，一次取满即可） */
+      /* 页面当前固定 range=all&page=1&size=200 一次取满；range 参数保留仅为兼容后端契约
+         （后端接口不动），时间筛选由页面本地完成（见 FootprintsView.vue） */
       async list(range = 'all', page = 1, size = 200) {
         const data = await call(
           { name: '浏览足迹列表', method: 'GET', path: '/footprints', query: { range, page, size }, token: tokenOf() },
@@ -1063,6 +1072,14 @@ function noteOnline(online) {
           size: (data && data.size) || size,
           list
         };
+      },
+      /* 记录浏览足迹：POST /footprints，body {productId}（userId 由后端从登录 token 取）。
+         由商品详情页在加载成功后调用；未登录 / 后端不可用时由调用方自行 catch，不影响详情主流程。 */
+      async record(productId) {
+        return call(
+          { name: '记录浏览足迹', method: 'POST', path: '/footprints', body: { productId }, token: tokenOf() },
+          null, { strict: true }
+        );
       }
     },
 

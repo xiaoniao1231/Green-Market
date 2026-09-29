@@ -51,9 +51,10 @@ const routes = [
   /* 账户设置：资料 / 手机号 / 密码 / 收货地址（#/account） */
   { path: '/account', name: 'account', component: AccountView },
   { path: '/favorites', name: 'favorites', component: FavoritesView },
-  /* 浏览足迹：**只读页面**（契约只有 GET /footprints，见 docs/历史足迹接口文档.md）——
+  /* 浏览足迹（#/footprints）：**查询页**（GET /footprints，见 docs/历史足迹接口文档.md）——
      支持 range 时间筛选（全部 / 今天 / 近 7 天 / 近 30 天）与按天分组展示；
-     足迹写入由后端在商品详情查询链路里顺带完成，前端不上报、也不能删除 / 清空 */
+     足迹写入由商品详情页加载成功后调用 POST /footprints 上报（见 DetailView.vue），
+     本页面只读，不能删除 / 清空 */
   { path: '/footprints', name: 'footprints', component: FootprintsView },
   { path: '/chat', name: 'chat', component: ChatView },
   { path: '/shop/:name', name: 'shop', component: ShopView },

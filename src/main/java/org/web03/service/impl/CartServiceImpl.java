@@ -9,12 +9,16 @@ import org.web03.exception.BusinessException;
 import org.web03.mapper.CartMapper;
 import org.web03.mapper.ProductMapper;
 import org.web03.pojo.CartItem.*;
+import org.web03.pojo.Product.Product;
 import org.web03.service.CartService;
+import org.web03.service.FlashSaleService;
+import org.web03.service.FlashUsageService;
 import org.web03.utils.CurrentHolder;
 import org.web03.utils.JsonUtils;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.util.*;
 
 @Slf4j
@@ -28,6 +32,10 @@ public class CartServiceImpl implements CartService {
     private CartMapper cartMapper;
     @Autowired
     private ProductMapper productMapper;
+    @Autowired
+    private FlashSaleService flashSaleService;
+    @Autowired
+    private FlashUsageService flashUsageService;
 
     //当前登录账号
     private String currentUser() {
@@ -64,9 +72,12 @@ public class CartServiceImpl implements CartService {
     //获取当前用户购物车列表
     @Override
     public List<CartItemVO> list() {
+        String userId = currentUser();
+        // 同一商品只能给 1 件秒杀额度（与下单口径一致）：多个款式也只有一条能享受
+        Set<Integer> flashGiven = new HashSet<>();
         List<CartItemVO> list = new ArrayList<>();
-        for(CartItem row : cartMapper.listByUserId(currentUser())){
-            list.add(toVo(row));
+        for(CartItem row : cartMapper.listByUserId(userId)){
+            list.add(toVo(row, userId, flashGiven));
         }
         log.info("获取购物车列表成功: {}", list.size());
         return list;
@@ -79,7 +90,8 @@ public class CartServiceImpl implements CartService {
             throw new BusinessException("商品参数无效");
         }
         String userId = currentUser();
-        if(productMapper.getPublicById(cartAddRequest.getProductId()) == null) throw new BusinessException("商品不存在或已下架");
+        Product product = productMapper.getPublicById(cartAddRequest.getProductId());
+        if (product == null) throw new BusinessException("商品不存在或已下架");
         String skuText = StringUtils.hasLength(cartAddRequest.getSkuText()) ? cartAddRequest.getSkuText().trim() : "默认";
         if (skuText.length() > 100) throw new BusinessException("规格参数过长");
         CartItem cartItem = new CartItem();
@@ -139,7 +151,8 @@ public class CartServiceImpl implements CartService {
         if (newSku.length() > 100) throw new BusinessException("规格参数过长");
         if(newSku.equals(old.sku())) return;
 
-        if(productMapper.getPublicById(old.productId()) == null) throw new BusinessException("商品不存在或已下架");
+        Product product = productMapper.getPublicById(old.productId());
+        if (product == null) throw new BusinessException("商品不存在或已下架");
 
         // 换款式保持原数量；新款式已存在则数量合并
         CartItem oldRow = cartMapper.findByKey(userId, old.productId, old.sku);
@@ -168,12 +181,19 @@ public class CartServiceImpl implements CartService {
     }
 
     //将数据库对象转换为VO对象
-    private CartItemVO toVo(CartItem row) {
+    private CartItemVO toVo(CartItem row, String userId, Set<Integer> flashGiven) {
         CartItemVO vo = new CartItemVO();
         vo.setProductId(row.getProductId());
         vo.setSku(row.getSku());
         vo.setQty(row.getQuantity());
+        // 单价仍为到手价；秒杀价与「可享 1 件」单独下发，由前端算小计（与下单口径一致）
+        BigDecimal flash = flashSaleService.flashPrice(row.getProductId(), row.getProductPrice());
+        boolean hasQuota = flash != null && !flashUsageService.usedToday(userId, row.getProductId());
+        boolean usable = hasQuota && flashGiven.add(row.getProductId());
         vo.setPrice(row.getPrice());
+        vo.setFlashPrice(flash);
+        vo.setFlashQty(usable ? 1 : 0);
+        vo.setFlashUsed(flash != null && !hasQuota);
         vo.setItemKey(row.getProductId() + "|" + row.getSku());
 
         CartProductVO p = new CartProductVO();

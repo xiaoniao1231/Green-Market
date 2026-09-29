@@ -17,6 +17,8 @@ public class ProductVO {
     private BigDecimal priceMin;              // 款式价最低价（无款式价时与 price 相同）
     private BigDecimal priceMax;              // 款式价最高价（无款式价时与 price 相同）
     private BigDecimal original;              // 原价
+    private BigDecimal flashPrice;            // 秒杀价（仅当日秒杀商品有值，到手价 5 折）
+    private Boolean flashUsed;                // 当前用户今日是否已用完该商品的秒杀价
     private Integer sales;                    // 销量
     private Integer stock;                    // 库存
     private String category;                  //一级分类

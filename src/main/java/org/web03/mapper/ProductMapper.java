@@ -50,8 +50,8 @@ public interface ProductMapper {
     // 更新商品上下架状态
     int updateStatus(@Param("id") Integer id, @Param("shopId") String shopId, @Param("onSale") int onSale);
 
-    //限时秒杀：在售按销量倒序取前 N 条
-    List<Product> flashList(int i);
+    // 当日秒杀商品 id：从「上架较早」的候选池里按日期轮换取 limit 件
+    List<Integer> flashIds(@Param("pool") int pool, @Param("limit") int limit);
 
     //猜你喜欢：在售按创建时间倒序分页
     List<Product> recommendList(ProductsCheck productsCheck);
@@ -72,4 +72,8 @@ public interface ProductMapper {
     //库存回补（取消订单时归还）
     @Update("update products set stock = stock + #{qty} where id = #{id}")
     void restoreStock(@Param("id") Integer id, @Param("qty") Integer qty);
+
+    // 销量累加
+    @Update("update products set sales = sales + #{qty} where id = #{id}")
+    void increaseSales(@Param("id") Integer id, @Param("qty") Integer qty);
 }

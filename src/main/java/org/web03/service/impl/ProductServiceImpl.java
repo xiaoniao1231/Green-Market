@@ -15,6 +15,8 @@ import org.web03.pojo.Product.ProductsCheck;
 import org.web03.pojo.Product.Product;
 import org.web03.pojo.Product.ProductRequest;
 import org.web03.pojo.Product.ProductVO;
+import org.web03.service.FlashSaleService;
+import org.web03.service.FlashUsageService;
 import org.web03.service.ProductService;
 import org.web03.utils.AliyunOSSOperator;
 import org.web03.utils.CurrentHolder;
@@ -40,6 +42,10 @@ public class ProductServiceImpl implements ProductService {
     private ProductMapper productMapper;
     @Autowired
     private AliyunOSSOperator aliyunOSSOperator;
+    @Autowired
+    private FlashSaleService flashSaleService;
+    @Autowired
+    private FlashUsageService flashUsageService;
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -175,7 +181,12 @@ public class ProductServiceImpl implements ProductService {
     public ProductVO getDetail(Integer id) {
         Product p = productMapper.getPublicById(id);
         if(p == null)throw new BusinessException("商品不存在");
-        return toVO(p);
+        ProductVO vo = toVO(p);
+        // 该账号今日已用过这件商品的秒杀价：前端提示「已用完」，价格按到手价展示
+        if (vo.getFlashPrice() != null && flashUsageService.usedToday(CurrentHolder.getCurrentUserId(), id)) {
+            vo.setFlashUsed(true);
+        }
+        return vo;
     }
 
     //相关推荐：同分类优先，再用其他在售商品补足；排除当前商品
@@ -191,9 +202,19 @@ public class ProductServiceImpl implements ProductService {
     //限时秒杀
     @Override
     public Map<String, Object> flash() {
+        // 与秒杀价同源：按当日秒杀 id 取商品；已用完秒杀价的账号逐件标记
+        Set<Integer> used = flashUsageService.usedToday(CurrentHolder.getCurrentUserId());
+        List<ProductVO> list = new ArrayList<>();
+        for (Integer id : flashSaleService.todayIds()) {
+            Product p = productMapper.getPublicById(id);
+            if (p == null) continue;
+            ProductVO vo = toVO(p);
+            if (vo.getFlashPrice() != null && used.contains(id)) vo.setFlashUsed(true);
+            list.add(vo);
+        }
         Map<String, Object> data = new HashMap<>();
         data.put("endTime", System.currentTimeMillis() + 2 * 60 * 60 * 1000L); // 当前 + 2 小时
-        data.put("list", productMapper.flashList(6).stream().map(this::toVO).collect(Collectors.toList()));
+        data.put("list", list);
         return data;
     }
 
@@ -259,6 +280,7 @@ public class ProductServiceImpl implements ProductService {
         vo.setTitle(p.getTitle());
         vo.setPrice(p.getPrice());
         vo.setOriginal(p.getOriginalPrice());
+        vo.setFlashPrice(flashSaleService.flashPrice(p.getId(), p.getPrice()));
         vo.setSales(p.getSales());
         vo.setStock(p.getStock());
         vo.setCategory(p.getCategory());

@@ -85,7 +85,14 @@ public class TokenFilter implements Filter {
         }
         if (isPublicPath(path)) {
             log.debug("放行无需鉴权请求: {}", path);
-            chain.doFilter(request, response);
+            /* 公开接口也尝试识别登录态（首页秒杀要标记「本账号今日已用过秒杀价」、
+               商品详情要按资格给价）：令牌缺失或无效一律按未登录放行，不打断浏览 */
+            try {
+                resolveOptionalUser(request);
+                chain.doFilter(request, response);
+            } finally {
+                CurrentHolder.remove();
+            }
             return;
         }
 
@@ -170,9 +177,26 @@ public class TokenFilter implements Filter {
         }
     }
 
+    /** 公开接口的可选识别：令牌有效才写入上下文，其余情况（缺失/无效/已作废）一律按未登录处理 */
+    private void resolveOptionalUser(HttpServletRequest request) {
+        try {
+            String jwt = resolveToken(request);
+            if (!StringUtils.hasLength(jwt)) return;
+            Claims claims = JwtUtils.parseToken(jwt);
+            String jwtUserId = claims.get("userId", String.class);
+            if (claims.get("id") == null || !StringUtils.hasLength(jwtUserId)) return;
+            Object pvObj = claims.get("pv");
+            int tokenPwdVersion = (pvObj instanceof Number) ? ((Number) pvObj).intValue() : 0;
+            Integer currentPwdVersion = empMapper.findPwdVersion(jwtUserId);
+            if (currentPwdVersion == null || tokenPwdVersion != currentPwdVersion) return;
+            CurrentHolder.setCurrentUserId(jwtUserId);
+        } catch (Exception e) {
+            log.debug("公开接口识别登录态失败，按未登录处理: {}", e.getMessage());
+        }
+    }
+
     /** 从请求头解析令牌：Authorization: Bearer <jwt> 优先，token 头兜底（兼容旧客户端） */
-    private String resolveToken(HttpServletRequest request) {
-        String authorization = request.getHeader("Authorization");
+    private String resolveToken(HttpServletRequest request) {        String authorization = request.getHeader("Authorization");
         if (StringUtils.hasLength(authorization) && authorization.startsWith("Bearer ")) {
             return authorization.substring(7).trim();
         }

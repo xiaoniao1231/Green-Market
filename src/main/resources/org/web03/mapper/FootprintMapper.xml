@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.FootprintMapper">
+
+    <!-- 根据用户ID统计足迹数量 -->
+    <select id="countByUserId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM footprints f
+        JOIN products p ON p.id = f.product_id AND p.deleted = 0
+        WHERE f.user_id = #{userId}
+    </select>
+
+    <!-- 容量裁剪 -->
+    <delete id="trim">
+        DELETE FROM footprints
+        WHERE user_id = #{userId}
+          AND id NOT IN (
+            SELECT id FROM (
+                               SELECT id FROM footprints
+                               WHERE user_id = #{userId}
+                               ORDER BY updated_at DESC, id DESC
+                               LIMIT #{keep}
+                           ) t
+        )
+    </delete>
+
+    <!-- 根据用户ID分页查询足迹列表（商品已被软删除的不返回；同时下发 skus/shop 信息
+         供上层组装商品图 art 与店铺 {id,name,score} —— 与收藏夹同口径，缺了前端卡片渲染会崩） -->
+    <select id="listByUserId" resultType="org.web03.pojo.Footprint.Footprint">
+        SELECT p.id,
+               p.title,
+               p.price,
+               p.original_price AS originalPrice,
+               p.sales,
+               p.stock,
+               p.tag,
+               p.skus,
+               p.on_sale AS onSale,
+               p.deleted,
+               p.shop_id AS shopId,
+               s.name AS shopName,
+               s.score AS shopScore,
+               f.updated_at AS updatedAt
+        FROM footprints f
+                 JOIN products p ON p.id = f.product_id AND p.deleted = 0
+                 LEFT JOIN shops s ON s.shop_id = p.shop_id
+        WHERE f.user_id = #{userId}
+        ORDER BY f.updated_at DESC, f.id DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+</mapper>

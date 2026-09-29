@@ -124,12 +124,17 @@
         WHERE id = #{id} AND shop_id = #{shopId} AND deleted = 0
     </update>
 
-    <!-- 限时秒杀：在售按销量倒序取前 N 条 -->
-    <select id="flashList" resultType="org.web03.pojo.Product.Product">
-        SELECT p.*, s.name AS shop_name, s.score AS shop_score
-        FROM products p JOIN shops s ON p.shop_id = s.shop_id
-        WHERE p.deleted = 0 AND p.on_sale = 1
-        ORDER BY p.sales DESC
+    <!-- 当日秒杀选品：候选池取「上架时间较早」的若干件，再按日期打散取 limit 件 -->
+    <select id="flashIds" resultType="int">
+        SELECT t.pid FROM (
+            SELECT p.id AS pid,
+                   MD5(CONCAT(p.id, CURDATE())) AS h,
+                   ROW_NUMBER() OVER (ORDER BY p.created_at ASC, p.id ASC) AS age_rank
+            FROM products p
+            WHERE p.deleted = 0 AND p.on_sale = 1
+        ) t
+        WHERE t.age_rank &lt;= #{pool}
+        ORDER BY t.h
         LIMIT #{limit}
     </select>
 

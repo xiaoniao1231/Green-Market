@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.FlashUsageMapper">
+
+    <!-- 占用当日秒杀资格：已有记录时不报错，由调用方按返回行数判断 -->
+    <insert id="insertUse">
+        INSERT IGNORE INTO flash_usage (user_id, product_id, flash_day, status)
+        VALUES (#{userId}, #{productId}, #{day}, 'used')
+    </insert>
+
+    <!-- 取消订单后归还过，可再次占用 -->
+    <update id="reuse">
+        UPDATE flash_usage SET status = 'used', order_id = NULL
+        WHERE user_id = #{userId} AND product_id = #{productId} AND flash_day = #{day}
+          AND status = 'released'
+    </update>
+
+    <update id="bindOrderId">
+        UPDATE flash_usage SET order_id = #{orderId}
+        WHERE user_id = #{userId} AND product_id = #{productId} AND flash_day = #{day}
+          AND status = 'used'
+    </update>
+
+    <!-- 订单取消：归还该订单占用的秒杀资格 -->
+    <update id="releaseByOrder">
+        UPDATE flash_usage SET status = 'released', order_id = NULL
+        WHERE order_id = #{orderId} AND status = 'used'
+    </update>
+
+    <select id="usedProductIds" resultType="int">
+        SELECT product_id FROM flash_usage
+        WHERE user_id = #{userId} AND flash_day = #{day} AND status = 'used'
+    </select>
+
+    <select id="countUsed" resultType="int">
+        SELECT COUNT(*) FROM flash_usage
+        WHERE user_id = #{userId} AND product_id = #{productId} AND flash_day = #{day}
+          AND status = 'used'
+    </select>
+
+</mapper>

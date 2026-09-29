@@ -12,6 +12,8 @@ import org.web03.pojo.Messages.WsMessage;
 import org.web03.pojo.Order.*;
 import org.web03.pojo.Product.Product;
 import org.web03.pojo.Shop.Shop;
+import org.web03.service.FlashSaleService;
+import org.web03.service.FlashUsageService;
 import org.web03.service.OrderService;
 import org.web03.utils.CouponUtils;
 import org.web03.utils.CurrentHolder;
@@ -50,6 +52,10 @@ public class OrderServiceImpl implements OrderService {
     private ChatWebSocketHandler chatWebSocketHandler;
     @Autowired
     private CouponMapper couponMapper;
+    @Autowired
+    private FlashSaleService flashSaleService;
+    @Autowired
+    private FlashUsageService flashUsageService;
 
     //最大数量限制999
     private static final int MAX_QTY = 999;
@@ -83,8 +89,21 @@ public class OrderServiceImpl implements OrderService {
         if(address == null ) throw new BusinessException("收货地址不能为空");
         if(!StringUtils.hasLength(request.getPayMethod())) throw new BusinessException("支付方式不能为空");
 
+        //当日秒杀资格：同一商品当天只能用一次 5 折，先占资格再算价
+        Map<Integer, BigDecimal> flashDeal = new HashMap<>();
+        for (OrderCreateItem it : request.getItems()) {
+            if (it == null || it.getProductId() == null) continue;
+            Integer pid = it.getProductId();
+            if (flashDeal.containsKey(pid)) continue;
+            Product p = productMapper.getPublicById(pid);
+            if (p == null) continue;
+            BigDecimal flash = flashSaleService.flashPrice(pid, p.getPrice());
+            if (flash != null && flashUsageService.claim(userId, pid)) flashDeal.put(pid, flash);
+        }
+
         //逐条校验商品、扣库存并定格下单快照
         List<OrderItem> items = new ArrayList<>();
+        Set<Integer> flashClaimed = new HashSet<>();// 本单真正用掉秒杀资格的商品
         BigDecimal goodsAmount = BigDecimal.ZERO;// 整单商品总金额
         for (OrderCreateItem it : request.getItems()){
             if(it == null || it.getProductId() == null) throw new BusinessException("订单项不能为空");
@@ -93,16 +112,21 @@ public class OrderServiceImpl implements OrderService {
             if(p == null)throw new BusinessException("商品不存在或已下架");
             if(productMapper.deductStock(p.getId(), qty) == 0)throw new BusinessException("库存不足");
 
-            OrderItem oi = new OrderItem();
-            oi.setShopId(p.getShopId());
-            oi.setProductId(p.getId());
-            oi.setTitle(p.getTitle());
-            oi.setSku(StringUtils.hasLength(it.getSku()) ? it.getSku().trim() : "默认");
-            oi.setQty(qty);
-            oi.setPrice(p.getPrice());
-            oi.setArtImg(JsonUtils.skuImg(p.getSkus(), oi.getSku()));
-            items.add(oi);
-            goodsAmount = goodsAmount.add(p.getPrice().multiply(BigDecimal.valueOf(qty)));
+            String sku = StringUtils.hasLength(it.getSku()) ? it.getSku().trim() : "默认";
+            // 秒杀只限 1 件：本单首次遇到该商品且抢到资格时，第 1 件按秒杀价，其余按到手价
+            BigDecimal flash = flashDeal.get(p.getId());
+            if (flash != null && flashClaimed.add(p.getId())) {
+                items.add(orderItemOf(p, sku, 1, flash));
+                goodsAmount = goodsAmount.add(flash);
+                if (qty > 1) {
+                    BigDecimal rest = p.getPrice().multiply(BigDecimal.valueOf(qty - 1));
+                    items.add(orderItemOf(p, sku, qty - 1, p.getPrice()));
+                    goodsAmount = goodsAmount.add(rest);
+                }
+            } else {
+                items.add(orderItemOf(p, sku, qty, p.getPrice()));
+                goodsAmount = goodsAmount.add(p.getPrice().multiply(BigDecimal.valueOf(qty)));
+            }
         }
 
         //优惠券：整单统一一张；前端只回传 user_coupons.id，券的归属 / 状态 / 门槛一律以库为准
@@ -180,6 +204,10 @@ public class OrderServiceImpl implements OrderService {
             for (OrderItem oi : groupItems) {
                 oi.setOrderId(order.getId());
                 orderMapper.insertItem(oi);
+                // 秒杀资格挂到订单上，取消订单时可归还
+                if (flashClaimed.contains(oi.getProductId())) {
+                    flashUsageService.bindOrder(userId, oi.getProductId(), order.getId());
+                }
             }
 
             orders.add(toVO(order, groupItems));
@@ -209,6 +237,19 @@ public class OrderServiceImpl implements OrderService {
         result.setTotalAmount(sumTotal);
         log.info("创建订单(按店铺拆单): {} 支付单号={} 子订单数={} 应付={}", userId, payNo, orders.size(), sumTotal);
         return result;
+    }
+
+    //下单快照行（秒杀价与原价会拆成两行）
+    private OrderItem orderItemOf(Product p, String sku, int qty, BigDecimal price) {
+        OrderItem oi = new OrderItem();
+        oi.setShopId(p.getShopId());
+        oi.setProductId(p.getId());
+        oi.setTitle(p.getTitle());
+        oi.setSku(sku);
+        oi.setQty(qty);
+        oi.setPrice(price);
+        oi.setArtImg(JsonUtils.skuImg(p.getSkus(), sku));
+        return oi;
     }
 
     //批量支付：把同一次下单拆出的所有子订单一次付清
@@ -261,6 +302,7 @@ public class OrderServiceImpl implements OrderService {
         for (OrderItem it : orderMapper.listItems(id)) {
             productMapper.restoreStock(it.getProductId(), it.getQty());
         }
+        flashUsageService.releaseByOrder(id);   // 归还本单占用的秒杀资格
         restoreCoupon(order);
         log.info("取消订单: {} 订单号={}（已回补库存）", currentUser(), order.getOrderNo());
     }
@@ -333,7 +375,10 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException("订单状态不允许确认收货");
         }
         if (orderMapper.markFinishTime(id) == 0) throw new BusinessException("确认收货失败");
-        /* 物流轨迹最前追加签收记录（最新在前，与订单页物流弹窗展示顺序一致） */
+        for (OrderItem it : orderMapper.listItems(id)) {
+            productMapper.increaseSales(it.getProductId(), it.getQty());
+        }
+        //物流轨迹最前追加签收记录
         List<Map<String, Object>> logistics = JsonUtils.parseList(order.getLogisticsJson());
         Map<String, Object> signed = new HashMap<>();
         signed.put("text", "包裹已签收，感谢您使用青集市");
@@ -343,7 +388,7 @@ public class OrderServiceImpl implements OrderService {
         log.info("确认收货: {} 订单号={}", currentUser(), order.getOrderNo());
     }
 
-    //提醒发货：落库（累加次数）+ WebSocket 实时推送给店主，并返回提醒状态供买家端置灰按钮
+    //提醒发货
     @Override
     @Transactional
     public Map<String, Object> remind(Integer id) {
@@ -351,17 +396,17 @@ public class OrderServiceImpl implements OrderService {
         if (!S_PAID.equals(order.getStatus())) throw new BusinessException("订单状态不允许提醒发货");
 
         String buyerId = currentUser();
-        /* 订单涉及的店铺：拆单后恒为一个；保留集合语义以兼容拆单上线前产生的历史跨店订单 */
+        //订单涉及的店铺：拆单后恒为一个；保留集合语义以兼容拆单上线前产生的历史跨店订单
         List<String> shopIds = orderMapper.listItems(id).stream()
                 .map(OrderItem::getShopId)
                 .filter(StringUtils::hasLength)
                 .distinct()
-                .collect(Collectors.toList());
+                .toList();
         if (shopIds.isEmpty()) throw new BusinessException("订单商品异常，无法提醒发货");
 
         for (String shopId : shopIds) {
             SellerReminder exist = sellerReminderMapper.findByOrder(id);
-            /* 防骚扰：次数上限 + 冷却期。两项都在写库之前判断，命中即整笔回滚（不会留下半条记录） */
+            //防骚扰
             if (exist != null && exist.getRemindCount() != null && exist.getRemindCount() >= MAX_REMIND_TIMES) {
                 throw new BusinessException("已提醒过 " + MAX_REMIND_TIMES + " 次，请耐心等待店家发货");
             }
@@ -374,7 +419,7 @@ public class OrderServiceImpl implements OrderService {
 
             Shop shop = shopMapper.findById(shopId);
             if (shop == null || !StringUtils.hasLength(shop.getOwnerUserId())) {
-                /* 店铺被删或未绑定店主账号：跳过推送，但不让买家的提醒整体失败 */
+                //店铺被删或未绑定店主账号
                 log.warn("提醒发货: 店铺 {} 不存在或未绑定店主，跳过推送（订单号={}）", shopId, order.getOrderNo());
                 continue;
             }
@@ -386,8 +431,7 @@ public class OrderServiceImpl implements OrderService {
             reminder.setOwnerUserId(shop.getOwnerUserId());
             sellerReminderMapper.upsert(reminder);// 首次插入 count=1，之后累加
 
-            /* 实时通道：店主开着页面立刻收到。不在线也无妨 —— 记录已落库，
-               店家端下次打开订单列表照样能看到「催发货」角标 */
+            // 实时通道
             chatWebSocketHandler.pushTo(shop.getOwnerUserId(), "SELLER_REMIND",
                     new WsMessage("remind-" + id + "-" + System.currentTimeMillis(),
                             buyerId, empMapper.findNicknameByUserId(buyerId),

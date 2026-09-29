@@ -2,14 +2,19 @@
 /* =========================================================
    青集市 · views/ReviewsView.vue —— 评价晒单（#/reviews）
    两个页签：
-   · 待评价：GET /reviews/pending 返回「已完成」订单及其商品条目，条目带 reviewed
-     标记（已评价的置灰），点击「评价」打开评价弹窗（星级 + 内容 + 晒单图 + 匿名）
-     → POST /reviews；
-   · 我的评价：GET /reviews/mine 返回本人全部评价，可追评（POST /reviews/{id}/append）
-     或删除（DELETE /reviews/{id}，后端随即重算商品评分与店铺评分）。
+   · 待评价：GET /reviews/pending 返回「已完成」订单及其**商品条目**——每个条目就是
+     一个具体款式（同一商品的不同款式各占一行），条目带 reviewed 标记（已评价的置灰）；
+     点击「评价」打开评价弹窗（星级 + 内容 + 晒单图 + 匿名）→ POST /reviews（body 只传
+     orderItemId，orderId / productId / sku 由服务端按条目推导并快照）；
+   · 我的评价：GET /reviews/mine **一次返回本人全部评价（后端不分页）**，
+     前端按**商品分类**（mineGroups：同一商品的不同款式评价归到一张商品卡下），
+     每条都标注对应款式；
+     可追评（POST /reviews/{id}/append）。
+     评价发布后**不可删除、不可修改**：评分是商品评分与店铺评分的输入，
+     允许删除评价等于允许「打差评 → 谈条件 → 删掉」的评分操纵。
 
    评分口径（全部由后端计算，前端只读、绝不上报）：
-   · 商品评分 = 该商品全部评价的平均分（无评价 = 「暂无评分」）；
+   · 商品评分 = 该商品**全部款式**评价的平均分（无评价 = 「暂无评分」）；
    · 店铺评分 = 该店铺全部商品评分的平均值。
 
    strict 策略：接口失败如实报错并显示错误提示 + 空态，绝不把评价写进浏览器存储
@@ -22,7 +27,7 @@ import QM_UI from '../core/ui.js';
 import QM_API from '../core/api.js';
 import useRouteCompat from '../composables/useRouteCompat.js';
 
-const { esc, fullTime, artStyle, artHtml, toast, modal, confirmDialog } = QM_UI;
+const { esc, fullTime, artStyle, artHtml, toast, modal } = QM_UI;
 const route = useRouteCompat();
 
 /* 评分档位文案（与星级一一对应，0 不用） */
@@ -38,7 +43,7 @@ const errorMsg = ref('');
 
 const pendingOrders = ref([]);   // 已完成订单（含条目）
 const pendingTotal = ref(0);
-const mineList = ref([]);        // 我的评价
+const mineList = ref([]);        // 我的评价（后端一次返回全部，不分页）
 const mineTotal = ref(0);
 const busy = ref(false);         // 防重复提交（弹窗内表单）
 
@@ -46,6 +51,30 @@ const busy = ref(false);         // 防重复提交（弹窗内表单）
 const pendingTodoCount = computed(() =>
   pendingOrders.value.reduce((n, o) => n + (o.items || []).filter(it => !it.reviewed).length, 0)
 );
+
+/* 「我的评价」分类：**按商品归类**（后端返回全部评价，分类在前端做）。
+   同一商品的不同款式评价归到一张商品卡下，卡片内按评价时间倒序（后端已按 id 倒序下发），
+   卡片之间按「该商品最新一条评价」排序 —— 也就是保持后端下发的先后顺序。 */
+const mineGroups = computed(() => {
+  const groups = new Map();
+  mineList.value.forEach(r => {
+    const pid = (r.product && r.product.id !== undefined && r.product.id !== null)
+      ? r.product.id
+      : (r.productId !== undefined && r.productId !== null ? r.productId : 'unknown');
+    let g = groups.get(pid);
+    if (!g) {
+      g = {
+        productId: pid,
+        title: (r.product && r.product.title) || '商品',
+        art: (r.product && r.product.art) || null,
+        reviews: []
+      };
+      groups.set(pid, g);
+    }
+    g.reviews.push(r);
+  });
+  return Array.from(groups.values());
+});
 
 /* 星级文本：★×n + ☆×(5-n)，评价卡与弹窗共用 */
 const stars = n => '★'.repeat(Math.max(0, Math.min(5, Number(n) || 0))) + '☆'.repeat(5 - Math.max(0, Math.min(5, Number(n) || 0)));
@@ -57,7 +86,8 @@ async function loadPending() {
   pendingTotal.value = d.total || 0;
 }
 async function loadMine() {
-  const d = await QM_API.reviews.mine({ page: 1, size: 20 });
+  /* 后端一次返回全部评价（不分页）——「按商品分类」由前端 mineGroups 完成 */
+  const d = await QM_API.reviews.mine();
   mineList.value = d.list || [];
   mineTotal.value = d.total || 0;
 }
@@ -97,7 +127,8 @@ function reviewModal(order, item) {
       <h3>评价晒单</h3>
       <p class="modal-sub">
         ${esc(item.title)}
-        <br><small>${esc(item.sku || '默认')} · 订单号 ${esc(order.orderNo)}</small>
+        <br><span class="rv-sku-badge" title="本次评价针对该款式">款式：${esc(item.sku || '默认')}</span>
+        <small>订单号 ${esc(order.orderNo)}</small>
       </p>
       <div class="form-row">
         <label>评分</label>
@@ -183,6 +214,7 @@ function reviewModal(order, item) {
   const submitBtn = m.root.querySelector('#rvSubmit');
   submitBtn.onclick = async () => {
     if (busy.value) return;
+    if (!item.orderItemId) { toast('缺少订单条目信息，请刷新页面后重试', 'error'); return; }
     const content = contentEl.value.trim();
     if (!content && !images.length) { toast('请填写评价内容或上传晒单图', 'error'); return; }
     busy.value = true;
@@ -190,8 +222,10 @@ function reviewModal(order, item) {
     submitBtn.textContent = '发布中…';
     try {
       await QM_API.reviews.create({
-        orderId: order.id,
-        productId: item.productId,
+        /* 评价针对「订单条目」= 具体款式：同一商品买了两款就是两行条目、两条评价；
+           orderId / productId / sku 全部由服务端按 orderItemId 推导并快照，前端不上报，
+           避免评价被挂到别的款式上 */
+        orderItemId: item.orderItemId,
         score,
         content,
         images: images.slice(),
@@ -250,22 +284,10 @@ function appendModal(r) {
   };
 }
 
-/* ---------- 删除评价（后端软删除并重算商品 / 店铺评分） ---------- */
-async function removeReview(r) {
-  if (busy.value) return;
-  const ok = await confirmDialog('删除评价', '删除后该评价不再计入商品评分与店铺评分，确定删除吗？', '删除', true);
-  if (!ok) return;
-  busy.value = true;
-  try {
-    await QM_API.reviews.remove(r.id);
-    toast('评价已删除');
-    await refresh();
-  } catch (e) {
-    toast((e && e.message) || '删除失败，请稍后重试', 'error');
-  } finally {
-    busy.value = false;
-  }
-}
+/* ---------- 评价不可删除 ----------
+   接口不提供删除能力（契约见 docs/评价晒单接口文档.md）：评价是商品评分 / 店铺评分的输入，
+   允许买家删除评价就等于允许评分操纵，也会让商品评分在短期内反复跳动。
+   内容写错了用「追加评价」补充说明即可。 */
 
 onMounted(refresh);
 </script>
@@ -324,7 +346,7 @@ onMounted(refresh);
               <div class="oi-info">
                 <h4 class="ellipsis" :title="it.title">{{ it.title }}</h4>
                 <div class="oi-meta">
-                  <span class="oi-sku" :title="it.sku">{{ it.sku || '默认' }}</span>
+                  <span class="oi-sku" :title="it.sku">款式：{{ it.sku || '默认' }}</span>
                   <span class="oi-qty">×{{ it.qty }}</span>
                 </div>
               </div>
@@ -345,51 +367,58 @@ onMounted(refresh);
         </div>
       </div>
 
-      <!-- ===== 我的评价 ===== -->
+      <!-- ===== 我的评价（后端返回全部评价，这里按商品分类展示） ===== -->
       <div v-else>
-        <div v-for="r in mineList" :key="r.id" class="order-card review-card">
+        <!-- 一张卡片 = 一件商品；卡片内逐条列出该商品各款式的评价 -->
+        <div v-for="g in mineGroups" :key="g.productId" class="order-card review-group">
           <div class="review-card-head">
-            <span class="review-card-art" :style="artStyle(r.product && r.product.art)" v-html="artHtml(r.product && r.product.art)"></span>
+            <span class="review-card-art" :style="artStyle(g.art)" v-html="artHtml(g.art)"></span>
             <div class="review-card-title">
-              <h4 class="ellipsis" :title="r.product && r.product.title">{{ (r.product && r.product.title) || '商品' }}</h4>
-              <small>{{ r.sku || '默认' }}<template v-if="r.orderNo"> · 订单号 {{ r.orderNo }}</template></small>
+              <h4 class="ellipsis" :title="g.title">{{ g.title }}</h4>
+              <div class="review-card-tags">
+                <small>共 {{ g.reviews.length }} 条评价 · 每个款式分别评价</small>
+              </div>
             </div>
-            <div class="review-card-score">
+          </div>
+
+          <div v-for="r in g.reviews" :key="r.id" class="review-item">
+            <div class="review-item-head">
               <b class="stars">{{ stars(r.score) }}</b>
-              <small>{{ STAR_TEXT[r.score] || '' }}</small>
+              <small class="review-item-score-text">{{ STAR_TEXT[r.score] || '' }}</small>
+              <span class="rv-sku-badge" title="这条评价对应的款式">款式：{{ r.sku || '默认' }}</span>
             </div>
-          </div>
-          <div class="review-card-body">
-            <p v-if="r.content" class="review-text">{{ r.content }}</p>
-            <p v-else class="review-text review-text-empty">（该评价未填写文字内容）</p>
-            <div v-if="r.images && r.images.length" class="review-imgs static">
-              <span v-for="(u, i) in r.images" :key="i" class="review-img">
-                <img :src="u" alt="晒单图" loading="lazy" />
-              </span>
+            <div class="review-card-body">
+              <p v-if="r.content" class="review-text">{{ r.content }}</p>
+              <p v-else class="review-text review-text-empty">（该评价未填写文字内容）</p>
+              <div v-if="r.images && r.images.length" class="review-imgs static">
+                <span v-for="(u, i) in r.images" :key="i" class="review-img">
+                  <img :src="u" alt="晒单图" loading="lazy" />
+                </span>
+              </div>
+              <p class="review-meta">
+                <small>{{ r.createdAt ? fullTime(r.createdAt) : '' }}<template v-if="r.orderNo"> · 订单号 {{ r.orderNo }}</template><template v-if="r.anonymous"> · 匿名评价</template></small>
+              </p>
+              <div v-if="r.append" class="review-append">
+                <b>追评（{{ r.append.time ? fullTime(r.append.time).slice(0, 16) : '' }}）</b>
+                <p>{{ r.append.content }}</p>
+              </div>
+              <div v-if="r.reply" class="review-reply">
+                <b>商家回复<template v-if="r.reply.time">（{{ fullTime(r.reply.time).slice(0, 16) }}）</template></b>
+                <p>{{ r.reply.content }}</p>
+              </div>
             </div>
-            <p class="review-meta">
-              <small>{{ r.createdAt ? fullTime(r.createdAt) : '' }}<template v-if="r.anonymous"> · 匿名评价</template></small>
-            </p>
-            <div v-if="r.append" class="review-append">
-              <b>追评（{{ r.append.time ? fullTime(r.append.time).slice(0, 16) : '' }}）</b>
-              <p>{{ r.append.content }}</p>
-            </div>
-            <div v-if="r.reply" class="review-reply">
-              <b>商家回复<template v-if="r.reply.time">（{{ fullTime(r.reply.time).slice(0, 16) }}）</template></b>
-              <p>{{ r.reply.content }}</p>
-            </div>
-          </div>
-          <div class="order-foot">
-            <div class="of-sum">
-              <span class="of-count">评价编号 #{{ r.id }}</span>
-            </div>
-            <div class="o-actions">
-              <button v-if="!r.append" class="btn btn-plain btn-sm" @click="appendModal(r)">追加评价</button>
-              <button class="btn btn-plain btn-sm" :disabled="busy" @click="removeReview(r)">删除评价</button>
+            <div class="order-foot">
+              <div class="of-sum">
+                <span class="of-count">评价编号 #{{ r.id }}</span>
+              </div>
+              <div class="o-actions">
+                <button v-if="!r.append" class="btn btn-plain btn-sm" @click="appendModal(r)">追加评价</button>
+                <span v-else class="reviewed-tag">已追评</span>
+              </div>
             </div>
           </div>
         </div>
-        <div v-if="!mineList.length" class="order-card">
+        <div v-if="!mineGroups.length" class="order-card">
           <div class="empty-state">
             <div class="empty-icon">⭐</div>
             <h3>还没有发表过评价</h3>

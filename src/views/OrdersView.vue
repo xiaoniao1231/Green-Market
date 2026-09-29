@@ -48,20 +48,22 @@ const AS_STATUS_TEXT = {
 };
 /* 可申请售后的订单状态（与后端硬校验口径一致：待付款没有钱可退，已取消不成立） */
 const AS_APPLICABLE = ['paid', 'shipped', 'done'];
-/* 售后单映射：orderId → 售后单（GET /after-sales 一次拉全后本地建索引，
-   与售后页共用同一份契约）。接口失败时静默降级为「所有可售后订单都显示『售后服务』」，
+/* 售后单映射：orderId → 售后单（GET /after-sales 一次拉全后本地建索引，与售后页共用同一份契约）。
+   售后**按商品款式申请**，一笔订单可能有多条记录（不同款式各一条），这里只保留一条用于决定按钮文案
+   （优先仍「进行中」的那条）；接口失败时静默降级为「所有可售后订单都显示『售后服务』」，
    不打扰买家浏览订单 —— 真正点击时再由售后页如实报错 */
 const afterSalesByOrder = ref({});
 const isAfterSalesProcessing = a => ['pending', 'agreed', 'returned'].includes(a.status);
 const afterSaleOf = o => afterSalesByOrder.value[String(o.id)] || null;
 async function loadAfterSales() {
   try {
-    const d = await QM_API.afterSales.list({ page: 1, size: 100 });
+    /* 后端一次返回本账号的全部售后商品（不分页 / 不筛选），这里本地建 orderId 索引 */
+    const all = await QM_API.afterSales.list();
     const map = {};
-    (d.list || []).forEach(a => {
+    all.forEach(a => {
       const key = String(a.orderId);
       const cur = map[key];
-      /* 同一订单可能有多条（不同商品各申请一次）：优先展示仍「进行中」的那条 */
+      /* 同一订单可能有多条（不同款式各申请一次）：优先展示仍「进行中」的那条 */
       if (!cur || (isAfterSalesProcessing(a) && !isAfterSalesProcessing(cur))) map[key] = a;
     });
     afterSalesByOrder.value = map;
@@ -80,7 +82,7 @@ const btn = (action, id, text, kind) =>
  * · 待发货：提醒发货 / 售后服务
  * · 待收货：查看物流 / 售后服务 / 确认收货（店家发货后状态转 shipped，按钮自动从「提醒发货」变「查看物流」）
  * · 已完成：售后服务 / 评价晒单 / 再次购买
- * 已提交过售后的订单，入口变成「售后进度」。
+ * 已提交过售后（任意款式）的订单，入口变成「售后进度」；点进去可在售后页按款式查看 / 继续申请。
  */
 function orderActions(o) {
   const a = [];
@@ -177,7 +179,9 @@ function logisticsModal(o, list) {
    点击时带上 orderId 跳过去，由售后页自动打开该订单的申请弹窗或进度弹窗。
    旧实现把申请写进浏览器存储（提示「本机演示」），店家看不到、后端也没有记录，已删除。 */
 
-/* 当前激活页签（初始来自 route.query.status；原版点击页签仅本地切换、不改 URL） */
+/* 当前激活页签：以 URL 的 ?status= 为唯一来源，初始值取自 query.status。
+   原实现点页签只改本地状态、不写 URL，导致从售后页回退时 URL 里没有 status，
+   页签被复位成「全部订单」（详见 switchTab 注释）。 */
 const tab = ref(route.value.query.status || '');
 /* 各页签订单数（GET /orders/counts） */
 const counts = ref({});
@@ -208,9 +212,15 @@ function renderList() {
     : `<div class="order-card"><div class="empty-state"><div class="empty-icon">🧾</div><h3>暂无相关订单</h3><p>去首页挑选好物，下单后订单会显示在这里</p><a class="btn btn-primary" href="#/home">去逛逛</a></div></div>`;
 }
 
+/* 切换页签：把状态写进 URL（replace —— 页签切换不是页面导航，不往历史栈里堆记录），
+   列表刷新交给下面 query.status 的 watch 统一驱动，避免一次切换请求两遍。
+   这样 #/orders?status=done → #/after-sales 用浏览器回退时，URL 仍带 status，
+   页签原样回到「已完成」，而不是落回「全部订单」。 */
 function switchTab(key) {
-  tab.value = key;
-  refresh();
+  if ((route.value.query.status || '') === key) return;
+  const query = Object.assign({}, route.value.query);
+  if (key) query.status = key; else delete query.status;
+  router.replace({ path: '/orders', query }).catch(() => {});
 }
 
 /* 订单列表事件委托（原版 #orderList.onclick，逻辑一致；操作全部走接口后刷新） */
@@ -272,7 +282,8 @@ async function onListClick(e) {
   }
 }
 
-/* 路由 query.status 变化（同一组件复用，如 #/orders ↔ #/orders?status=…）时复位页签并重渲染 */
+/* URL 的 query.status 变化时复位页签并重渲染：它既是切页签时的唯一刷新入口
+   （见 switchTab），也负责从别的页面回退到 #/orders?status=… 时把页签摆正 */
 watch(() => route.value.query.status, v => { tab.value = v || ''; refresh(); });
 
 onMounted(() => { refresh(); });

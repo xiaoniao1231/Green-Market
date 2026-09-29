@@ -37,18 +37,20 @@ const acting = ref(false);
 const AS_APPLICABLE = ['paid', 'shipped', 'done'];
 const AS_PROCESSING = ['pending', 'agreed', 'returned'];
 const canApplyAfterSales = computed(() => AS_APPLICABLE.includes((order.value || {}).status));
-/* 按 productId + sku 匹配条目已有的售后记录（前端不依赖后端条目 id） */
+/* 按「商品 + 款式」匹配该条目的售后记录：售后定位在款式上（productId + sku 是唯一定位键，
+   前端不依赖后端条目 id），同商品的其他款式互不影响 */
 function afterSaleOfItem(it) {
   return afterSales.value.find(a => String(a.productId) === String(it.productId)
     && String(a.sku || '默认') === String(it.sku || '默认')) || null;
 }
-/* 按钮文案：无记录 → 申请售后；处理中 → 售后进度；已了结 → 售后记录 */
+/* 按钮文案：该款式无记录 → 申请售后；处理中 → 售后进度；已了结 → 售后记录 */
 function afterSaleBtnText(it) {
   const a = afterSaleOfItem(it);
   if (!a) return '申请售后';
   return AS_PROCESSING.includes(a.status) ? '售后进度' : '售后记录';
 }
-/* 跳售后页：已有记录则只带 orderId（售后页直接打开进度），否则带条目信息打开申请弹窗 */
+/* 跳售后页（款式级）：该款式已有记录则只带 orderId（售后页直接打开进度弹窗），
+   否则带上 productId + sku，让售后页打开该款式的申请弹窗 */
 function openAfterSales(it) {
   const a = afterSaleOfItem(it);
   let url = '/after-sales?orderId=' + encodeURIComponent(orderId.value);
@@ -65,7 +67,7 @@ const freight = computed(() => Number((order.value && order.value.freight) || 0)
 const discount = computed(() => Number((order.value && order.value.discount) || 0));
 
 /* 底部操作：按订单状态给可用动作（与列表页一致）；
-   可申请售后的状态额外给一个「售后服务」入口（整单维度：进售后页后选择要售后的商品） */
+   可申请售后的状态额外给一个「售后服务」入口（进售后页后选择要售后的商品款式） */
 const actions = computed(() => {
   const s = (order.value || {}).status;
   const asBtn = { action: 'order-after-sales', text: '售后服务' };
@@ -143,7 +145,8 @@ async function onAction(a) {
     /* 评价晒单统一在独立评价页完成（星级 / 内容 / 晒图 / 追评），本页只负责跳转 */
     router.push('/reviews?orderId=' + encodeURIComponent(id));
   } else if (a.action === 'order-after-sales') {
-    /* 售后服务统一在独立售后页完成：带订单号过去，售后页自动打开该订单的申请弹窗 */
+    /* 售后服务统一在独立售后页完成：带订单号过去，售后页自动打开该订单的申请弹窗
+       （逐条款式的按钮会额外带上 productId + sku，直接定位到该款式的申请） */
     router.push('/after-sales?orderId=' + encodeURIComponent(id));
   } else if (a.action === 'order-rebuy') {
     try {

@@ -7,7 +7,6 @@
    ========================================================= */
 import QM_CFG from './config.js';
 import QM_STORE from './store.js';
-import { uploadToOss } from './oss.js';
 
 class HttpError extends Error {
   constructor(message) { super(message); this.name = 'HttpError'; }
@@ -128,7 +127,7 @@ function noteOnline(online) {
    * 兼容只返回 OSS 地址（字符串，或 { url: '...' }）的简易实现。
    * 返回的 fileUrl 即数据库里存的那条 OSS 地址，前端据此渲染可下载的文件气泡。
    */
-  function normalizeFileResult(data, file, fallbackUrl) {
+  function normalizeFileResult(data, file) {
     if (typeof data === 'string') data = { fileUrl: data };
     const d = data || {};
     return {
@@ -136,7 +135,7 @@ function noteOnline(online) {
       /* 后端有的实现把文件名放在 fileName，有的复用 content 列存文件名 */
       fileName: d.fileName || d.content || file.name,
       fileSize: (d.fileSize !== undefined && d.fileSize !== null) ? d.fileSize : file.size,
-      fileUrl: d.fileUrl || d.url || fallbackUrl || '',
+      fileUrl: d.fileUrl || d.url || '',
       sendTime: d.sendTime || ''
     };
   }
@@ -145,7 +144,7 @@ function noteOnline(online) {
   function formatUploadError(e) {
     const msg = String((e && e.message) || '文件发送失败');
     if (/413/.test(msg)) return new Error('文件太大被网关拒绝：请调大 nginx 的 client_max_body_size 与后端 multipart 限制');
-    if (/415|400/.test(msg)) return new Error('文件上传参数有误：后端需要 multipart 字段 file + receiverId（接口未按教程改造？）');
+    if (/415|400/.test(msg)) return new Error('文件上传参数有误：后端需要 multipart 字段 file + receiverId');
     return (e instanceof Error) ? e : new Error(msg);
   }
 
@@ -658,25 +657,35 @@ function noteOnline(online) {
     /* ================= 评价晒单（strict：评价与评分全部以后端为准） =================
        契约要点（详见 docs/评价晒单接口文档.md，后端代码见《评价晒单后端实现代码与教程.md》）：
        · GET    /reviews/pending?page=&size=   → {total,page,size,orders:[{id,orderNo,finishTime,items:[…]}]}
-                                                 （已完成订单，条目带 reviewed 标记）
-       · GET    /reviews/mine?page=&size=      → {total,page,size,list:[评价对象]}
-       · POST   /reviews                       → body {orderId,productId,score,content,images,anonymous}
+                                                 （已完成订单；**条目=款式**，每行带 orderItemId 与 reviewed 标记）
+       · GET    /reviews/mine                  → **全部评价数组**（不分页，分类由前端按商品归类）
+       · POST   /reviews                       → body {orderItemId,score,content,images,anonymous}
        · POST   /reviews/image                 → multipart 字段 file → {url}（晒单图上传 OSS）
        · POST   /reviews/{reviewId}/append     → body {content}（每条评价一次，不改评分）
-       · DELETE /reviews/{reviewId}            → {deleted:true}（软删除并重算评分）
        · POST   /reviews/{reviewId}/reply      → body {content}（仅店主）
        · GET    /products/{productId}/reviews  → {total,page,size,list,summary}（**免登录**，商品详情评价页签）
        · GET    /products/{productId}/rating   → 评分汇总（**免登录**）
 
+       ⭐ **评价粒度 = 订单条目（= 具体款式）**，不是商品：
+       · 待评价列表按 order_items 逐行下发（同一商品的不同款式各占一行），
+         条目的 orderItemId 就是评价的目标，reviewed 也按条目判定；
+       · 发表评价只提交 orderItemId，`sku`（款式文本）由服务端从 order_items 取快照，
+         前端不上报款式，避免「评价挂到别的款式上」；
+       · 商品详情页的评价列表逐条显示「颜色款式」，并可按款式筛选（summary.skus）。
+
        评分口径（后端计算，前端只读、绝不上报）：
-       · 商品评分 = 该商品全部评价的平均分（无评价时后端返回 null → 页面显示「暂无评分」）；
+       · 商品评分 = 该商品**全部款式**评价的平均分（无评价时后端返回 null → 页面显示「暂无评分」）；
        · 店铺评分 = 该店铺全部商品评分的平均值。
 
        ⚠ 一律 strict，**不做本地离线回退**：评价是交易完成后的用户数据（还会改动商品 / 店铺评分），
        接口失败必须如实报错。历史教训同收藏 / 地址 —— 静默写进浏览器存储并提示「已评价」，
-       数据库里根本没有这条记录，刷新就消失，评分也永远不会变。 */
+       数据库里根本没有这条记录，刷新就消失，评分也永远不会变。
+
+       ⚠ 评价**不提供删除接口**：评分是商品评分与店铺评分的输入，允许买家删除评价
+       等于允许「打差评 → 谈条件 → 删掉」的评分操纵，商品评分也会随之反复跳动。
+       内容写错了用「追评」（append）补充说明。 */
     reviews: {
-      /* 待评价订单：已完成订单 + 条目（reviewed=true 的条目前端置灰） */
+      /* 待评价订单：已完成订单 + 条目（**每个条目是一个款式**；reviewed=true 的条目前端置灰） */
       async pending(opts = {}) {
         const data = await call(
           { name: '待评价订单', method: 'GET', path: '/reviews/pending', query: { page: opts.page || 1, size: opts.size || 10 }, token: tokenOf() },
@@ -694,23 +703,35 @@ function noteOnline(online) {
             orderNo: o.orderNo || '',
             finishTime: o.finishTime ? parseTime(o.finishTime) : null,
             items: (o.items || []).map(it => Object.assign({}, it, {
+              /* 条目 ID = 评价目标（款式维度）；兼容后端把条目 ID 命名为 id 的实现 */
+              orderItemId: (it.orderItemId !== undefined && it.orderItemId !== null) ? it.orderItemId : it.id,
+              sku: it.sku || '默认',
               reviewed: !!it.reviewed,
               art: it.art || (it.artImg ? { img: it.artImg } : null)
             }))
           }))
         };
       },
-      /* 我的评价（含晒图 / 追评 / 商家回复） */
-      async mine(opts = {}) {
+      /* 我的评价（含晒图 / 追评 / 商家回复）
+         ⭐ **后端一次返回全部评价（不分页）**，分类在前端做 —— 「我的评价」页签按商品
+         把这些评价归类展示（同一商品的各款式评价归到一张商品卡下）。
+         后端不分页的原因：这份数据是「当前账号写过的评价」，量级很小（几十条），
+         而分组只在前端做得到（后端分组反而要把结构定死，页面调整分类维度就得改接口）；
+         后端仍保留一个安全上限（默认 500 条，见后端文档 §4.2.2）。
+         兼容两种返回：data 为数组（推荐，与购物车 / 地址同风格）或 { total, list }。 */
+      async mine() {
         const data = await call(
-          { name: '我的评价', method: 'GET', path: '/reviews/mine', query: { page: opts.page || 1, size: opts.size || 10 }, token: tokenOf() },
+          { name: '我的评价', method: 'GET', path: '/reviews/mine', query: {}, token: tokenOf() },
           null, { strict: true }
         );
         const d = data || {};
-        const list = (d.list || []).map(reviewFromApi).filter(Boolean);
-        return { total: Number(d.total) || list.length, page: Number(d.page) || opts.page || 1, size: Number(d.size) || opts.size || 10, list };
+        const raw = Array.isArray(d) ? d : (d.list || []);
+        const list = raw.map(reviewFromApi).filter(Boolean);
+        return { total: Number(d.total) || list.length, list };
       },
-      /* 发表评价：payload { orderId, productId, score, content, images, anonymous }
+      /* 发表评价：payload { orderItemId, score, content, images, anonymous }
+         · orderItemId 是「订单里的某一行商品」= 具体款式（同商品不同款式各占一行），
+           服务端据此推导 orderId / productId / shopId / sku 快照，前端不上报这些字段；
          → 返回新建评价对象（含 id）；后端在同一事务里重算商品评分与店铺评分 */
       async create(payload) {
         const data = await call(
@@ -741,13 +762,6 @@ function noteOnline(online) {
         );
         return reviewFromApi(data);
       },
-      /* 删除自己的评价（软删除 + 后端重算评分）→ { deleted: true } */
-      remove(reviewId) {
-        return call(
-          { name: '删除评价', method: 'DELETE', path: '/reviews/' + encodeURIComponent(reviewId), body: {}, token: tokenOf() },
-          null, { strict: true }
-        );
-      },
       /* 商家回复（仅该评价所属店铺的店主；每条评价一次） */
       async reply(reviewId, content) {
         const data = await call(
@@ -757,15 +771,18 @@ function noteOnline(online) {
         return reviewFromApi(data);
       },
       /* 商品评价列表（公开接口，商品详情页「商品评价」页签）
-         opts: { page, size, score, hasImage, sort: 'new' | 'score' }
-         返回 { total, page, size, list, summary:{ rating, reviewCount, goodRate, distribution, shopScore } } */
+         opts: { page, size, score, hasImage, sku, sort: 'new' | 'score' }
+         · sku 为款式筛选（来自 summary.skus 的款式文本，如「曜石黑 / 标准版」），
+           不传即全部款式 —— 让买家能只看自己关心的那个款式的评价；
+         返回 { total, page, size, list, summary:{ rating, reviewCount, goodRate, distribution, shopScore, skus } }
+         list 中每条评价都带 sku（款式文本）与 orderItemId（来源条目） */
       async listByProduct(productId, opts = {}) {
         const data = await call(
           {
             name: '商品评价列表',
             method: 'GET',
             path: '/products/' + encodeURIComponent(productId) + '/reviews',
-            query: { page: opts.page || 1, size: opts.size || 10, score: opts.score, hasImage: opts.hasImage ? 'true' : undefined, sort: opts.sort }
+            query: { page: opts.page || 1, size: opts.size || 10, score: opts.score, hasImage: opts.hasImage ? 'true' : undefined, sku: opts.sku, sort: opts.sort }
           },
           null, { strict: true }
         );
@@ -782,7 +799,13 @@ function noteOnline(online) {
             reviewCount: Number(s.reviewCount) || 0,
             goodRate: Number(s.goodRate) || 0,
             distribution: s.distribution || {},
-            shopScore: (s.shopScore === undefined || s.shopScore === null) ? null : Number(s.shopScore)
+            shopScore: (s.shopScore === undefined || s.shopScore === null) ? null : Number(s.shopScore),
+            /* 款式分布：各款式（sku）的评价条数与平均分，用于渲染「按款式看评价」的筛选条 */
+            skus: (Array.isArray(s.skus) ? s.skus : []).filter(Boolean).map(g => ({
+              sku: g.sku || '默认',
+              count: Number(g.count) || 0,
+              rating: (g.rating === undefined || g.rating === null || g.rating === '') ? null : Number(g.rating)
+            }))
           }
         };
       },
@@ -799,26 +822,42 @@ function noteOnline(online) {
           reviewCount: Number(s.reviewCount) || 0,
           goodRate: Number(s.goodRate) || 0,
           distribution: s.distribution || {},
-          shopScore: (s.shopScore === undefined || s.shopScore === null) ? null : Number(s.shopScore)
+          shopScore: (s.shopScore === undefined || s.shopScore === null) ? null : Number(s.shopScore),
+          skus: (Array.isArray(s.skus) ? s.skus : []).filter(Boolean).map(g => ({
+            sku: g.sku || '默认',
+            count: Number(g.count) || 0,
+            rating: (g.rating === undefined || g.rating === null || g.rating === '') ? null : Number(g.rating)
+          }))
         };
       }
     },
 
     /* ================= 售后服务（strict：售后申请与处理全部以后端为准） =================
        契约要点（详见 docs/售后服务接口文档.md，后端代码见《售后服务后端实现代码与教程.md》）：
-       · GET    /after-sales?status=&page=&size=  → {total,page,size,list}
-       · GET    /after-sales/counts               → {all,processing,refunded,exchanged,refused,canceled}
-       · GET    /after-sales/order/{orderId}      → [售后对象]（订单详情页逐条商品判断）
-       · GET    /after-sales/{afterSaleId}        → 售后对象（含 logs 协商时间线）
+       · GET    /after-sales                      → [售后对象]（**该账号的全部售后商品，一次返回**）
+       · GET    /after-sales/order/{orderId}      → [售后对象]（订单详情页逐条款式判断）
+       · GET    /after-sales/{afterSaleId}        → 售后对象（含 logs 处理时间线）
        · POST   /after-sales                      → body {orderId,productId,sku,type,reason,description,images,qty}
        · POST   /after-sales/image                → multipart 字段 file → {url}（凭证图上传 OSS）
        · POST   /after-sales/{id}/cancel          → 撤销申请（仅 pending）
        · POST   /after-sales/{id}/ship            → body {company,trackingNo}（仅 agreed，非仅退款）
-       · POST   /after-sales/{id}/message         → body {content}（留言，不改状态）
+
+       列表口径（**后端不分页、不按状态过滤，分类交给前端**）：
+       · GET /after-sales 一次性返回当前账号的全部售后单（数组），
+         页签分类（全部 / 处理中 / 已完成 / 已拒绝 / 已撤销）与角标数量都在前端本地算，
+         因此没有 /after-sales/counts，也不存在「切页签重新请求」；
+       · 前端列表页对返回值做本地分组，申请 / 撤销 / 寄回成功后 await refresh() 重拉一次即可。
+
+       定位口径（**售后一定针对某个商品的某个款式**）：
+       · 定位键 = orderId + productId + **sku**（款式文本）三者同时匹配订单快照，sku 必填，
+         匹配不到即报「订单中不存在该商品款式」，后端**不做**「按商品退化取第一条」的猜测；
+       · 同一订单、同一商品的不同款式各自独立申请，互不影响（不存在整单 / 整个商品的售后入口）；
+       · 唯一键 uk_order_sku(order_id, product_id, sku) 是「一个订单的一个款式只能有一条
+         售后记录」的硬约束（撤销 / 被拒后可重新申请，复用同一行）。
 
        金额与件数口径（后端计算，前端只读）：
-       · 退款金额 = 订单条目单价 × 售后件数（换货为 0），前端**不提交金额**；
-       · 件数上限 = 该条目下单数量（order_items.qty）。
+       · 退款金额 = 该款式下单单价 × 售后件数（换货为 0），前端**不提交金额**；
+       · 件数上限 = 该款式下单数量（order_items.qty）。
 
        状态机：pending 待商家处理 →（同意）refunded 已退款 / agreed 待买家寄回
                agreed →（买家寄回）returned 待商家收货 →（商家确认）refunded / exchanged
@@ -828,34 +867,17 @@ function noteOnline(online) {
        静默写进浏览器存储只会造出「前端提示已提交、数据库里没有、店家永远看不到」的假象。
        旧的本地假售后（QM_STORE.afterSales.submit，提示「售后申请已提交（本机演示）」）已删除。 */
     afterSales: {
-      /* 我的售后列表（status 为空 = 全部；页签的「处理中」分组由页面按状态自行拆分） */
-      async list(opts = {}) {
+      /* 我的全部售后单：后端一次返回全部（不分页 / 不筛选），
+         返回数组；页签分类与角标由页面本地统计（AfterSalesView.vue 的 inTab / localCounts） */
+      async list() {
         const data = await call(
-          {
-            name: '售后列表',
-            method: 'GET',
-            path: '/after-sales',
-            query: { status: opts.status, page: opts.page || 1, size: opts.size || 20 },
-            token: tokenOf()
-          },
+          { name: '售后列表', method: 'GET', path: '/after-sales', query: {}, token: tokenOf() },
           null, { strict: true }
         );
-        const d = data || {};
-        return {
-          total: Number(d.total) || 0,
-          page: Number(d.page) || opts.page || 1,
-          size: Number(d.size) || opts.size || 20,
-          list: afterSaleListFromApi(d.list)
-        };
+        /* 契约是数组；兼容后端把数组放在 { list } 里的实现 */
+        return afterSaleListFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
       },
-      /* 各状态计数（页签角标）：接口失败时调用方按 0 处理，不阻塞列表 */
-      counts() {
-        return call(
-          { name: '售后计数', method: 'GET', path: '/after-sales/counts', query: {}, token: tokenOf() },
-          null, { strict: true }
-        );
-      },
-      /* 某订单下的全部售后单（订单详情页逐条商品判断「申请售后 / 售后进度」） */
+      /* 某订单下的全部售后单（订单详情页按「商品 + 款式」判断每条款式的按钮文案） */
       async byOrder(orderId) {
         const data = await call(
           { name: '订单售后', method: 'GET', path: '/after-sales/order/' + encodeURIComponent(orderId), query: {}, token: tokenOf() },
@@ -864,7 +886,7 @@ function noteOnline(online) {
         /* 契约是数组；兼容后端把数组放在 { list } 里的实现 */
         return afterSaleListFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
       },
-      /* 售后详情（含协商时间线 logs） */
+      /* 售后详情（含处理时间线 logs） */
       async get(afterSaleId) {
         const data = await call(
           { name: '售后详情', method: 'GET', path: '/after-sales/' + encodeURIComponent(afterSaleId), query: {}, token: tokenOf() },
@@ -873,10 +895,15 @@ function noteOnline(online) {
         return afterSaleFromApi(data);
       },
       /* 申请售后：payload { orderId, productId, sku, type, reason, description, images, qty }
-         → 返回新建（或复用后重置）的售后对象；后端在同一事务里写申请日志 */
+         sku（款式）必填 —— 售后定位在款式上；→ 返回新建（或复用后重置）的售后对象，
+         后端在同一事务里写申请日志 */
       async create(payload) {
+        if (!payload || payload.orderId === undefined || payload.productId === undefined) {
+          throw new Error('缺少订单或商品信息，无法申请售后');
+        }
+        if (!String(payload.sku || '').trim()) throw new Error('请选择售后款式');
         const data = await call(
-          { name: '申请售后', method: 'POST', path: '/after-sales', body: payload || {}, token: tokenOf() },
+          { name: '申请售后', method: 'POST', path: '/after-sales', body: payload, token: tokenOf() },
           null, { strict: true }
         );
         return afterSaleFromApi(data);
@@ -917,14 +944,6 @@ function noteOnline(online) {
             body: { company: payload.company || '', trackingNo: payload.trackingNo || '' },
             token: tokenOf()
           },
-          null, { strict: true }
-        );
-        return afterSaleFromApi(data);
-      },
-      /* 追加留言（买卖双方同一入口，后端按归属判断身份；不改变状态） */
-      async message(afterSaleId, content) {
-        const data = await call(
-          { name: '售后留言', method: 'POST', path: '/after-sales/' + encodeURIComponent(afterSaleId) + '/message', body: { content }, token: tokenOf() },
           null, { strict: true }
         );
         return afterSaleFromApi(data);
@@ -1269,7 +1288,8 @@ function noteOnline(online) {
          · PUT  /seller/after-sales/{id}/refuse   body {reason}       仅 pending → refused
          · PUT  /seller/after-sales/{id}/receive  body {remark,reshipCompany,reshipNo}
                 仅 returned：退货退款 → refunded；换货 → exchanged（必须给换货重发物流）
-         · POST /seller/after-sales/{id}/message  body {content}      留言，不改状态
+         每笔售后都带商品 + 款式（sku）+ 件数 + 退款金额，店家按款式核实处理；
+         本模块不含文字沟通接口（需要商量时买家走消息中心联系卖家）。
          店铺身份由后端按 shops.owner_user_id 解析，前端不传 shopId（传了也不采纳）。 */
       async afterSales(opts = {}) {
         const data = await call(
@@ -1338,20 +1358,6 @@ function noteOnline(online) {
               reshipCompany: payload.reshipCompany || '',
               reshipNo: payload.reshipNo || ''
             },
-            token: tokenOf()
-          },
-          null, { strict: true }
-        );
-        return afterSaleFromApi(data);
-      },
-      /* 卖家回复买家（不改状态） */
-      async afterSaleMessage(afterSaleId, content) {
-        const data = await call(
-          {
-            name: '回复售后',
-            method: 'POST',
-            path: '/seller/after-sales/' + encodeURIComponent(afterSaleId) + '/message',
-            body: { content },
             token: tokenOf()
           },
           null, { strict: true }
@@ -1551,13 +1557,10 @@ function noteOnline(online) {
         );
       },
       /* 发送文件（文件最终都存在阿里云 OSS，数据库 messages.file_url 存的就是 OSS 地址）：
-         上传方式由 QM_CFG.UPLOAD_MODE 决定（见 core/config.js）：
-         · 'server'（默认）—— 后端转发：文件以 multipart 提交给 POST /messages/file，
-           后端调用 AliyunOSSOperator 上传 OSS，得到地址后以 FILE_MES 落库、WebSocket 推送、返回地址；
-           注意：FormData 由 http() 直接作为 body，Content-Type 交给浏览器自动生成
-           （手动设置会丢失 boundary，后端必然解析失败）。
-         · 'oss-sts' —— 前端直传：GET /oss/sts 取临时凭证 → 浏览器直传 OSS（core/oss.js）
-           → 把 OSS 地址回传后端 /messages/file 登记。 */
+         文件以 multipart 提交给 POST /messages/file，后端调用 AliyunOSSOperator 上传 OSS，
+         得到地址后以 FILE_MES 落库、WebSocket 推送、返回地址。
+         注意：FormData 由 http() 直接作为 body，Content-Type 交给浏览器自动生成
+         （手动设置会丢失 boundary，后端必然解析失败）。 */
       async sendFile(file, receiverId) {
         if (!file) throw new Error('文件不能为空');
         const max = QM_CFG.UPLOAD_MAX_SIZE || 0;
@@ -1567,20 +1570,6 @@ function noteOnline(online) {
         }
         if (!receiverId) throw new Error('接收方账号不能为空');
 
-        if (QM_CFG.UPLOAD_MODE === 'oss-sts') {
-          const { url } = await uploadToOss(file);
-          let data;
-          try {
-            data = await call(
-              { name: '发送文件', method: 'POST', path: '/messages/file', timeout: QM_CFG.UPLOAD_TIMEOUT, body: { fileUrl: url, fileName: file.name, fileSize: file.size, receiverId }, token: tokenOf() },
-              () => { throw new Error('后端未启动，文件发送不可用'); },
-              { strict: true }
-            );
-          } catch (e) { throw formatUploadError(e); }
-          return normalizeFileResult(data, file, url);
-        }
-
-        /* 默认：后端转发（multipart/form-data，字段名 file + receiverId，与 MessagesController 一致） */
         const form = new FormData();
         form.append('file', file, file.name);
         form.append('receiverId', receiverId);
@@ -1592,7 +1581,7 @@ function noteOnline(online) {
             { strict: true }
           );
         } catch (e) { throw formatUploadError(e); }
-        return normalizeFileResult(data, file, '');
+        return normalizeFileResult(data, file);
       },
       connectWebSocket(onMessage, onClose) {
         if (!state.online) return null;

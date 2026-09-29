@@ -55,18 +55,30 @@ const relatedList = ref([]);
 const favTick = ref(0);         // QM_STORE 非响应式：用版本号驱动收藏按钮重算
 
 /* ---------- 商品评价（GET /products/{id}/reviews，公开接口，见 docs/评价晒单接口文档.md） ----------
-   页面只读评分：商品评分 = 该商品全部评价的平均分（后端 products.rating，
+   页面只读评分：商品评分 = 该商品**全部款式**评价的平均分（后端 products.rating，
    无评价为 null → 显示「暂无评分」）；店铺评分 = 该店铺全部商品评分的平均值
    （后端 shops.score，由商品对象里的 shop.score 下发）。
+   ⭐ 评价粒度是「订单条目 = 具体款式」：每条评价都带 sku（款式文本），
+   这里逐条显示款式标签，并支持按款式筛选（summary.skus），
+   让买家能直接看自己关心的那个款式的评价，而不是把不同款式的好评差评混在一起。
    接口失败时如实提示并空态（strict），不使用任何本地演示评价。 */
 const reviewPhase = ref('idle');   // idle / loading / ready / error
 const reviews = ref([]);           // 当前页评价
 const reviewTotal = ref(0);
-const reviewSummary = ref(null);   // { rating, reviewCount, goodRate, distribution, shopScore }
+const reviewSummary = ref(null);   // { rating, reviewCount, goodRate, distribution, shopScore, skus }
 const reviewFilter = ref(0);       // 0 全部 / 5 五星 / 4 四星 / 3 三星
 const reviewHasImage = ref(false); // 只看有晒单图
+const reviewSku = ref('');         // 款式筛选（'' = 全部款式；值为款式文本，如「曜石黑 / 标准版」）
 const reviewPage = ref(1);
 const REVIEW_SIZE = 6;
+
+/* 款式筛选条数据：来自 summary.skus（各款式的评价条数与平均分）；
+   只有一个款式时不展示筛选条（没有筛选意义） */
+const reviewSkuOptions = computed(() => {
+  const s = reviewSummary.value;
+  const list = (s && Array.isArray(s.skus)) ? s.skus.filter(g => g && g.sku) : [];
+  return list.length > 1 ? list : [];
+});
 
 /* 星级文本（评价卡渲染：★×n + ☆×(5-n)） */
 const stars = n => {
@@ -120,6 +132,7 @@ async function loadReviews(pid, mySeq, append = false) {
       size: REVIEW_SIZE,
       score: reviewFilter.value || undefined,
       hasImage: reviewHasImage.value,
+      sku: reviewSku.value || undefined,   // 款式筛选：只看该款式的评价
       sort: 'new'
     });
     if (disposed || mySeq !== seq) return;
@@ -133,7 +146,7 @@ async function loadReviews(pid, mySeq, append = false) {
     reviewPhase.value = 'error';
   }
 }
-/* 切换筛选（评分档位 / 有图）后回到第一页重新拉取 */
+/* 切换筛选（评分档位 / 有图 / 款式）后回到第一页重新拉取 */
 function setReviewFilter(score) {
   reviewFilter.value = score;
   reviewPage.value = 1;
@@ -141,6 +154,13 @@ function setReviewFilter(score) {
 }
 function toggleReviewImage() {
   reviewHasImage.value = !reviewHasImage.value;
+  reviewPage.value = 1;
+  loadReviews(id.value, seq);
+}
+/* 款式筛选：点「款式：xxx」标签只看该款式的评价，再点一次取消（回到全部款式） */
+function setReviewSku(sku) {
+  const next = String(sku || '');
+  reviewSku.value = (reviewSku.value === next) ? '' : next;
   reviewPage.value = 1;
   loadReviews(id.value, seq);
 }
@@ -392,6 +412,7 @@ async function load() {
   reviewPage.value = 1;
   reviewFilter.value = 0;
   reviewHasImage.value = false;
+  reviewSku.value = '';
   reviewSummary.value = null;
   loadReviews(pid, mySeq);
 }
@@ -635,12 +656,24 @@ onBeforeUnmount(() => {
                   <small>店铺评分 {{ shopScoreText }}</small>
                 </div>
                 <div class="rs-filters">
-                  <button :class="{ active: reviewFilter === 0 && !reviewHasImage }" @click="setReviewFilter(0)">全部</button>
+                  <button :class="{ active: reviewFilter === 0 && !reviewHasImage && !reviewSku }" @click="setReviewFilter(0)">全部</button>
                   <button :class="{ active: reviewFilter === 5 }" @click="setReviewFilter(5)">5 星</button>
                   <button :class="{ active: reviewFilter === 4 }" @click="setReviewFilter(4)">4 星</button>
                   <button :class="{ active: reviewFilter === 3 }" @click="setReviewFilter(3)">3 星</button>
                   <button :class="{ active: reviewHasImage }" @click="toggleReviewImage">有图</button>
                 </div>
+              </div>
+
+              <!-- 款式筛选：每个款式一行评价数据，方便买家只看自己关心的款式（评价粒度 = 订单条目/款式） -->
+              <div v-if="reviewSkuOptions.length" class="rs-skus">
+                <span class="rs-skus-label">按款式看评价</span>
+                <button v-for="g in reviewSkuOptions" :key="g.sku"
+                        class="rv-sku-badge clickable" :class="{ active: reviewSku === g.sku }"
+                        :title="reviewSku === g.sku ? '取消款式筛选' : '只看「' + g.sku + '」的评价'"
+                        @click="setReviewSku(g.sku)">
+                  {{ g.sku }}（{{ g.count }}<template v-if="g.rating !== null"> · {{ Number(g.rating).toFixed(1) }} 分</template>）
+                </button>
+                <button v-if="reviewSku" class="rs-skus-clear" @click="setReviewSku(reviewSku)">显示全部款式</button>
               </div>
 
               <div v-if="reviewPhase === 'loading'" class="review-state">评价加载中…</div>
@@ -656,7 +689,13 @@ onBeforeUnmount(() => {
                     <div v-if="r.images && r.images.length" class="review-imgs static">
                       <span v-for="(u, i) in r.images" :key="i" class="review-img"><img :src="u" alt="晒单图" loading="lazy" /></span>
                     </div>
-                    <small>{{ r.createdAt ? fullTime(r.createdAt) : '' }} · 颜色款式：{{ r.sku }}</small>
+                    <!-- 评价对应的款式：点一下只看该款式的评价（再点取消），方便他人定位同款反馈 -->
+                    <div class="rv-item-tags">
+                      <button class="rv-sku-badge clickable" :class="{ active: reviewSku === r.sku }"
+                              :title="reviewSku === r.sku ? '取消款式筛选' : '只看「' + r.sku + '」的评价'"
+                              @click="setReviewSku(r.sku)">款式：{{ r.sku }}</button>
+                      <small>{{ r.createdAt ? fullTime(r.createdAt) : '' }}</small>
+                    </div>
                     <div v-if="r.append" class="review-append">
                       <b>追评（{{ r.append.time ? fullTime(r.append.time).slice(0, 16) : '' }}）</b>
                       <p>{{ r.append.content }}</p>

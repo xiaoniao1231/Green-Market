@@ -6,8 +6,9 @@
    · PUT  /seller/after-sales/{id}/approve  同意（仅退款 → 已退款；退货 / 换货 → 待买家寄回）
    · PUT  /seller/after-sales/{id}/refuse   拒绝（必须写原因，买家端会原样看到）
    · PUT  /seller/after-sales/{id}/receive  确认收货（退货退款 → 已退款；换货 → 换货完成，需重发物流）
-   · POST /seller/after-sales/{id}/message  回复买家（不改状态）
 
+   售后按「商品款式」申请：每笔售后都带商品 + 款式（sku）+ 件数 + 退款金额，
+   店家按款式核实与处理；本页不提供文字沟通入口（需要商量时买家走消息中心联系卖家）。
    店铺身份由后端按 shops.owner_user_id 解析，前端不传 shopId；
    页签计数在已拉取的列表上本地统计（与订单管理页同一做法）。
    后端未实现（404）/ 不可达时提示失败 + 空态，不回退本地假数据。
@@ -42,14 +43,14 @@ const STATUS_TEXT = {
   refused: { text: '已拒绝', cls: 'canceled' },
   canceled: { text: '买家已撤销', cls: 'canceled' }
 };
+/* 时间线动作文案（后端只回 role + action code；售后不含双方留言，只有状态流转留痕） */
 const ACTION_TEXT = {
   apply: '买家提交申请',
   approve: '商家同意',
   refuse: '商家拒绝',
   ship: '买家已寄回商品',
   receive: '商家确认收货并处理',
-  cancel: '买家撤销申请',
-  message: '协商留言'
+  cancel: '买家撤销申请'
 };
 
 /* 状态筛选：进页面时读 ?status=（工作台「待处理售后」卡可带它跳进来） */
@@ -68,9 +69,7 @@ const busy = ref(false);
 
 const stOf = a => STATUS_TEXT[a.status] || STATUS_TEXT.pending;
 const typeOf = a => AS_TYPES[a.type] || { label: a.type || '售后', desc: '' };
-const actionText = l => (l.action === 'message'
-  ? (l.role === 'seller' ? '商家留言' : '买家留言')
-  : (ACTION_TEXT[l.action] || l.action || '处理记录'));
+const actionText = l => ACTION_TEXT[l.action] || l.action || '处理记录';
 
 /* 页签过滤：done = refunded + exchanged（已完成的两条终态合并展示） */
 function inFilter(a, key) {
@@ -264,17 +263,18 @@ function receiveModal(a) {
   };
 }
 
-/* ---------- 详情 / 回复买家 ---------- */
+/* ---------- 详情（时间线 + 全部字段） ---------- */
 function detailModal(a) {
   const m = modal(`
     <div>
       <h3>售后详情</h3>
       <p class="modal-sub">
         售后单号 ${esc(a.afterNo || a.id)} · 订单号 ${esc(a.orderNo)}
-        <br><small>${esc(a.title)} · ${esc(a.sku || '默认')} ×${a.qty}</small>
+        <br><small>${esc(a.title)} · 款式：${esc(a.sku || '默认')} ×${a.qty}</small>
       </p>
       <div class="as-detail">
         <div><span>申请人</span><b>${esc((a.buyer && a.buyer.nickname) || a.userId || '—')}（${esc((a.buyer && a.buyer.userId) || a.userId || '')}）</b></div>
+        <div><span>售后款式</span><b>${esc(a.sku || '默认')}</b></div>
         <div><span>售后类型</span><b>${esc(typeOf(a).label)}</b></div>
         <div><span>处理状态</span><b class="as-status">${esc(stOf(a).text)}</b></div>
         <div><span>售后原因</span><b>${esc(a.reason)}</b></div>
@@ -299,31 +299,10 @@ function detailModal(a) {
             </div>
           </div>`).join('') || '<p class="hint">暂无处理记录</p>'}
       </div>
-      <div class="form-row" style="margin-top:14px">
-        <label>回复买家</label>
-        <textarea id="sdMsg" rows="2" maxlength="500" placeholder="补充处理说明（最多 500 字）"></textarea>
-      </div>
       <div class="modal-actions">
         <button class="btn btn-plain" data-close>关闭</button>
-        <button class="btn btn-primary" id="sdSend">发送回复</button>
       </div>
     </div>`, { wide: true });
-
-  const sendBtn = m.root.querySelector('#sdSend');
-  sendBtn.onclick = async () => {
-    const content = m.root.querySelector('#sdMsg').value.trim();
-    if (!content) { toast('留言内容不能为空', 'error'); return; }
-    sendBtn.disabled = true;
-    try {
-      await QM_API.seller.afterSaleMessage(a.id, content);
-      m.close();
-      toast('回复已发送');
-      await refresh();
-    } catch (e) {
-      toast((e && e.message) || '发送失败，请稍后重试', 'error');
-      sendBtn.disabled = false;
-    }
-  };
 }
 
 /* 未开店账号可直接在本页开店 */
@@ -353,7 +332,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
 
     <template v-if="svc">
       <div class="seller-tip">
-        💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ list.length }} 笔售后。
+        💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ list.length }} 笔售后（售后按商品款式申请，每笔都标明款式与件数）。
         仅退款同意后即退款完成；退货 / 换货需填写寄回地址，等买家寄回后再「确认收货」。
       </div>
 
@@ -412,7 +391,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
                 <span class="so-art" :style="artStyle(a.art)"><span v-html="artHtml(a.art)"></span></span>
                 <div class="so-item-info">
                   <h4>{{ a.title }}</h4>
-                  <small>{{ a.sku || '默认' }}</small>
+                  <small>款式：{{ a.sku || '默认' }}</small>
                 </div>
                 <div class="so-item-price">
                   <span v-html="price(a.price)"></span>
@@ -434,7 +413,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
               <span v-if="a.returnAddress" class="so-discount">寄回地址 <b>{{ a.returnAddress }}</b></span>
             </div>
             <div class="o-actions">
-              <button class="btn btn-plain btn-sm" @click="detailModal(a)">详情 / 回复</button>
+              <button class="btn btn-plain btn-sm" @click="detailModal(a)">详情</button>
               <template v-if="a.status === 'pending'">
                 <button class="btn btn-primary btn-sm" :disabled="busy" @click="approveModal(a)">同意</button>
                 <button class="btn btn-plain btn-sm" :disabled="busy" @click="refuseModal(a)">拒绝</button>

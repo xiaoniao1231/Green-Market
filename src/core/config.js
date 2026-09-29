@@ -45,15 +45,6 @@ const QM_CFG = {
   /** 文件上传专用超时（毫秒）：上传体积大、耗时长，不能用 2.5 秒的普通请求超时 */
   UPLOAD_TIMEOUT: 120000,
   /**
-   * 文件上传方式（数据库中 messages.file_url 存的一律是阿里云 OSS 地址，两种方式结果一致）：
-   * - 'server'（默认，推荐）：把文件以 multipart 提交给后端 POST /messages/file，
-   *   后端调用已有的 AliyunOSSOperator 上传到 OSS，拿到地址后以 FILE_MES 落库并返回。
-   *   优点：前端不需要任何 OSS 配置，也不需要 RAM 角色 / Bucket 跨域，后端配好即用。
-   * - 'oss-sts'：先用后端签发的 STS 临时凭证在浏览器直传 OSS，再把地址回传后端登记。
-   *   优点：大文件不占应用服务器带宽；需后端实现 GET /oss/sts（见 docs/阿里云OSS文件直传-实现教程.md）。
-   */
-  UPLOAD_MODE: 'server',
-  /**
    * 文件大小上限（字节）：前端提前拦截，避免白传一趟。
    * 后端 multipart 限制为 1GB（application.yml），经 nginx 访问时还受
    * nginx.conf 的 client_max_body_size 限制，调大文件上限时三处要同步。

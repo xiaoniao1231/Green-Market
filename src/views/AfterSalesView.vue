@@ -2,18 +2,22 @@
 /* =========================================================
    青集市 · views/AfterSalesView.vue —— 售后服务（#/after-sales）
    数据来源：QM_API.afterSales.*（后端接口）：
-   · GET  /after-sales?status=&page=&size=  我的售后列表
-   · GET  /after-sales/counts               各状态计数（页签角标）
-   · POST /after-sales                      申请售后（orderId + productId + sku 定位订单条目）
+   · GET  /after-sales                      我的全部售后商品（一次返回，不分页 / 不筛选）
+   · POST /after-sales                      申请售后（orderId + productId + sku 定位款式）
    · POST /after-sales/image                上传凭证图（阿里云 OSS）
    · POST /after-sales/{id}/cancel          撤销申请（仅待商家处理）
    · POST /after-sales/{id}/ship            填写寄回物流（仅待买家寄回）
-   · POST /after-sales/{id}/message         追加留言（不改状态）
 
-   金额口径：退款金额 = 订单条目单价 × 售后件数，由后端计算并定格；
-   前端只提交件数（上限 = 该条目下单数量），**绝不提交金额**。
+   **列表分类在前端**：后端把该账号的全部售后单一次性返回，页签（全部 / 处理中 / 已完成 /
+   已拒绝 / 已撤销）与角标数量都由本页本地计算（inTab / localCounts），
+   所以没有「切页签重新请求」这回事，也没有多余的计数接口。
 
-   入口：我的订单「售后服务 / 售后进度」、订单详情的逐条商品按钮、
+   售后**定位在款式（SKU）上**：申请必须指定「订单 + 商品 + 款式」三要素，
+   同一商品的不同款式各自独立申请、互不影响（不存在整单或整个商品的售后入口）。
+   金额口径：退款金额 = 该款式下单单价 × 售后件数，由后端计算并定格；
+   前端只提交件数（上限 = 该款式下单数量），**绝不提交金额**。
+
+   入口：我的订单「售后服务 / 售后进度」、订单详情的逐条款式按钮、
    个人中心「售后服务」（均可带 ?orderId=&productId=&sku= 直接打开申请弹窗）。
 
    strict 策略：接口失败如实报错并显示错误提示 + 空态，**不做本地假成功** ——
@@ -47,15 +51,14 @@ const STATUS_TEXT = {
   refused: { text: '商家已拒绝', cls: 'canceled' },
   canceled: { text: '已撤销', cls: 'canceled' }
 };
-/* 时间线动作文案（后端只回 role + action code） */
+/* 时间线动作文案（后端只回 role + action code；售后不含双方留言，只有状态流转留痕） */
 const ACTION_TEXT = {
   apply: '提交售后申请',
   approve: '商家同意',
   refuse: '商家拒绝',
   ship: '买家已寄回商品',
   receive: '商家确认收货并处理',
-  cancel: '买家撤销申请',
-  message: '协商留言'
+  cancel: '买家撤销申请'
 };
 /* 只有这三种订单状态可以申请售后（后端同样硬校验） */
 const APPLICABLE_ORDER_STATUS = ['paid', 'shipped', 'done'];
@@ -75,8 +78,8 @@ const TABS = [
 const tab = ref('');
 const phase = ref('loading');       // loading / ready / error
 const errorMsg = ref('');
-const list = ref([]);               // 我的售后单（一次拉全，本地按页签分组）
-const counts = ref({});             // 页签角标（GET /after-sales/counts）
+const list = ref([]);               // 我的全部售后单（后端一次返回，本地按页签分组）
+const counts = ref({});             // 页签角标（由 list 本地统计，不额外请求接口）
 const busy = ref(false);            // 防重复提交
 
 /* 页签过滤：处理中 = pending + agreed + returned；已完成 = refunded + exchanged */
@@ -87,7 +90,7 @@ function inTab(a, key) {
   return a.status === key;
 }
 const filtered = computed(() => list.value.filter(a => inTab(a, tab.value)));
-/* 本地兜底计数（counts 接口不可用时用列表自己数） */
+/* 页签计数：全部在本地算（后端只返回全量列表，不做聚合） */
 function localCounts(rows) {
   const c = { all: rows.length, processing: 0, refunded: 0, exchanged: 0, refused: 0, canceled: 0 };
   rows.forEach(a => {
@@ -108,26 +111,20 @@ const countOf = key => {
 };
 
 const stOf = a => STATUS_TEXT[a.status] || STATUS_TEXT.pending;
-const actionText = l => {
-  const base = ACTION_TEXT[l.action] || l.action || '处理记录';
-  if (l.action === 'message') return l.role === 'seller' ? '商家留言' : '买家留言';
-  return base;
-};
+const actionText = l => ACTION_TEXT[l.action] || l.action || '处理记录';
 /* 操作按钮可用性（前端按状态机判断，后端仍硬校验 —— 前端判断只是体验） */
 const canCancel = a => a.status === 'pending';
 const canShip = a => a.status === 'agreed' && a.type !== 'refund';
-const canMessage = a => !!a.status;
 
 /* ---------- 数据加载 ---------- */
 async function refresh() {
   phase.value = 'loading';
   errorMsg.value = '';
   try {
-    const d = await QM_API.afterSales.list({ page: 1, size: 100 });
-    list.value = d.list || [];
-    /* 计数失败不阻塞列表（角标降级为列表本地统计） */
-    try { counts.value = (await QM_API.afterSales.counts()) || localCounts(list.value); }
-    catch (e2) { counts.value = localCounts(list.value); }
+    /* 后端一次性返回本账号的全部售后商品（不分页、不筛选），
+       页签分类与角标在这里本地算 —— 切页签不再请求后端 */
+    list.value = await QM_API.afterSales.list();
+    counts.value = localCounts(list.value);
     phase.value = 'ready';
     await openFromQuery();
   } catch (e) {
@@ -156,12 +153,15 @@ async function openFromQuery() {
   const pid = route.value.query.productId;
   const sku = route.value.query.sku;
   const items = order.items || [];
+  /* 款式定位：productId + sku 必须同时在订单里命中某个款式；匹配不到就如实报错，
+     绝不退化成「按商品找第一条」—— 售后一定是对某个款式的 */
   let item = null;
-  if (pid) {
-    item = items.find(it => String(it.productId) === String(pid) && (!sku || String(it.sku || '默认') === String(sku)))
-      || items.find(it => String(it.productId) === String(pid));
+  if (pid && sku) {
+    item = items.find(it => String(it.productId) === String(pid)
+      && String(it.sku || '默认') === String(sku)) || null;
+    if (!item) { toast('订单中不存在该商品款式', 'error'); return; }
   }
-  /* ① 带商品进来：有售后记录就看进度，没记录才按订单状态决定能否申请 */
+  /* ① 已定位到款式：有售后记录就看进度，没记录才按订单状态决定能否申请 */
   if (item) {
     if (!afterSaleOfItem(order.id, item) && !APPLICABLE_ORDER_STATUS.includes(order.status)) {
       toast('当前订单状态不支持申请售后', 'error');
@@ -176,7 +176,7 @@ async function openFromQuery() {
     progressModal(existing.find(a => ['pending', 'agreed', 'returned'].includes(a.status)) || existing[0]);
     return;
   }
-  /* ③ 订单状态校验通过后进入申请流程：多条商品时先让买家选一件 */
+  /* ③ 订单状态校验通过后进入申请流程：多款式时先让买家选一个款式 */
   if (!APPLICABLE_ORDER_STATUS.includes(order.status)) {
     toast('当前订单状态不支持申请售后', 'error');
     return;
@@ -184,7 +184,7 @@ async function openFromQuery() {
   chooseItemModal(order);
 }
 
-/* 该订单该条目已有的售后记录（按 productId + sku 匹配，前端不依赖后端条目 id） */
+/* 该订单该款式已有的售后记录（按 productId + sku 匹配，与后端款式级定位一致） */
 function afterSaleOfItem(orderId, item) {
   return list.value.find(a => String(a.orderId) === String(orderId)
     && String(a.productId) === String(item.productId)
@@ -195,30 +195,30 @@ function afterSaleOfItem(orderId, item) {
 function pickItem(order, item) {
   const exist = afterSaleOfItem(order.id, item);
   if (exist && ['pending', 'agreed', 'returned'].includes(exist.status)) {
-    toast('该商品已有进行中的售后', 'error');
+    toast('该款式已有进行中的售后', 'error');
     progressModal(exist);
     return;
   }
   applyModal(order, item, exist);
 }
 
-/* 只带 orderId 进来（个人中心入口）：先让买家选一件商品 */
+/* 只带 orderId 进来（个人中心 / 订单列表入口）：先让买家选一个款式 */
 function chooseItemModal(order) {
   const items = order.items || [];
   const m = modal(`
     <div>
-      <h3>选择售后商品</h3>
-      <p class="modal-sub">订单号 ${esc(order.orderNo)} · 一次只能对一件商品申请售后</p>
+      <h3>选择售后款式</h3>
+      <p class="modal-sub">订单号 ${esc(order.orderNo)} · 售后按「商品款式」申请，一次只能选一个款式</p>
       <div class="as-pick">
         ${items.map((it, i) => {
           const exist = afterSaleOfItem(order.id, it);
           const tag = exist ? `<span class="o-tag">${esc((STATUS_TEXT[exist.status] || {}).text || '售后中')}</span>` : '';
           return `<button type="button" class="as-pick-row" data-i="${i}">
             <span class="oi-art" style="${artStyle(it.art)}">${artHtml(it.art)}</span>
-            <span class="as-pick-info"><b>${esc(it.title)}</b><small>${esc(it.sku || '默认')} · ×${it.qty}</small></span>
+            <span class="as-pick-info"><b>${esc(it.title)}</b><small>${esc(it.sku || '默认')} · 该款式 ${it.qty} 件</small></span>
             ${tag}
           </button>`;
-        }).join('') || '<p class="hint">该订单没有可申请售后的商品</p>'}
+        }).join('') || '<p class="hint">该订单没有可申请售后的款式</p>'}
       </div>
       <div class="modal-actions"><button class="btn btn-plain" data-close>关闭</button></div>
     </div>`, { wide: true });
@@ -231,23 +231,29 @@ function chooseItemModal(order) {
   });
 }
 
-/* ---------- 申请弹窗（类型 / 原因 / 件数 / 说明 / 凭证图） ---------- */
+/* ---------- 申请弹窗（款式定位 + 类型 / 原因 / 件数 / 说明 / 凭证图） ---------- */
 function applyModal(order, item, exist) {
-  /* 已退款 / 已换货的条目不允许重复申请（后端同样拒绝，这里先给即时提示） */
+  /* 已退款 / 已换货的款式不允许重复申请（后端同样拒绝，这里先给即时提示） */
   if (exist && ['refunded', 'exchanged'].includes(exist.status)) {
-    toast('该商品售后已完成，不能重复申请', 'error');
+    toast('该款式售后已完成，不能重复申请', 'error');
     progressModal(exist);
     return;
   }
   const maxQty = Number(item.qty) || 1;
+  const skuText = String(item.sku || '默认');
   const isReapply = !!(exist && ['canceled', 'refused'].includes(exist.status));
   const m = modal(`
     <div>
       <h3>${isReapply ? '重新申请售后' : '申请售后'}</h3>
       <p class="modal-sub">
         ${esc(item.title)}
-        <br><small>${esc(item.sku || '默认')} · 订单号 ${esc(order.orderNo)}${isReapply ? ' · 上次申请：' + esc((STATUS_TEXT[exist.status] || {}).text || '') : ''}</small>
+        <br><small>订单号 ${esc(order.orderNo)}${isReapply ? ' · 上次申请：' + esc((STATUS_TEXT[exist.status] || {}).text || '') : ''}</small>
       </p>
+      <div class="form-row">
+        <label>售后款式</label>
+        <input value="${esc(skuText)}" readonly />
+        <small class="form-tip">售后按款式申请：本次只针对该款式，同商品的其他款式互不影响</small>
+      </div>
       <div class="form-row">
         <label>售后类型</label>
         <div class="tag-chips" id="asTypes">
@@ -262,7 +268,7 @@ function applyModal(order, item, exist) {
       <div class="form-row">
         <label>售后件数</label>
         <input type="number" id="asQty" min="1" max="${maxQty}" step="1" value="${maxQty}" />
-        <small class="form-tip">本单该商品共 ${maxQty} 件，退款金额按件数 × 单价由服务端计算</small>
+        <small class="form-tip">本单该款式共 ${maxQty} 件，退款金额按件数 × 该款式单价由服务端计算</small>
       </div>
       <div class="form-row">
         <label>补充说明</label>
@@ -335,6 +341,8 @@ function applyModal(order, item, exist) {
   const submitBtn = m.root.querySelector('#asSubmit');
   submitBtn.onclick = async () => {
     if (busy.value) return;
+    /* 款式是售后定位键，必须存在且非空（正常从订单快照带入，这里只做防御性校验） */
+    if (!skuText.trim()) { toast('请选择售后款式', 'error'); return; }
     const qty = Number(m.root.querySelector('#asQty').value);
     if (!Number.isInteger(qty) || qty < 1 || qty > maxQty) {
       toast(`售后件数必须是 1-${maxQty} 之间的整数`, 'error');
@@ -352,7 +360,7 @@ function applyModal(order, item, exist) {
       const created = await QM_API.afterSales.create({
         orderId: order.id,
         productId: item.productId,
-        sku: item.sku || '默认',
+        sku: skuText,
         type,
         reason: m.root.querySelector('#asReason').value,
         description,
@@ -374,7 +382,7 @@ function applyModal(order, item, exist) {
   };
 }
 
-/* ---------- 进度弹窗（时间线 + 撤销 / 寄回 / 留言） ---------- */
+/* ---------- 进度弹窗（时间线 + 撤销 / 寄回） ---------- */
 function progressModal(a) {
   const st = stOf(a);
   const m = modal(`
@@ -382,9 +390,10 @@ function progressModal(a) {
       <h3>售后进度</h3>
       <p class="modal-sub">
         售后单号 ${esc(a.afterNo || a.id)} · 订单号 ${esc(a.orderNo)}
-        <br><small>${esc(a.title)} · ${esc(a.sku || '默认')} · ×${a.qty}</small>
+        <br><small>${esc(a.title)} · 款式：${esc(a.sku || '默认')} · ×${a.qty}</small>
       </p>
       <div class="as-detail">
+        <div><span>售后款式</span><b>${esc(a.sku || '默认')}</b></div>
         <div><span>售后类型</span><b>${esc((AS_TYPES.find(t => t.key === a.type) || {}).label || a.type)}</b></div>
         <div><span>售后原因</span><b>${esc(a.reason)}</b></div>
         <div><span>处理状态</span><b class="as-status">${esc(st.text)}</b></div>
@@ -408,34 +417,12 @@ function progressModal(a) {
             </div>
           </div>`).join('') || '<p class="hint">暂无处理记录</p>'}
       </div>
-      <div class="form-row" style="margin-top:14px">
-        <label>追加留言</label>
-        <textarea id="asMsg" rows="2" maxlength="500" placeholder="补充说明或追问（最多 500 字）"></textarea>
-      </div>
       <div class="modal-actions">
         <button class="btn btn-plain" data-close>关闭</button>
-        <button class="btn btn-plain" id="asMsgSend">发送留言</button>
         ${canShip(a) ? '<button class="btn btn-primary" id="asShip">填写寄回物流</button>' : ''}
         ${canCancel(a) ? '<button class="btn btn-plain" id="asCancel">撤销申请</button>' : ''}
       </div>
     </div>`, { wide: true });
-
-  const msgBtn = m.root.querySelector('#asMsgSend');
-  msgBtn.onclick = async () => {
-    const content = m.root.querySelector('#asMsg').value.trim();
-    if (!content) { toast('留言内容不能为空', 'error'); return; }
-    msgBtn.disabled = true;
-    try {
-      const updated = await QM_API.afterSales.message(a.id, content);
-      m.close();
-      toast('留言已发送');
-      await refresh();
-      if (updated) progressModal(updated);
-    } catch (e) {
-      toast((e && e.message) || '留言发送失败', 'error');
-      msgBtn.disabled = false;
-    }
-  };
 
   const shipBtn = m.root.querySelector('#asShip');
   if (shipBtn) shipBtn.onclick = () => { m.close(); shipModal(a); };
@@ -557,7 +544,7 @@ onMounted(refresh);
             <div class="oi-info">
               <h4 class="ellipsis" :title="a.title">{{ a.title }}</h4>
               <div class="oi-meta">
-                <span class="oi-sku" :title="a.sku">{{ a.sku || '默认' }}</span>
+                <span class="oi-sku" :title="'款式：' + (a.sku || '默认')">款式：{{ a.sku || '默认' }}</span>
                 <span class="oi-qty">×{{ a.qty }}</span>
                 <span class="o-tag">{{ (AS_TYPES.find(t => t.key === a.type) || {}).label || a.type }}</span>
               </div>
@@ -570,6 +557,7 @@ onMounted(refresh);
           </div>
 
           <div class="as-info">
+            <div><span>售后款式</span><b>{{ a.sku || '默认' }}</b></div>
             <div><span>售后原因</span><b>{{ a.reason }}</b></div>
             <div><span>处理状态</span><b class="as-status">{{ stOf(a).text }}</b></div>
             <div v-if="a.description"><span>补充说明</span><b>{{ a.description }}</b></div>
@@ -615,7 +603,7 @@ onMounted(refresh);
         <div class="empty-state">
           <div class="empty-icon">📋</div>
           <h3>{{ tab ? '该状态下暂无售后单' : '还没有售后记录' }}</h3>
-          <p>在「待发货 / 待收货 / 已完成」的订单里点「售后服务」即可发起申请</p>
+          <p>在「待发货 / 待收货 / 已完成」的订单里点「售后服务」，选择要售后的商品款式即可申请</p>
           <a class="btn btn-primary" href="#/orders">查看我的订单</a>
         </div>
       </div>

@@ -760,6 +760,37 @@
 .review-meta { margin-top: 8px; }
 .review-meta small { color: var(--text-4); font-size: 12px; }
 
+/* ---------- 款式标签（评价粒度 = 订单条目 / 款式） ----------
+   · 商品详情评价卡、评价晒单页（待评价条目、我的评价卡）三处共用；
+   · .clickable 可点击 = 按该款式筛选评价（详情页），激活态高亮。 */
+.rv-sku-badge {
+  display: inline-block; font-size: 12px; line-height: 1.6; color: var(--brand-ink);
+  background: var(--brand-soft); border: 1px solid #ffd9c2; border-radius: var(--radius-pill);
+  padding: 2px 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  vertical-align: middle;
+}
+.rv-sku-badge.clickable { cursor: pointer; transition: all var(--dur) var(--ease); font-family: inherit; }
+.rv-sku-badge.clickable:hover { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(255, 106, 43, .12); }
+.rv-sku-badge.clickable.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+/* 评价卡里的款式 + 时间一行 */
+.rv-item-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.rv-item-tags small { color: var(--text-4); font-size: 12px; }
+/* 「我的评价」卡标题下的款式 + 订单号一行 */
+.review-card-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- 「我的评价」按商品分类（后端一次返回全部评价，前端归类） ----------
+   一张 .review-group 卡片 = 一件商品，卡片内 .review-item = 该商品某个款式的一条评价 */
+.review-group .review-item + .review-item { border-top: 1px dashed var(--border); }
+.review-item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 13px 18px 0; }
+.review-item-head .stars { font-size: 15px; }
+.review-item-head .review-item-score-text { color: var(--text-3); font-size: 12px; }
+
+/* 商品详情 · 按款式看评价的筛选条 */
+.rs-skus { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0 4px; border-bottom: 1px dashed var(--border); margin-bottom: 6px; }
+.rs-skus .rs-skus-label { font-size: 12px; color: var(--text-3); flex: none; }
+.rs-skus .rs-skus-clear { font-size: 12px; color: var(--text-3); background: none; border: none; text-decoration: underline; cursor: pointer; padding: 0 2px; }
+.rs-skus .rs-skus-clear:hover { color: var(--brand-ink); }
+
 /* ========== 账户设置（#/account） ========== */
 .acct-alert {
   background: #fff8ef; border: 1px solid #ffe3c8; border-radius: var(--radius);

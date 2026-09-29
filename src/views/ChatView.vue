@@ -732,8 +732,8 @@ async function onFileInputChange(e) {
   state.uploading = true;
   toast('正在上传「' + file.name + '」' + (fmtSize(file.size) ? '（' + fmtSize(file.size) + '）' : '') + '，请稍候…');
   try {
-    /* 上传到阿里云 OSS + 落库（数据库 file_url 存的就是 OSS 地址）；
-       上传方式见 core/config.js · UPLOAD_MODE，data 含 fileName / fileSize / fileUrl / msgId */
+    /* 文件交给后端，由后端上传阿里云 OSS 后落库（数据库 file_url 存的就是 OSS 地址）；
+       data 含 fileName / fileSize / fileUrl / msgId */
     const data = await QM_API.chat.sendFile(file, peerId);
     const name = (data && data.fileName) || file.name;
     const size = (data && data.fileSize !== undefined && data.fileSize !== null) ? data.fileSize : file.size;

@@ -24,6 +24,9 @@ public class User {
     private String shopId;//所属店铺标识
     private LocalDateTime createdAt;//创建时间
     private String phoneNumber;//手机号
+    private Boolean phoneBound;//手机号是否绑定
+    private LocalDateTime phoneBoundAt;//手机号绑定时间
     private LocalDateTime updatedAt;//资料更新时间
-    private Integer pwdVersion;//密码版本号：每次改密/重置 +1，令此前签发的 JWT 立即失效（见 TokenFilter）
+    private Integer pwdVersion;//密码版本号：每次改密/重置 +1，令此前签发的 JWT 立即失效
+    private LocalDateTime lastPwdChangeAt;//最后修改密码时间
 }

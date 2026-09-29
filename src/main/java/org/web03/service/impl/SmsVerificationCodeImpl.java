@@ -5,12 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.web03.exception.BusinessException;
-import org.web03.pojo.PhoneRegisterRequest;
+import org.web03.pojo.log.PhoneRegisterRequest;
 import org.web03.service.SmsVerificationCodeService;
 
 import java.time.Duration;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 /**
  * 短信验证码服务实现

@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.web03.pojo.PasswordResetRequest;
+import org.web03.pojo.log.PasswordResetRequest;
 import org.web03.pojo.Result;
 import org.web03.service.PasswordResetService;
 

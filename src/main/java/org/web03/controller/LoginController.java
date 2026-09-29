@@ -1,8 +1,8 @@
 package org.web03.controller;
 
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.web03.pojo.LoginInfo;
-import org.web03.pojo.PhoneRegisterRequest;
+import org.web03.pojo.log.LoginInfo;
+import org.web03.pojo.log.PhoneRegisterRequest;
 import org.web03.pojo.Result;
 import org.web03.pojo.User;
 import org.web03.service.LongService;

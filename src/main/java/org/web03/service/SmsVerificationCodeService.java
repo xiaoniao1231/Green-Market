@@ -1,6 +1,6 @@
 package org.web03.service;
 
-import org.web03.pojo.PhoneRegisterRequest;
+import org.web03.pojo.log.PhoneRegisterRequest;
 
 public interface SmsVerificationCodeService {
     String sendSmsCode(PhoneRegisterRequest phoneRegisterRequest);

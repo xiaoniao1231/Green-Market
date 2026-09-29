@@ -2,8 +2,10 @@ package org.web03.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.web03.pojo.Result;
 
 /**
@@ -19,6 +21,21 @@ public class GlobalExceptionHandler {
     public Result handleBusinessException(BusinessException e) {
         log.warn("业务异常: {}", e.getMessage());
         return Result.error(e.getMessage());
+    }
+
+    /**
+     * 请求参数 / 上传部件缺失：例如 multipart 请求没带 file 字段。
+     * 这类异常由 Spring 在进入 Controller 之前抛出，控制器里的 `file == null` 判断根本轮不到，
+     * 因此必须在这里转成可读提示 —— 否则前端只能收到 500 白页（接口文档 6.4 要求给出原因）。
+     */
+    @ExceptionHandler({MissingServletRequestPartException.class, MissingServletRequestParameterException.class})
+    public Result handleMissingParam(Exception e) {
+        log.warn("请求参数缺失: {}", e.getMessage());
+        String name = e instanceof MissingServletRequestPartException part
+                ? part.getRequestPartName()
+                : ((MissingServletRequestParameterException) e).getParameterName();
+        if ("file".equals(name)) return Result.error("请上传文件");
+        return Result.error("请求参数不完整：" + name);
     }
 
     /** 唯一键冲突：账号已存在、手机号已注册、消息重复提交等 */

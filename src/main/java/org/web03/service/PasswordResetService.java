@@ -1,6 +1,6 @@
 package org.web03.service;
 
-import org.web03.pojo.PasswordResetRequest;
+import org.web03.pojo.log.PasswordResetRequest;
 
 /**
  * 忘记密码（短信验证码重置）业务接口

@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.RegisterMapper;
-import org.web03.pojo.PhoneRegisterRequest;
+import org.web03.pojo.log.PhoneRegisterRequest;
 import org.web03.pojo.User;
 import org.web03.service.RegisterService;
 import org.web03.service.SmsVerificationCodeService;

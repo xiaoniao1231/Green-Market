@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
-import org.web03.pojo.PasswordResetRequest;
+import org.web03.pojo.log.PasswordResetRequest;
 import org.web03.pojo.User;
 import org.web03.service.PasswordResetService;
 import org.web03.service.SmsVerificationCodeService;

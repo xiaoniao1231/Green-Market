@@ -8,14 +8,12 @@ import org.web03.exception.BusinessException;
 import org.web03.mapper.EmpMapper;
 import org.web03.pojo.Result;
 import org.web03.pojo.User;
-import org.web03.utils.AliyunOSSOperator;
-import org.web03.utils.CurrentHolder;
+import org.web03.pojo.log.BindPhoneRequest;
+import org.web03.pojo.log.ChangePasswordRequest;
+import org.web03.service.UserAccountService;
 import org.web03.websocket.ChatWebSocketHandler;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 用户与在线状态
@@ -28,9 +26,7 @@ public class UsersController {
     @Autowired
     private ChatWebSocketHandler chatWebSocketHandler;
     @Autowired
-    private AliyunOSSOperator aliyunOSSOperator;
-    @Autowired
-    private EmpMapper empMapper;
+    private UserAccountService userAccountService;
 
 
     //获取在线用户列表
@@ -50,50 +46,36 @@ public class UsersController {
 
     //上传头像
     @PostMapping("/avatar")
-    public Result uploadAvatar(@RequestParam("file") MultipartFile file){
-        String myUserId = CurrentHolder.getCurrentUserId();
-        if (myUserId == null)return Result.error("用户未登录");
-        if (file == null)return Result.error("请上传文件");
-        if(file.getSize() > 10*1024*1024)return Result.error("文件大小不能超过 10MB");
-
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/"))return Result.error("请上传图片文件");
-        try {
-            String url = aliyunOSSOperator.upload(file.getBytes(),file.getOriginalFilename());
-            Map<String,Object> data = new HashMap<>();
-            data.put("url", url);
-            return Result.success(data);
-        } catch (BusinessException e) {
-            /* 凭证缺失等可读原因直接透出，便于前端提示与排查 */
-            return Result.error(e.getMessage());
-        } catch (Exception e) {
-            log.error("上传头像失败: {}", e.getMessage(), e);
-            return Result.error("上传失败：" + e.getMessage());
-        }
+    public Result uploadAvatar(@RequestParam(value = "file", required = false) MultipartFile file){
+        return Result.success(userAccountService.uploadAvatar(file));
     }
 
 
     //当前登录账号的完整资料
     @GetMapping("/me")
     public Result me() {
-        String myUserId = CurrentHolder.getCurrentUserId();
-        if (myUserId == null) return Result.error("用户未登录");
-        User me = empMapper.findByUserId(myUserId);
-        if (me == null) return Result.error("用户不存在");
-        me.setPassword(null);   // 返回体不携带密码
-        return Result.success(me);
+        return Result.success(userAccountService.me());
     }
-
 
     //修改用户信息
     @PutMapping("/profile")
     public Result updateProfile(@RequestBody User user) {
-        String myUserId = CurrentHolder.getCurrentUserId();
-        if (myUserId == null)return Result.error("用户未登录");
-        if (user.getNickname() != null && user.getNickname().trim().isEmpty())return Result.error("用户昵称不能为空");
-        user.setUserId(myUserId);
-        empMapper.updateProfile(user);
+        userAccountService.updateProfile(user);
         return Result.success();
     }
+
+    // 绑定 / 换绑手机号
+    @PostMapping("/phone")
+    public Result bindPhone(@RequestBody BindPhoneRequest request) {
+        userAccountService.bindPhone(request);
+        return Result.success();
+    }
+
+    // 修改密码
+    @PutMapping("/password")
+    public Result changePassword(@RequestBody ChangePasswordRequest request) {
+        return Result.success(userAccountService.changePassword(request));
+    }
+
 
 }

@@ -1,11 +1,9 @@
 package org.web03.mapper;
 
-import org.apache.ibatis.annotations.Update;
-import org.web03.pojo.PhoneRegisterRequest;
+import org.apache.ibatis.annotations.*;
+import org.web03.pojo.log.AccountLog;
+import org.web03.pojo.log.PhoneRegisterRequest;
 import org.web03.pojo.User;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 @Mapper
 public interface EmpMapper {
@@ -14,7 +12,7 @@ public interface EmpMapper {
     User login(User user);
 
     //更新密码并递增密码版本号
-    @Update("update users set password = #{password}, pwd_version = pwd_version + 1, updated_at = now() where user_id = #{userId}")
+    @Update("update users set password = #{password}, pwd_version = pwd_version + 1, last_pwd_change_at = now(), updated_at = now() where user_id = #{userId}")
     int updatePassword(@Param("userId") String userId, @Param("password") String password);
 
     //新密码
@@ -52,4 +50,18 @@ public interface EmpMapper {
     //根据用户ID查询用户信息
     @Select("select * from users where user_id = #{userId}")
     User findByUserId(String myUserId);
+
+    //判断手机号是否被其他用户绑定
+    @Select("select count(*) from users where phone_number = #{phone} and user_id <> #{userId}")
+    int countPhoneBoundByOthers(@Param("phone") String phone, @Param("userId") String userId);
+
+    //更新手机号
+    @Update("update users set phone_number = #{phone}, phone_bound_at = now(), updated_at = now() " +
+            "where user_id = #{userId}")
+    int updatePhone(@Param("userId") String userId, @Param("phone") String phone);
+
+    //插入日志
+    @Insert("insert into account_logs (user_id, action, detail, ip, created_at) "
+            + "values (#{userId}, #{action}, #{detail}, #{ip}, now())")
+    void insertLog(AccountLog accountLog);
 }

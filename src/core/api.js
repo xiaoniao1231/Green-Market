@@ -1038,24 +1038,22 @@ function noteOnline(online) {
 
     /* ================= 浏览足迹（strict：足迹全部以后端为准，不做本地回退） =================
        契约要点（详见 docs/历史足迹接口文档.md，后端代码见《历史足迹后端实现代码与教程.md》）：
-       · GET    /footprints?page=&size=   → {total,page,size,list:[足迹商品对象]}
-                                             （商品对象 + browseTime + browseCount，最近浏览在前）
-       · POST   /footprints               → body {productId}，记录一次浏览（同一商品幂等累加次数）
-       · DELETE /footprints/{productId}   → 删除单条足迹（未浏览过也幂等成功）
-       · DELETE /footprints               → 清空全部足迹
-       三个写接口成功后均无业务数据（data 为空），前端只按 code 判断成败。
+       · GET /footprints?range=&page=&size=  → {total,page,size,list:[足迹商品对象]}
+                                              （商品对象 + browseTime + browseCount，最近浏览在前）
+       · range 是**时间筛选**枚举：all（默认，全部）/ today（今天）/ week（近 7 天）/ month（近 30 天）；
+         非法值由后端静默按 all 处理。时间边界全部由服务端计算，前端不传时间戳。
+       本模块**只提供查询**：记录浏览（写入）不在前端契约内 —— 足迹由后端在商品详情
+       查询链路里顺带落库（见后端教程 §9），因此前端没有任何「记录 / 删除 / 清空」请求。
 
-       ⚠ 一律 strict，**不做本地离线回退**：足迹由服务端按账号保存（详情页浏览时上报、
-       足迹页读取），接口失败必须如实抛出。历史教训同收藏 / 地址 —— 静默写进浏览器存储
-       再提示「已记录」，换个标签页（store 走 sessionStorage）或换设备记录就凭空消失，
-       数据库里根本没有这条数据。
-       · 详情页的 record() 是**静默上报**（fire-and-forget）：调用方自行 catch，
-         足迹记录失败绝不影响商品详情的正常浏览；
-       · 足迹页的 list / remove / clear 失败则如实 toast，不做本地假成功。 */
+       ⚠ 一律 strict，**不做本地离线回退**：足迹由服务端按账号保存，接口失败必须如实抛出
+       （历史教训同收藏 / 地址 —— 静默用浏览器存储兜底只会让用户以为记录还在，
+       换个标签页（store 走 sessionStorage）或换设备就凭空消失，数据库里根本没有这条数据）。 */
     footprints: {
-      async list(page = 1, size = 100) {
+      /* range：all / today / week / month；page、size 保留分页语义
+         （前端固定 page=1、size=200 —— 每账号足迹上限就是 200 条，一次取满即可） */
+      async list(range = 'all', page = 1, size = 200) {
         const data = await call(
-          { name: '浏览足迹列表', method: 'GET', path: '/footprints', query: { page, size }, token: tokenOf() },
+          { name: '浏览足迹列表', method: 'GET', path: '/footprints', query: { range, page, size }, token: tokenOf() },
           null, { strict: true }
         );
         const list = ((data && data.list) || []).map(footprintFromApi).filter(Boolean);
@@ -1065,25 +1063,6 @@ function noteOnline(online) {
           size: (data && data.size) || size,
           list
         };
-      },
-      /* 记录一次浏览：同一商品只保留一条足迹，后端把 browse_count +1、updated_at 刷新为当前时间 */
-      async record(productId) {
-        await call(
-          { name: '记录浏览足迹', method: 'POST', path: '/footprints', body: { productId }, token: tokenOf() },
-          null, { strict: true }
-        );
-      },
-      async remove(productId) {
-        await call(
-          { name: '删除足迹', method: 'DELETE', path: '/footprints/' + encodeURIComponent(productId), token: tokenOf() },
-          null, { strict: true }
-        );
-      },
-      async clear() {
-        await call(
-          { name: '清空足迹', method: 'DELETE', path: '/footprints', body: {}, token: tokenOf() },
-          null, { strict: true }
-        );
       }
     },
 
@@ -1418,16 +1397,7 @@ function noteOnline(online) {
       }
     },
 
-    /* ================= 账户设置（资料 / 手机号 / 密码） =================
-       契约见 docs/账户设置接口文档.md，后端可落地代码见 docs/账户设置后端实现代码与教程.md：
-       · GET  /users/me       —— 当前登录账号的完整资料（账户设置页 #/account 的数据源）；
-       · POST /users/avatar   —— multipart 字段 file，后端上传阿里云 OSS 后返回 { url }；
-       · PUT  /users/profile  —— JSON { nickname, gender, avatar, signature }，只报成败（不回带用户对象）；
-       · POST /users/phone    —— JSON { phone, smsCode, password }，绑定 / 换绑手机号
-                                 （**写接口无业务返回数据**：成功即 code=1 + data=null，
-                                  服务端真值由随后的 GET /users/me 刷新）；
-       · PUT  /users/password —— JSON { oldPassword, newPassword }，改密后返回新令牌。
-       全部 strict：账户数据以服务端为唯一真相，接口失败如实报错，绝不在浏览器里伪造成功。 */
+    /* 账户设置：/users/me、/users/avatar、/users/profile、/users/phone、/users/password（全 strict） */
     user: {
       /* 头像上传：multipart 提交（字段 file），后端把图片传到阿里云 OSS，返回 { url } */
       async uploadAvatar(file) {
@@ -1444,9 +1414,7 @@ function noteOnline(online) {
           throw formatUploadError(e);
         }
       },
-      /* 资料更新：PUT /users/profile，body { nickname, gender, avatar, signature }
-         只提交资料四件套：手机号 / 密码 / 账号名都不走这个接口（各自有专用接口，防越权改写）。
-         响应不带 data（写接口只报成败）：调用方保存后重拉 GET /users/me 取服务端真值。 */
+      /* 资料更新：PUT /users/profile（写接口只报成败，保存后由调用方重拉 /users/me） */
       updateProfile(payload) {
         return call(
           { name: '更新资料', method: 'PUT', path: '/users/profile', body: payload, token: tokenOf() },
@@ -1454,10 +1422,7 @@ function noteOnline(online) {
           { strict: true }
         );
       },
-      /* 当前账号资料：GET /users/me（strict）。成功即把服务端资料写穿到本地登录态，
-         这样刷新页面后个人中心 / 顶部条也能显示真实昵称与头像（登录响应不含手机号等字段）。
-         返回 { userId, nickname, avatar, gender, signature, phoneNumber, phoneBound,
-                phoneBoundAt, shopId, createdAt, updatedAt, lastPwdChangeAt } */
+      /* 当前账号资料：GET /users/me，成功后写穿本地登录态 */
       async me() {
         const data = await call(
           { name: '账号资料', method: 'GET', path: '/users/me', query: {}, token: tokenOf() },
@@ -1466,7 +1431,7 @@ function noteOnline(online) {
         );
         const u = data || {};
         const patch = {};
-        /* 只写穿后端确实返回的字段：undefined 不覆盖本地已有值（后端是旧版本时不至于把资料抹空） */
+        /* 只写穿后端确实返回的字段：undefined 不覆盖本地已有值 */
         ['nickname', 'avatar', 'gender', 'signature', 'shopId', 'phoneNumber'].forEach(k => {
           if (u[k] !== undefined) patch[k] = u[k];
         });
@@ -1477,12 +1442,7 @@ function noteOnline(online) {
         }
         return u;
       },
-      /* 绑定 / 换绑手机号：POST /users/phone，body { phone, smsCode, password }
-         · phone    新手机号（11 位），验证码 scene 用 'bind'（发给新手机号）；
-         · password 当前登录密码：已绑定手机号的账号换绑时后端强制要求（二次身份确认）。
-         后端按项目惯例**不返回业务数据**（成功即 code=1 + data=null）：这里用提交的 phone
-         写穿本地登录态（不重新签发令牌：账号名 userId 不随手机号变化），随后账户设置页会
-         重拉 GET /users/me，以服务端返回的手机号与绑定时间为准。 */
+      /* 绑定 / 修改手机号：POST /users/phone（无业务返回数据，用提交的手机号写穿本地登录态） */
       async bindPhone({ phone, smsCode, password }) {
         const data = await call(
           {
@@ -1495,16 +1455,11 @@ function noteOnline(online) {
           null,
           { strict: true }
         );
-        /* data 为空（data=null）也能工作：用提交的手机号兜底；返回体若带了手机号则优先采用 */
         const phoneNumber = (data && (data.phoneNumber || data.phone)) || phone;
         if (QM_STORE.state.user) QM_STORE.user.update({ phoneNumber, phoneBound: !!phoneNumber });
         return Object.assign({ phoneNumber, phoneBound: !!phoneNumber }, data || {});
       },
-      /* 修改密码：PUT /users/password，body { oldPassword, newPassword }
-         后端改密时 users.pwd_version + 1 → 此前签发的所有令牌立即失效（TokenFilter 会按 pv 拒绝）。
-         因此后端在响应里**重新签发**令牌（data.token），这里立刻换到本地登录态：
-         当前标签页无需重新登录；其它设备上的旧令牌全部作废（这正是改密应有的效果）。
-         返回 { token, pwdVersion }：token 为空表示后端没有重发令牌，调用方须引导重新登录。 */
+      /* 修改密码：PUT /users/password，返回 { token, pwdVersion }；token 为空表示需重新登录 */
       async changePassword({ oldPassword, newPassword }) {
         const data = await call(
           {

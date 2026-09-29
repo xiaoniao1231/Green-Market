@@ -359,12 +359,9 @@ async function load() {
   selected.value = p.skus.map(() => 0);
   dTitle.value = p.title;
   phase.value = 'ready';
-  /* 浏览足迹上报（POST /footprints，契约见 docs/历史足迹接口文档.md 2.2）。
-     静默 fire-and-forget：足迹是辅助数据，接口异常（含后端未实现 404）绝不能打断
-     商品浏览，因此不 await、不 toast，只 catch 掉；同一商品重复打开由后端
-     累加浏览次数并刷新时间，不会产生重复记录。未登录时不发请求（详情页需登录，
-     这里是防御性判断：分享链接直达 / 本地登录态被清时用户仍在页面上）。 */
-  if (QM_STORE.state.user) QM_API.footprints.record(pid).catch(() => {});
+  /* 浏览足迹：本模块只保留查询接口（GET /footprints），前端不再上报 ——
+     足迹写入由后端在商品详情查询链路里顺带完成（见 docs/历史足迹接口文档.md），
+     因此这里只有相关推荐，没有任何足迹请求。 */
   loadRelated(pid, mySeq);
   /* 评价与商品详情并行加载：评价接口（公开）失败不影响详情主体，只让评价页签显示错误态 */
   reviews.value = [];

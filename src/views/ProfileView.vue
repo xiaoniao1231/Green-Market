@@ -5,8 +5,6 @@
    含：登录入口（data-action=open-login/logout 由 App.vue 全局代理处理）、
    地址管理弹窗（新增 / 编辑 / 删除 / 设默认，接口见 docs/地址簿接口文档.md）、
    优惠券展示弹窗（对应预留接口 /coupons）、账户设置入口（#/account）。
-   资料编辑（昵称 / 头像 / 性别 / 签名）已**整合进账户设置页**的「基本资料」表单，
-   本页不再单独提供「编辑资料」按钮，避免同一件事有两个入口。
    ========================================================= */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import QM_UI from '../core/ui.js';
@@ -54,8 +52,7 @@ onBeforeUnmount(() => { offs.forEach(off => { try { off(); } catch (e) { /* 忽�
 
 /* ---------- 头像展示 ----------
    user.avatar 存的是图片完整地址（旧数据可能是 emoji 字符，显示时兼容回退；
-   底色调色盘已移除，不再有 avatarColor 字段）。
-   头像上传 / 资料保存统一在账户设置页（#/account）的「基本资料」表单里完成。 */
+   底色调色盘已移除，不再有 avatarColor 字段）。 */
 /* 判断头像是否为图片地址：https 为 OSS 落库地址，blob: 为弹窗内本地预览地址 */
 const isAvatarImage = (v) => typeof v === 'string' && /^(https?:|blob:)/i.test(v.trim());
 

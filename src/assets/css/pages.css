@@ -67,8 +67,11 @@
 .sort-bar .sort-spacer { flex: 1; }
 .sort-bar .result-count { font-size: 12px; color: var(--text-3); }
 
-/* 搜索页筛选 chips */
+/* 搜索页排序 chips：可点击的排序按钮（选中态描边 + 加粗） */
 .filter-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+.filter-chips .pill { border: none; font-family: inherit; cursor: pointer; }
+.filter-chips .pill:hover { filter: brightness(.96); }
+.filter-chips .pill.active { box-shadow: inset 0 0 0 1.5px currentColor; font-weight: 600; }
 
 /* ---------- 商品详情 ---------- */
 .detail-layout {
@@ -600,11 +603,34 @@
 .fav-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 
 /* ---------- 浏览足迹页（#/footprints，契约见 docs/历史足迹接口文档.md） ---------- */
-/* 工具栏右侧说明：同一商品重复浏览只保留一条记录、只累加次数 */
-.fp-tip { color: var(--text-3); font-size: 12px; }
-/* 商品卡底部的「最近浏览」时间行 —— productCard 的 extra 插槽，渲染在 .pc-info 之后 */
+/* 工具条：左侧「按天查看」胶囊 + 时间筛选 chips + 右侧说明 */
+.fp-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.fp-chip {
+  height: 30px; padding: 0 14px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); background: #fff; color: var(--text-2);
+  font-size: 13px; cursor: pointer; transition: all var(--dur) var(--ease);
+}
+.fp-chip:hover { border-color: var(--brand); color: var(--brand-ink); background: var(--brand-softer); }
+.fp-chip.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+/* 请求进行中：chips 禁用，避免连点造成请求竞态（后到的旧响应覆盖新筛选） */
+.fp-chip:disabled { opacity: .6; cursor: not-allowed; }
+/* 工具条说明：同一商品重复浏览只保留一条记录、只刷新时间 */
+.fp-tip { color: var(--text-3); font-size: 12px; margin-left: auto; }
+
+/* 按天分组：每组 = 日期标题（左描边 + 当日件数）+ 当日商品网格 */
+.fp-group { margin-bottom: 24px; }
+.fp-group:last-child { margin-bottom: 0; }
+.fp-group-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; padding-left: 12px; border-left: 3px solid var(--brand); }
+.fp-group-head b { font-size: 15px; color: var(--text); }
+.fp-group-head small { font-size: 12px; color: var(--text-3); }
+
+/* 商品卡底部的浏览时刻行 —— productCard 的 extra 插槽，渲染在 .pc-info 之后 */
 .fp-time { display: flex; align-items: center; gap: 4px; padding: 9px 13px; border-top: 1px dashed var(--border); font-size: 12px; color: var(--text-2); }
 .fp-time small { color: var(--text-3); }
+@media (max-width: 1080px) {
+  /* 窄屏：说明文案换行到 chips 下方，不再右对齐挤压筛选按钮 */
+  .fp-tip { margin-left: 0; flex-basis: 100%; }
+}
 
 /* ---------- 预留页 ---------- */
 .placeholder-page { text-align: center; padding: 84px 20px; }
@@ -732,12 +758,7 @@
 .review-meta { margin-top: 8px; }
 .review-meta small { color: var(--text-4); font-size: 12px; }
 
-/* =========================================================
-   账户设置（#/account 账户设置页 + 绑定手机号 / 修改密码弹窗）
-   · 左栏账号概览卡 + 右栏设置项（资料 / 手机号 / 密码 / 地址）
-   · 接口不可用时的顶部提示条 .acct-alert
-   契约见 docs/账户设置接口文档.md
-   ========================================================= */
+/* ========== 账户设置（#/account） ========== */
 .acct-alert {
   background: #fff8ef; border: 1px solid #ffe3c8; border-radius: var(--radius);
   padding: 13px 16px; margin-bottom: 16px; font-size: 13px; color: var(--text-2); line-height: 1.8;
@@ -762,20 +783,33 @@
 .acct-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .acct-main .profile-panel { margin-top: 0; }
 
-/* 基本资料内嵌表单（原「编辑资料」弹窗整合到此页）：表单区 + 底部操作按钮 */
+/* 基本资料内嵌表单 */
 .acct-form .form-row:last-of-type { margin-bottom: 10px; }
 .acct-form-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
 .acct-rows { display: flex; flex-direction: column; }
 .acct-rows li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
 .acct-rows li:last-child { border-bottom: none; }
-.acct-rows .acct-label { width: 78px; flex: none; color: var(--text-3); }
+.acct-rows .acct-label { width: 90px; flex: none; color: var(--text-3); }
 .acct-rows .acct-value { flex: 1; min-width: 0; color: var(--text); font-weight: 500; word-break: break-all; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .acct-rows .acct-note { flex: none; max-width: 260px; font-size: 12px; color: var(--text-4); text-align: right; font-style: normal; }
 .acct-rows .btn { flex: none; }
 .acct-tip { font-size: 12px; color: var(--text-3); line-height: 1.8; margin-top: 10px; }
 
-/* 弹窗内的短信验证码按钮（账户设置弹窗使用；LoginView 自带 scoped 同名样式，互不影响） */
+/* 收货地址面板 */
+.acct-addr-panel { display: flex; gap: 16px; align-items: stretch; }
+.acct-addr-main { flex: 1; min-width: 0; }
+.acct-addr-manage { flex: none; align-self: center; white-space: nowrap; }
+.acct-addr-list { display: flex; flex-direction: column; }
+.acct-addr-item { padding: 12px 0; border-bottom: 1px dashed var(--border); }
+.acct-addr-item:last-child { border-bottom: none; }
+.acct-addr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.acct-addr-name { color: var(--text); font-weight: 600; }
+.acct-addr-phone { color: var(--text-2); font-weight: 500; }
+.acct-addr-detail { margin: 4px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.6; word-break: break-all; }
+.acct-empty { font-size: 13px; color: var(--text-3); padding: 12px 0; }
+
+/* 账户设置弹窗内的短信验证码按钮 */
 .sms-btn { flex: none; width: auto; height: 40px; padding: 0 14px; white-space: nowrap; font-size: 13px; }
 
 @media (max-width: 1080px) {

@@ -48,12 +48,12 @@ const routes = [
      带 ?orderId=&productId=&sku= 进入时自动打开该商品的申请弹窗 */
   { path: '/after-sales', name: 'after-sales', component: AfterSalesView },
   { path: '/profile', name: 'profile', component: ProfileView },
-  /* 账户设置：修改资料（含头像）/ 绑定换绑手机号 / 修改密码 / 收货地址
-     （契约见 docs/账户设置接口文档.md） */
+  /* 账户设置：资料 / 手机号 / 密码 / 收货地址（#/account） */
   { path: '/account', name: 'account', component: AccountView },
   { path: '/favorites', name: 'favorites', component: FavoritesView },
-  /* 浏览足迹：详情页浏览时静默上报（POST /footprints），本页读取 / 删除 / 清空
-     （契约见 docs/历史足迹接口文档.md） */
+  /* 浏览足迹：**只读页面**（契约只有 GET /footprints，见 docs/历史足迹接口文档.md）——
+     支持 range 时间筛选（全部 / 今天 / 近 7 天 / 近 30 天）与按天分组展示；
+     足迹写入由后端在商品详情查询链路里顺带完成，前端不上报、也不能删除 / 清空 */
   { path: '/footprints', name: 'footprints', component: FootprintsView },
   { path: '/chat', name: 'chat', component: ChatView },
   { path: '/shop/:name', name: 'shop', component: ShopView },

@@ -275,20 +275,6 @@ async function onGlobalClick(e) {
       }
       break;
     }
-    case 'remove-footprint': {
-      /* 足迹页商品卡的单条删除：足迹没有本地缓存，删除成功后强制重挂载当前视图，
-         由足迹页 onMounted 重新拉取列表（等价于收藏页订阅 store 事件的刷新效果）。
-         契约见 docs/历史足迹接口文档.md 2.3。 */
-      if (!requireLogin()) return;
-      try {
-        await QM_API.footprints.remove(t.dataset.id);
-        toast('已删除该足迹');
-        viewKey.value++;
-      } catch (e) {
-        toast((e && e.message) || '删除足迹失败，请稍后重试', 'error');
-      }
-      break;
-    }
     case 'goto-category': router.push('/category/' + encodeURIComponent(t.dataset.id)); break;
     case 'goto-search': router.push('/search?q=' + encodeURIComponent(t.dataset.q || '')); break;
     case 'goto-shop': {

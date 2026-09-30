@@ -492,7 +492,6 @@ onBeforeUnmount(() => {
       <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/account">账号设置</a><a href="#/after-sales">售后服务</a></div>
       <div class="footer-col"><b>关于我们</b><a href="#/placeholder/平台介绍">平台介绍</a><a href="#/seller">卖家入驻</a><a href="#/chat">联系我们</a></div>
     </div>
-    <p class="copyright">© 2026 玉子市场 · 课程演示项目</p>
   </footer>
 
   <div id="modalRoot"></div>

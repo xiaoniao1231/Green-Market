@@ -34,7 +34,7 @@ function createSmsHelper(root, { phoneSel, codeSel, btnSel, hintSel, scene }) {
       }, 1000);
       if (data && data.smsCode) {
         root.querySelector(codeSel).value = String(data.smsCode);
-        hint.textContent = `演示环境已自动填入验证码：${data.smsCode}`;
+        hint.textContent = `验证码已自动填入：${data.smsCode}`;
       }
     } catch (e) {
       reset();

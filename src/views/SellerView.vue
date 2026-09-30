@@ -161,7 +161,7 @@ function openShopEdit() {
       </div>
       <div class="se-avatar-actions">
         <button class="btn btn-plain btn-sm" id="sePick">更换头像</button>
-        <span class="se-tip">jpg / png，≤10MB，上传后保存到 OSS</span>
+        <span class="se-tip">jpg / png，≤10MB</span>
       </div>
       <label class="se-label" for="seName">店铺名称</label>
       <input id="seName" class="se-name" maxlength="20" placeholder="2-20 个字，修改后全站同步显示" value="${esc(editName.value)}" />
@@ -274,8 +274,6 @@ function nameConflict(name) {
         </div>
       </div>
 
-      <div class="seller-tip">💡 店铺绑定在当前用户账号 <b>@{{ me.username }}</b> 下：你既能以买家身份下单，也能在这里打理店铺，全程只有这一个账号。</div>
-
       <!-- 经营数据：四张卡都可点，分别进商品管理 / 待发货订单 / 全部订单 / 收入明细 -->
       <div class="seller-stats">
         <a class="stat-card" href="#/seller/products" title="去商品管理">
@@ -322,6 +320,8 @@ function nameConflict(name) {
             <!-- 售后管理：买家申请后在这里同意 / 拒绝 / 确认收货并退款或换货
                  （契约见 docs/售后服务接口文档.md 第 3 章） -->
             <a class="seller-nav-card" href="#/seller/after-sales"><span class="s-icon">📋</span><b>售后管理</b><small>退款 · 退货 · 换货</small></a>
+            <!-- 评价管理：查看本店收到的评价并回复（GET /reviews/shop，POST /reviews/{id}/reply） -->
+            <a class="seller-nav-card" href="#/seller/reviews"><span class="s-icon">★</span><b>评价管理</b><small>查看评价 · 回复买家</small></a>
             <a class="seller-nav-card" :href="shopHref"><span class="s-icon">🏪</span><b>店铺主页</b><small>买家看到的样子</small></a>
             <a class="seller-nav-card" href="#/chat"><span class="s-icon">◌</span><b>买家咨询</b><small>在消息中心回复</small></a>
           </div>

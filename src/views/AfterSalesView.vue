@@ -268,7 +268,7 @@ function applyModal(order, item, exist) {
       <div class="form-row">
         <label>售后件数</label>
         <input type="number" id="asQty" min="1" max="${maxQty}" step="1" value="${maxQty}" />
-        <small class="form-tip">本单该款式共 ${maxQty} 件，退款金额按件数 × 该款式单价由服务端计算</small>
+        <small class="form-tip">本单该款式共 ${maxQty} 件，退款金额按件数 × 该款式单价自动计算</small>
       </div>
       <div class="form-row">
         <label>补充说明</label>
@@ -281,7 +281,7 @@ function applyModal(order, item, exist) {
           <div class="review-imgs" id="asImgs"></div>
           <div class="review-upload-actions">
             <button type="button" class="btn btn-plain" id="asPick">选择图片</button>
-            <small>最多 ${IMAGE_MAX} 张，单张不超过 10MB；图片上传至阿里云 OSS</small>
+            <small>最多 ${IMAGE_MAX} 张，单张不超过 10MB</small>
           </div>
           <input type="file" id="asFile" accept="image/*" multiple class="hidden" />
         </div>

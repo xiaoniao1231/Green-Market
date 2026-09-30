@@ -149,7 +149,6 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-if="svc">
-      <div class="seller-tip">💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ list.length }} 笔订单。待发货订单可点「立即发货」，物流轨迹由后端生成；订单已按下单店铺拆分，每笔订单只含本店商品。</div>
 
       <!-- 催发货汇总：有被催订单时才出现（列表已把被催的置顶） -->
       <div v-if="urgedCount" class="seller-tip urge">

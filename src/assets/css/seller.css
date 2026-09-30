@@ -228,8 +228,11 @@ a.stat-card:hover b { color: var(--brand); }
 .panel-more { margin-left: auto; font-size: 12.5px; color: var(--brand-ink); font-weight: 600; }
 .panel-more:hover { color: var(--brand-deep); }
 
-/* 待办事项 */
-.todo-list { display: flex; flex-direction: column; gap: 10px; }
+/* 待办事项：限定在面板框内，项多时列表内部滚动（未超出时不显示滚动条） */
+.todo-list {
+  display: flex; flex-direction: column; gap: 10px;
+  max-height: 300px; overflow-y: auto;
+}
 .todo-list li {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; background: var(--fill); border-radius: var(--radius);

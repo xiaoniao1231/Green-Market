@@ -271,6 +271,16 @@ async function onListClick(e) {
          （已有售后记录时则打开该条的进度弹窗） */
       router.push('/after-sales?orderId=' + encodeURIComponent(id));
       break;
+    case 'goto-reviews':
+      /* 评价晒单统一在独立评价页完成（#/reviews，契约见 docs/评价晒单接口文档.md）：
+         这里只跳转到评价页本身，不自动弹出写评价的弹窗 —— 由用户在待评价列表里
+         自己挑想评价的商品；带 orderId 自动弹窗的入口保留在订单详情页。
+         注意必须 stopPropagation：App.vue 在 document 上挂了全局点击委托，
+         它看到按钮上的 data-id（订单 id）会再拼一次 ?orderId= 覆盖本跳转，
+         导致一进评价页就自动弹出写评价的窗 */
+      router.push('/reviews');
+      e.stopPropagation();
+      break;
     case 'order-rebuy':
       if (o) {
         try {

@@ -66,12 +66,11 @@
 .sort-bar button.active { background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
 .sort-bar .sort-spacer { flex: 1; }
 .sort-bar .result-count { font-size: 12px; color: var(--text-3); }
-
-/* 搜索页排序 chips：可点击的排序按钮（选中态描边 + 加粗） */
-.filter-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
-.filter-chips .pill { border: none; font-family: inherit; cursor: pointer; }
-.filter-chips .pill:hover { filter: brightness(.96); }
-.filter-chips .pill.active { box-shadow: inset 0 0 0 1.5px currentColor; font-weight: 600; }
+/* 当前排序方向箭头：↓ 高→低 / ↑ 低→高（只在当前生效的维度上显示，加粗放大保证一眼可见） */
+.sort-bar .sort-dir {
+  font-style: normal; margin-left: 4px; font-size: 14px; line-height: 1;
+  font-weight: 700; color: var(--brand);
+}
 
 /* ---------- 商品详情 ---------- */
 .detail-layout {

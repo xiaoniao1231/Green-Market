@@ -742,7 +742,7 @@ async function onFileInputChange(e) {
     if (data && data.msgId) sent.id = data.msgId; // 带服务端 msgId，历史合并时可精确去重
     pushLocal(peerId, sent);
     renderActive(); renderContacts();
-    if (!url) toast('文件已发送，但后端未返回 OSS 地址（气泡里将显示「无地址」）', 'error');
+    if (!url) toast('文件已发送，但未能获取文件地址', 'error');
     else toast('已发送「' + name + '」');
   } catch (err) {
     toast(err.message || '文件发送失败', 'error');

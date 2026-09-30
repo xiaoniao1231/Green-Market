@@ -537,7 +537,6 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
     </div>
 
     <template v-if="svc">
-      <div class="seller-tip">💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ listData.length }} 件商品（在售 {{ onSaleCount }} · 已下架 {{ offSaleCount }}）。点击卡片展示图可预览买家视角，卡片上可直接改价 / 上下架，「编辑」修改商品信息与款式图，「详情」编辑图文详情。</div>
 
       <!-- 工具栏：筛选 + 排序 + 搜索（与店铺主页商品区同款控件风格） -->
       <div class="seller-product-toolbar">

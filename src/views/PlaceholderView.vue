@@ -65,7 +65,7 @@ watch(name, v => {
         <p>{{ c.p }}</p>
       </section>
     </div>
-    <p v-else class="placeholder-sub">页面入口已预留，商城后端接口落地后即可接入</p>
+    <p v-else class="placeholder-sub">页面入口已预留，功能即将上线</p>
     <div v-if="!feat.content" class="placeholder-api">
       <h4>📄 规划接口（详见《商城前端接口文档》）</h4>
       <ul v-if="feat.apis.length">

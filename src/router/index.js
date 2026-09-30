@@ -23,6 +23,7 @@ import SellerProductsView from '../views/SellerProductsView.vue';
 import SellerOrdersView from '../views/SellerOrdersView.vue';
 import SellerAfterSalesView from '../views/SellerAfterSalesView.vue';
 import SellerIncomeView from '../views/SellerIncomeView.vue';
+import SellerReviewsView from '../views/SellerReviewsView.vue';
 import ShopView from '../views/ShopView.vue';
 import QM_STORE from '../core/store.js';
 
@@ -63,6 +64,8 @@ const routes = [
   { path: '/seller/orders', name: 'seller-orders', component: SellerOrdersView },
   /* 店家售后管理：同意 / 拒绝 / 确认收货并退款或换货（契约同 docs/售后服务接口文档.md 第 3 章） */
   { path: '/seller/after-sales', name: 'seller-after-sales', component: SellerAfterSalesView },
+  /* 店家评价管理：查看本店收到的评价并回复（GET /reviews/shop，POST /reviews/{id}/reply） */
+  { path: '/seller/reviews', name: 'seller-reviews', component: SellerReviewsView },
   { path: '/seller/income', name: 'seller-income', component: SellerIncomeView },
   { path: '/placeholder/:feature', name: 'placeholder', component: PlaceholderView },
   { path: '/:pathMatch(.*)*', redirect: '/home' }
@@ -71,7 +74,7 @@ const routes = [
 /* 需登录才能访问的页面：商品详情（点击商品）、店铺主页、购物车、订单、个人中心、收藏、消息中心、
    我的店铺（店铺绑定在当前用户账号下，开店后仍是这一个账号，无需独立店家账号；消息统一在消息中心处理）。
    未登录访问时重定向到登录页，并带上 redirect 参数，登录成功后回跳原目标。 */
-const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'checkout', 'pay', 'orders', 'order-detail', 'reviews', 'after-sales', 'profile', 'account', 'favorites', 'footprints', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-after-sales', 'seller-income'];
+const AUTH_REQUIRED = ['detail', 'shop', 'cart', 'checkout', 'pay', 'orders', 'order-detail', 'reviews', 'after-sales', 'profile', 'account', 'favorites', 'footprints', 'chat', 'seller', 'seller-products', 'seller-orders', 'seller-after-sales', 'seller-reviews', 'seller-income'];
 
 const router = createRouter({
   history: createWebHashHistory(),

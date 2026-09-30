@@ -1,15 +1,12 @@
 <script setup>
 /* =========================================================
    青集市 · views/SearchView.vue —— 搜索结果页
-   排序栏（综合 / 销量 / 价格 ↑↓）走后端 /products/search 的 sort 参数；
-   下面两个排序按钮在**已取回的列表**上本地排：
-   · 按销量   → sales 降序；
-   · 按商品评分 → 优先商品级 rating 降序，未下发时回退 shop.score 降序。
-     说明：products 表目前没有商品级 rating 列，项目里唯一的评分数据是 shops.score
-     （店铺评分 = 该店全部商品评分的平均值，随商品对象的 shop.score 下发）；
-     后端补齐 rating 后前端无需再改，会自动优先用它。后端 search 不支持按评分排序，
-     因此这个维度只能在本地排。
-   一次取回的条数不能太少，否则本地排序的样本不全。
+   排序栏：综合 / 销量 / 价格 / 评分。
+   · 综合：保持后端返回的默认顺序；
+   · 销量 / 价格 / 评分：都在已取回的列表上本地排序，点第一下是降序、
+     再点一下切升序、如此循环；切到别的维度时重新从降序开始。
+   评分取值优先商品级 rating，未下发时回退店铺评分 shop.score（后端 search
+   不支持这两个维度，故本地排；一次取 200 条，覆盖课程项目的商品量）。
    ========================================================= */
 import { computed, onMounted, ref, watch } from 'vue';
 import QM_UI from '../core/ui.js';
@@ -22,19 +19,18 @@ const route = useRouteCompat();
 /* 单次取回条数：本地排序依赖已取回的数据，取 200 条覆盖课程项目的商品量 */
 const FETCH_SIZE = 200;
 
-const sort = ref('default');
+/* 排序维度：default 综合 / sales 销量 / price 价格 / rating 评分；order：desc 降序 / asc 升序 */
+const sortKey = ref('default');
+const sortOrder = ref('desc');
+
 const list = ref([]);
 const total = ref(0);
-
-/* 本地排序维度：'' 不排（保持后端顺序）/ 'sales' 按销量 / 'rating' 按商品评分 */
-const rankBy = ref('');
 
 const num = v => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-/* 评分取值：优先商品级 rating（后端补齐后自动生效，前端无需再改），
-   没有时回退店铺评分 shop.score（该店全部商品评分的平均值）；都缺按 0，排最后 */
+/* 评分取值：优先商品级 rating（后端补齐后自动生效），没有时回退店铺评分 shop.score；都缺按 0 */
 const scoreOf = p => {
   const r = p.rating;
   if (r !== undefined && r !== null && r !== '') {
@@ -46,9 +42,11 @@ const scoreOf = p => {
 
 const shown = computed(() => {
   const arr = list.value.slice();
-  if (rankBy.value === 'sales') return arr.sort((a, b) => num(b.sales) - num(a.sales));
-  if (rankBy.value === 'rating') return arr.sort((a, b) => scoreOf(b) - scoreOf(a));
-  return arr;
+  const dir = sortOrder.value === 'asc' ? 1 : -1;
+  if (sortKey.value === 'sales') return arr.sort((a, b) => (num(a.sales) - num(b.sales)) * dir);
+  if (sortKey.value === 'price') return arr.sort((a, b) => (num(a.price) - num(b.price)) * dir);
+  if (sortKey.value === 'rating') return arr.sort((a, b) => (scoreOf(a) - scoreOf(b)) * dir);
+  return arr; // 综合：保持后端顺序
 });
 
 const cardsHtml = computed(() => (shown.value.length
@@ -59,8 +57,7 @@ const q = computed(() => route.value.query.q || '');
 
 async function load() {
   try {
-    const data = await QM_API.products.search(q.value, Object.assign({ page: 1, size: FETCH_SIZE }, sort.value === 'default' ? {} : { sort: sort.value }));
-    /* 后端返回 {code:1,data:null} 时 data.list 会抛 TypeError，导致搜索结果页整页空白 */
+    const data = await QM_API.products.search(q.value, { page: 1, size: FETCH_SIZE });
     list.value = (data && data.list) || [];
     total.value = (data && data.total) || 0;
   } catch (e) {
@@ -70,18 +67,18 @@ async function load() {
   }
 }
 
-function setSort(key) {
-  sort.value = key;
-  load();
-}
+/* 当前排序方向：↓ 高→低（降序）/ ↑ 低→高（升序） */
+const dirArrow = computed(() => (sortOrder.value === 'desc' ? '↓' : '↑'));
 
-/* 点击排序按钮：再点一次取消（回到后端返回的顺序） */
-function toggleRank(key) {
-  rankBy.value = rankBy.value === key ? '' : key;
+/* 点排序按钮：同一维度再点切换升降序（降序 → 升序 → 降序…），换维度从降序开始 */
+function onSort(key) {
+  if (key === 'default') { sortKey.value = 'default'; sortOrder.value = 'desc'; return; }
+  if (sortKey.value === key) sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc';
+  else { sortKey.value = key; sortOrder.value = 'desc'; }
 }
 
 /* 搜索关键词变化（同一组件复用）时重新搜索并复位排序 */
-watch(q, () => { sort.value = 'default'; rankBy.value = ''; load(); });
+watch(q, () => { sortKey.value = 'default'; sortOrder.value = 'desc'; load(); });
 onMounted(load);
 </script>
 
@@ -94,17 +91,19 @@ onMounted(load);
       </div>
     </div>
     <div class="sort-bar" id="sortBar">
-      <button :class="{ active: sort === 'default' }" data-sort="default" @click="setSort('default')">综合</button>
-      <button :class="{ active: sort === 'sales' }" data-sort="sales" @click="setSort('sales')">销量</button>
-      <button :class="{ active: sort === 'priceAsc' }" data-sort="priceAsc" @click="setSort('priceAsc')">价格 ↑</button>
-      <button :class="{ active: sort === 'priceDesc' }" data-sort="priceDesc" @click="setSort('priceDesc')">价格 ↓</button>
+      <button :class="{ active: sortKey === 'default' }" data-sort="default" @click="onSort('default')">综合</button>
+      <button :class="{ active: sortKey === 'sales' }" data-sort="sales" @click="onSort('sales')">
+        销量<i v-if="sortKey === 'sales'" class="sort-dir">{{ dirArrow }}</i>
+      </button>
+      <button :class="{ active: sortKey === 'price' }" data-sort="price" @click="onSort('price')">
+        价格<i v-if="sortKey === 'price'" class="sort-dir">{{ dirArrow }}</i>
+      </button>
+      <button :class="{ active: sortKey === 'rating' }" data-sort="rating" @click="onSort('rating')"
+              title="按商品评分排序：后端下发商品评分时用它，未下发则回退店铺评分">
+        评分<i v-if="sortKey === 'rating'" class="sort-dir">{{ dirArrow }}</i>
+      </button>
       <span class="sort-spacer"></span>
       <span class="result-count" id="resultCount">共 {{ total }} 件相关商品</span>
-    </div>
-    <div class="filter-chips">
-      <button type="button" class="pill pill-orange" :class="{ active: rankBy === 'sales' }" @click="toggleRank('sales')">按销量</button>
-      <button type="button" class="pill pill-green" :class="{ active: rankBy === 'rating' }" @click="toggleRank('rating')"
-              title="按商品评分排序：后端下发商品评分时用它，未下发则回退店铺评分">按商品评分</button>
     </div>
     <div id="searchResults" class="product-grid large" v-html="cardsHtml"></div>
   </div>

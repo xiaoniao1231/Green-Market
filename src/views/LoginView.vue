@@ -245,7 +245,7 @@ async function requestSms(scene) {
     /* 演示环境：后端把验证码放在 data.smsCode 返回，自动填入便于联调 */
     if (data && data.smsCode) {
       SMS_CODE_REF[scene]().value = String(data.smsCode);
-      smsHint.value[scene] = `演示环境已自动填入验证码：${data.smsCode}`;
+      smsHint.value[scene] = `验证码已自动填入：${data.smsCode}`;
     }
   } catch (e) {
     resetSmsBtn(scene);

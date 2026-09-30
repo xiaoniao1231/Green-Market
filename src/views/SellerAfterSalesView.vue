@@ -224,7 +224,7 @@ function receiveModal(a) {
         <div class="form-row">
           <label>换货运单号</label>
           <input id="scNo" maxlength="50" placeholder="仅字母、数字与连字符" />
-        </div>` : `<p class="seller-tip">确认收货后，本单进入「已退款」，退款金额 ${price(a.refundAmount)}（台账记录，不接真实支付网关）。</p>`}
+        </div>` : `<p class="seller-tip">确认收货后，本单进入「已退款」，退款金额 ${price(a.refundAmount)}。</p>`}
       <div class="form-row">
         <label>处理备注</label>
         <textarea id="scRemark" rows="2" maxlength="200" placeholder="选填，买家可见（最多 200 字）"></textarea>
@@ -331,11 +331,6 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
     </div>
 
     <template v-if="svc">
-      <div class="seller-tip">
-        💡 当前店铺：<b>{{ svc.shopName }}</b>，共 {{ list.length }} 笔售后（售后按商品款式申请，每笔都标明款式与件数）。
-        仅退款同意后即退款完成；退货 / 换货需填写寄回地址，等买家寄回后再「确认收货」。
-      </div>
-
       <div v-if="pendingCount || returnedCount" class="seller-tip urge">
         🔔
         <template v-if="pendingCount">有 <b>{{ pendingCount }}</b> 笔售后待处理</template>

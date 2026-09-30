@@ -35,6 +35,12 @@ const STAR_TEXT = ['', '差评', '较差', '一般', '较好', '好评'];
 const IMAGE_MAX = 6;
 const IMAGE_MAX_SIZE = 10 * 1024 * 1024;
 
+/* 点击商品图 / 商品名 → 跳商品详情并预选该订单条目对应的款式（详情页按 ?sku= 解析选中；
+   与商品详情页 skuText() 的「 / 」连接口径一致，见 DetailView.vue） */
+const itemHref = it => (it.productId !== undefined && it.productId !== null && it.productId !== '')
+  ? '#/detail/' + encodeURIComponent(it.productId) + '?sku=' + encodeURIComponent(it.sku || '')
+  : '#';
+
 /* 页签：pending 待评价 / mine 我的评价 */
 const tab = ref('pending');
 /* 页面状态：loading 加载中 / ready 就绪 / error 接口失败（后端未实现或不可达） */
@@ -148,7 +154,7 @@ function reviewModal(order, item) {
           <div class="review-imgs" id="rvImgs"></div>
           <div class="review-upload-actions">
             <button type="button" class="btn btn-plain" id="rvPick">选择图片</button>
-            <small>最多 ${IMAGE_MAX} 张，单张不超过 10MB；图片上传至阿里云 OSS</small>
+            <small>最多 ${IMAGE_MAX} 张，单张不超过 10MB</small>
           </div>
           <input type="file" id="rvFile" accept="image/*" multiple class="hidden" />
         </div>
@@ -342,9 +348,9 @@ onMounted(refresh);
           </div>
           <div class="order-body review-order-body">
             <div v-for="(it, i) in (o.items || [])" :key="i" class="oi-row">
-              <span class="oi-art" :style="artStyle(it.art)" v-html="artHtml(it.art)"></span>
+              <a class="oi-art" :href="itemHref(it)" :style="artStyle(it.art)" v-html="artHtml(it.art)"></a>
               <div class="oi-info">
-                <h4 class="ellipsis" :title="it.title">{{ it.title }}</h4>
+                <h4 class="ellipsis" :title="it.title"><a :href="itemHref(it)">{{ it.title }}</a></h4>
                 <div class="oi-meta">
                   <span class="oi-sku" :title="it.sku">款式：{{ it.sku || '默认' }}</span>
                   <span class="oi-qty">×{{ it.qty }}</span>

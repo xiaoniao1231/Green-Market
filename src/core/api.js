@@ -115,8 +115,8 @@ function noteOnline(online) {
     }
     // HTTP 错误（404：后端接口尚未实现；500：服务异常…）
     if (strict || !mockFn) {
-      if (res.status === 404) throw new Error('该功能后端接口尚未实现（404）');
-      throw new Error(res.json && res.json.msg ? res.json.msg : '后端返回错误（' + res.status + '）');
+      if (res.status === 404) throw new Error('该功能暂未开放，请稍后再试');
+      throw new Error(res.json && res.json.msg ? res.json.msg : '请求失败（' + res.status + '），请稍后重试');
     }
     return mockFn();
   }
@@ -769,6 +769,50 @@ function noteOnline(online) {
           null, { strict: true }
         );
         return reviewFromApi(data);
+      },
+      /* 店家视角：本店收到的评价列表（GET /reviews/shop，店铺身份由后端按 owner_user_id 解析）
+         opts: { page, size, productId, replyStatus: all|unreplied|replied|appended, score: 1-5 }
+         匿名评价对店家也隐藏昵称（后端 toVO(..., false)）。 */
+      async shopList(opts = {}) {
+        const data = await call(
+          {
+            name: '本店评价列表', method: 'GET', path: '/reviews/shop',
+            query: {
+              page: opts.page || 1, size: opts.size || 20,
+              productId: opts.productId,
+              replyStatus: opts.replyStatus && opts.replyStatus !== 'all' ? opts.replyStatus : undefined,
+              score: opts.score
+            },
+            token: tokenOf()
+          },
+          null, { strict: true }
+        );
+        const d = data || {};
+        const list = (d.list || []).map(reviewFromApi).filter(Boolean);
+        return {
+          total: Number(d.total) || list.length,
+          page: Number(d.page) || opts.page || 1,
+          size: Number(d.size) || opts.size || 20,
+          list
+        };
+      },
+      /* 店家视角：本店各商品的评价分组统计（GET /reviews/shop/groups）
+         返回 [{ productId, title, art, total, replied, unreplied, withAppend }] */
+      async shopGroups() {
+        const data = await call(
+          { name: '本店评价分组', method: 'GET', path: '/reviews/shop/groups', token: tokenOf() },
+          null, { strict: true }
+        );
+        const arr = Array.isArray(data) ? data : (data && data.list) || [];
+        return arr.map(g => ({
+          productId: g.productId,
+          title: g.title || '',
+          art: g.art || null,
+          total: Number(g.total) || 0,
+          replied: Number(g.replied) || 0,
+          unreplied: Number(g.unreplied) || 0,
+          withAppend: Number(g.withAppend) || 0
+        }));
       },
       /* 商品评价列表（公开接口，商品详情页「商品评价」页签）
          opts: { page, size, score, hasImage, sku, sort: 'new' | 'score' }

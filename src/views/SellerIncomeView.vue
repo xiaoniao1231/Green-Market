@@ -59,8 +59,6 @@ onMounted(refresh);
     </div>
 
     <template v-if="svc">
-      <div class="seller-tip">💡 收入口径：只统计<b>已付款及之后</b>的订单（待发货 / 待收货 / 已完成），排除未付款与已取消的订单。</div>
-
       <div class="seller-stats income-stats">
         <div class="stat-card"><b>¥{{ fmt(revenue) }}</b><span>累计收入</span></div>
         <div class="stat-card"><b>{{ orderCount }}</b><span>已结算订单</span></div>

@@ -396,6 +396,23 @@ async function load() {
   }
   product.value = p;
   selected.value = p.skus.map(() => 0);
+  /* 从 URL 预选款式（评价晒单 / 订单等入口带 ?sku=款式文本）：按「 / 」分段逐组匹配，
+     命中即选中对应款式，并把主图 / 缩略图联动到该款式图；未命中保持默认第一项 */
+  const skuParam = route.value.query.sku;
+  if (skuParam) {
+    const parts = String(skuParam).split(' / ').map(s => s.trim());
+    selected.value = p.skus.map((g, gi) => {
+      const want = parts[gi];
+      if (!want) return 0;
+      const idx = (g.values || []).findIndex(v => valOf(v) === want);
+      return idx >= 0 ? idx : 0;
+    });
+    const hitGroup = selected.value.findIndex((vi, gi) => {
+      const v = (p.skus[gi] && p.skus[gi].values) ? p.skus[gi].values[vi] : null;
+      return !!(v && valImg(v));
+    });
+    if (hitGroup >= 0) lastSkuGroup.value = hitGroup;
+  }
   dTitle.value = p.title;
   phase.value = 'ready';
   /* 浏览足迹：登录用户加载详情成功后向后端上报一次浏览（POST /footprints，
@@ -678,7 +695,7 @@ onBeforeUnmount(() => {
 
               <div v-if="reviewPhase === 'loading'" class="review-state">评价加载中…</div>
               <div v-else-if="reviewPhase === 'error'" class="review-state review-state-error">
-                评价加载失败：后端评价接口暂不可用（契约见《评价晒单接口文档》）
+                评价加载失败，请稍后重试
               </div>
               <template v-else>
                 <div v-for="r in reviews" :key="r.id" class="comment-item">

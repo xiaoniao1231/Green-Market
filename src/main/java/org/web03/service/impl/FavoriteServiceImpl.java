@@ -86,11 +86,11 @@ public class FavoriteServiceImpl implements FavoriteService {
         }
 
         if (favoriteMapper.exists(userId, productId) > 0) {
-            log.info("{} 已收藏商品 {} ", userId, productId);
+            log.debug("{} 已收藏商品 {} ", userId, productId);
             return;
         }
         favoriteMapper.insert(userId, productId);
-        log.info("{} 收藏商品 {}", userId, productId);
+        log.debug("{} 收藏商品 {}", userId, productId);
     }
 
     //取消收藏
@@ -98,7 +98,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     public void remove(Integer productId) {
         String userId = currentUser();
         int rows = favoriteMapper.deleteOne(userId, productId);
-        log.info("{} 取消收藏商品 {} (物理删除 {} 行)", userId, productId, rows);
+        log.debug("{} 取消收藏商品 {} (物理删除 {} 行)", userId, productId, rows);
 
     }
 
@@ -107,7 +107,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     public void clear() {
         String userId = currentUser();
         int rows = favoriteMapper.clear(userId);
-        log.info("{} 清空收藏夹 (物理删除 {} 行)", userId, rows);
+        log.debug("{} 清空收藏夹 (物理删除 {} 行)", userId, rows);
 
     }
 

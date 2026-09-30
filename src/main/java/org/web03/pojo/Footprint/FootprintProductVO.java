@@ -27,5 +27,4 @@ public class FootprintProductVO {
     private Integer onSale;                   // 是否在售：1 在售 / 0 已下架
     private Integer deleted;                  // 软删除：恒为 0（列表已过滤）
     private String browseTime;                // 最近浏览时间（yyyy-MM-dd HH:mm:ss）
-    private Integer browseCount;              // 累计浏览次数
 }

@@ -75,11 +75,13 @@ public class CartServiceImpl implements CartService {
         String userId = currentUser();
         // 同一商品只能给 1 件秒杀额度（与下单口径一致）：多个款式也只有一条能享受
         Set<Integer> flashGiven = new HashSet<>();
+        // 秒杀额度一次查出（原先每个条目查一次库，是 /cart 比其它鉴权接口慢的主因）
+        Set<Integer> usedToday = flashUsageService.usedToday(userId);
         List<CartItemVO> list = new ArrayList<>();
         for(CartItem row : cartMapper.listByUserId(userId)){
-            list.add(toVo(row, userId, flashGiven));
+            list.add(toVo(row, flashGiven, usedToday));
         }
-        log.info("获取购物车列表成功: {}", list.size());
+        log.debug("获取购物车列表成功: {}", list.size());
         return list;
     }
 
@@ -102,7 +104,7 @@ public class CartServiceImpl implements CartService {
         cartItem.setPrice(cartAddRequest.getPrice());
         cartMapper.upsert(cartItem);
 
-        log.info("加入购物车成功: {}", cartItem.getId());
+        log.debug("加入购物车成功: {}", cartItem.getId());
 
     }
 
@@ -114,7 +116,7 @@ public class CartServiceImpl implements CartService {
         int quantity = requireQuantity(cartUpdateRequest.getQuantity());
         int rows = cartMapper.updateQty(userId, key.productId(), key.sku(), quantity);
         if (rows == 0) throw new BusinessException("购物车中不存在该商品");
-        log.info("修改购物车数量: {} (itemKey={}, 数量={})", userId, cartUpdateRequest.getItemKey(), quantity);
+        log.debug("修改购物车数量: {} (itemKey={}, 数量={})", userId, cartUpdateRequest.getItemKey(), quantity);
 
     }
 
@@ -135,7 +137,7 @@ public class CartServiceImpl implements CartService {
                 log.warn("跳过无效购物车条目: {}", key);
             }
         }
-        log.info("删除购物车条目: {} (共 {} 条，实际删除 {})", userId, keys.size(), removed);
+        log.debug("删除购物车条目: {} (共 {} 条，实际删除 {})", userId, keys.size(), removed);
     }
 
     //修改款式
@@ -168,7 +170,7 @@ public class CartServiceImpl implements CartService {
 
         //删除旧条目
         cartMapper.deleteOne(userId, old.productId, old.sku);
-        log.info("修改购物车款式: {} ({} -> {})", userId, cartSkuUpdateRequest.getItemKey(), newSku);
+        log.debug("修改购物车款式: {} ({} -> {})", userId, cartSkuUpdateRequest.getItemKey(), newSku);
         
     }
 
@@ -177,18 +179,18 @@ public class CartServiceImpl implements CartService {
     public void clear() {
         String userId = currentUser();
         int rows = cartMapper.clear(userId);
-        log.info("清空购物车: {} (删除 {} 条)", userId, rows);
+        log.debug("清空购物车: {} (删除 {} 条)", userId, rows);
     }
 
     //将数据库对象转换为VO对象
-    private CartItemVO toVo(CartItem row, String userId, Set<Integer> flashGiven) {
+    private CartItemVO toVo(CartItem row, Set<Integer> flashGiven, Set<Integer> usedToday) {
         CartItemVO vo = new CartItemVO();
         vo.setProductId(row.getProductId());
         vo.setSku(row.getSku());
         vo.setQty(row.getQuantity());
         // 单价仍为到手价；秒杀价与「可享 1 件」单独下发，由前端算小计（与下单口径一致）
         BigDecimal flash = flashSaleService.flashPrice(row.getProductId(), row.getProductPrice());
-        boolean hasQuota = flash != null && !flashUsageService.usedToday(userId, row.getProductId());
+        boolean hasQuota = flash != null && !usedToday.contains(row.getProductId());
         boolean usable = hasQuota && flashGiven.add(row.getProductId());
         vo.setPrice(row.getPrice());
         vo.setFlashPrice(flash);

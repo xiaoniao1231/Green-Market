@@ -45,7 +45,7 @@ public class ShopController {
         return Result.success(shopService.updateShop(shopRequest));
     }
 
-    // 获取店铺资料
+    // 获取店铺公开档案（游客可访问：店铺主页 / 商品详情页店铺栏）
     @GetMapping("/{shopId}")
     public Result publicShop(@PathVariable String shopId) {
         return Result.success(shopService.getPublicShop(shopId));

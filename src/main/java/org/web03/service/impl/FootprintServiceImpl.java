@@ -61,7 +61,7 @@ public class FootprintServiceImpl implements FootprintService {
         Integer productId = request.getProductId();
         if (productMapper.getById(productId) == null) throw new BusinessException("商品不存在");
         int rows = footprintMapper.upsert(userId, productId);
-        log.info("{} 记录浏览足迹 商品{} (影响 {} 行：1=新增, 0=已存在仅刷新时间)", userId, productId, rows);
+        log.debug("{} 记录浏览足迹 商品{} (影响 {} 行：1=新增, 0=已存在仅刷新时间)", userId, productId, rows);
 
         Integer total = footprintMapper.countByUserId(userId);
         if (total != null && total > 200) {

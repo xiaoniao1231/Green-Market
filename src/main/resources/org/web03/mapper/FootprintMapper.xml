@@ -28,7 +28,8 @@
     <!-- 根据用户ID分页查询足迹列表（商品已被软删除的不返回；同时下发 skus/shop 信息
          供上层组装商品图 art 与店铺 {id,name,score} —— 与收藏夹同口径，缺了前端卡片渲染会崩） -->
     <select id="listByUserId" resultType="org.web03.pojo.Footprint.Footprint">
-        SELECT p.id,
+        SELECT f.product_id AS productId,
+               p.id,
                p.title,
                p.price,
                p.original_price AS originalPrice,

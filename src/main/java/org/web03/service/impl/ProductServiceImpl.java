@@ -180,7 +180,14 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public ProductVO getDetail(Integer id) {
         Product p = productMapper.getPublicById(id);
-        if(p == null)throw new BusinessException("商品不存在");
+        if (p == null) {
+            /* 区分「已下架」与「不存在」：getPublicById 只返回在售未删除商品，
+               这里再查一次未删除记录，把「已下架」如实告诉前端 ——
+               用户从收藏夹 / 足迹 / 聊天商品卡片点进已下架商品时，需要看到准确原因，
+               而不是笼统的「商品不存在」。 */
+            if (productMapper.getById(id) != null) throw new BusinessException("商品已下架");
+            throw new BusinessException("商品不存在");
+        }
         ProductVO vo = toVO(p);
         // 该账号今日已用过这件商品的秒杀价：前端提示「已用完」，价格按到手价展示
         if (vo.getFlashPrice() != null && flashUsageService.usedToday(CurrentHolder.getCurrentUserId(), id)) {
@@ -206,7 +213,7 @@ public class ProductServiceImpl implements ProductService {
         Set<Integer> used = flashUsageService.usedToday(CurrentHolder.getCurrentUserId());
         List<ProductVO> list = new ArrayList<>();
         for (Integer id : flashSaleService.todayIds()) {
-            Product p = productMapper.getPublicById(id);
+            Product p = productMapper.getPublicBriefById(id);
             if (p == null) continue;
             ProductVO vo = toVO(p);
             if (vo.getFlashPrice() != null && used.contains(id)) vo.setFlashUsed(true);

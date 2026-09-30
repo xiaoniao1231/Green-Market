@@ -59,6 +59,12 @@ public class ShopServiceImpl implements ShopService {
     @Transactional
     public ShopInformation createShop(ShopRequest shopRequest) {
         String ownerId = currentOwner();
+        /* 一个账号只能开一家店。此前没有这层判重，重复调用会不断新建 shops 行，
+           并把 users.shop_id 覆盖成最新那家店，先前创建的店铺沦为孤儿数据
+           （接口全量测试发现的缺陷：同一账号能连开两家店）。 */
+        if (StringUtils.hasLength(shopMapper.findShopIdByOwner(ownerId))) {
+            throw new BusinessException("您已开通店铺，不能重复开店");
+        }
         String name = shopRequest.getName() == null ? null : shopRequest.getName();
         if (!StringUtils.hasLength(name)) throw new BusinessException("店铺名称不能为空");
         /*name.trim(); 去除名称前后的空格*/

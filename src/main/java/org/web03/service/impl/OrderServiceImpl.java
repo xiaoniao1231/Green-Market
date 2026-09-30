@@ -63,8 +63,8 @@ public class OrderServiceImpl implements OrderService {
     private static final BigDecimal FREE_FREIGHT_THRESHOLD = new BigDecimal("50");
     //不满包邮门槛的运费
     private static final BigDecimal FREIGHT_FEE = new BigDecimal("5");
-    //催发货冷却期(24小时)
-    private static final int REMIND_COOLDOWN_HOURS = 24 * 60 * 60;
+    //催发货冷却期(24小时)：原值 24*60*60 被 plusHours 当小时用，实际冷却 10 年
+    private static final int REMIND_COOLDOWN_HOURS = 24;
     //催发货次数上限：达到后当天不再受理，提示买家耐心等待
     private static final int MAX_REMIND_TIMES = 5;
     //时间格式化器
@@ -381,7 +381,7 @@ public class OrderServiceImpl implements OrderService {
         //物流轨迹最前追加签收记录
         List<Map<String, Object>> logistics = JsonUtils.parseList(order.getLogisticsJson());
         Map<String, Object> signed = new HashMap<>();
-        signed.put("text", "包裹已签收，感谢您使用青集市");
+        signed.put("text", "包裹已签收，感谢您使用玉子市场");
         signed.put("time", LocalDateTime.now().format(TIME_FORMATTER));
         logistics.add(0, signed);
         orderMapper.updateLogistics(id, JsonUtils.toJson(logistics));

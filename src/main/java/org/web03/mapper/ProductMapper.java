@@ -35,6 +35,9 @@ public interface ProductMapper {
     //买家端按 id 获取商品
     Product getPublicById(@Param("id") Integer id);
 
+    //买家端按 id 获取商品（列表卡片用：不取 detail/params 两个大字段）
+    Product getPublicBriefById(@Param("id") Integer id);
+
     //相关推荐：同分类的在售商品优先，不足时用其他在售商品补足（排除自身）。
     List<Product> related(@Param("id") Integer id, @Param("category") String category, @Param("limit") int limit);
 

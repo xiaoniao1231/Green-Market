@@ -1,13 +1,17 @@
 # 配置数据库的连接
 spring:
   application:
-    name: 青集市
+    name: 玉子市场
 
   datasource:
     url: jdbc:mysql://localhost:3306/网页通信?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: 123456
+    hikari:
+      # 默认 10 条会先于 CPU 成为瓶颈：压测实测 10→50 只读 QPS +61%、延迟 -38%（docs/压测报告.md）
+      maximum-pool-size: 50
+      minimum-idle: 10
 
   data:
     redis:
@@ -28,8 +32,8 @@ spring:
 #mybatis配置
 mybatis:
   configuration:
-    #日志输出
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # StdOutImpl 会把每条 SQL 打到 stdout，是压测/生产的主要 I/O 噪声；排查 SQL 时再临时换回
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
     #驼峰映射
     map-underscore-to-camel-case: true
   #自定义存放路径

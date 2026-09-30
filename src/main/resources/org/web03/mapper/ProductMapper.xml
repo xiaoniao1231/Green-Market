@@ -4,6 +4,14 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.web03.mapper.ProductMapper">
 
+    <!-- 列表卡片列：detail / params 是 TEXT 大字段且列表页不用，列表类查询一律排除（详情接口仍取全字段） -->
+    <sql id="briefColumns">
+        p.id, p.shop_id, p.title, p.price, p.original_price, p.sales, p.stock,
+        p.category, p.sub, p.tag, p.rating, p.review_count, p.skus, p.description,
+        p.on_sale, p.deleted, p.created_at, p.updated_at,
+        s.name AS shop_name, s.score AS shop_score
+    </sql>
+
     <!-- useGeneratedKeys: 插入后把自增主键回填到 p.id，create() 才能按 id 回查新商品 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO products (shop_id, title, price, original_price, sales, stock,
@@ -15,9 +23,9 @@
     </insert>
 
 
-    <!-- 卖家商品列表 -->
+    <!-- 卖家商品列表（与前端约定一致：不含 detail/params，编辑时再拉单个商品的全量字段） -->
     <select id="sellerList" resultType="org.web03.pojo.Product.Product">
-        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        SELECT <include refid="briefColumns"/>
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.shop_id = #{shopId} AND p.deleted = 0
         <if test="status != null and status != ''">
@@ -44,7 +52,7 @@
 
     <!-- 公开商品列表（买家端：仅在售、未删除；可选按店铺/分类/子类/关键字筛选，无需登录/开店） -->
     <select id="publicList" resultType="org.web03.pojo.Product.Product">
-        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        SELECT <include refid="briefColumns"/>
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1
         <if test="shopId != null and shopId != ''"> AND p.shop_id = #{shopId} </if>
@@ -92,9 +100,16 @@
         WHERE p.id = #{id} AND p.deleted = 0 AND p.on_sale = 1
     </select>
 
+    <!-- 秒杀候选商品：条件同 getPublicById，但不取 detail/params（首页秒杀只要卡片字段） -->
+    <select id="getPublicBriefById" resultType="org.web03.pojo.Product.Product">
+        SELECT <include refid="briefColumns"/>
+        FROM products p JOIN shops s ON p.shop_id = s.shop_id
+        WHERE p.id = #{id} AND p.deleted = 0 AND p.on_sale = 1
+    </select>
+
     <!-- 相关推荐：同分类优先，其余在售商品补足；排除当前商品 -->
     <select id="related" resultType="org.web03.pojo.Product.Product">
-        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        SELECT <include refid="briefColumns"/>
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1 AND p.id != #{id}
         ORDER BY (p.category = #{category}) DESC, p.sales DESC, p.created_at DESC
@@ -140,7 +155,7 @@
 
     <!-- 猜你喜欢：在售按创建时间倒序分页 -->
     <select id="recommendList" resultType="org.web03.pojo.Product.Product">
-        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        SELECT <include refid="briefColumns"/>
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1
         ORDER BY p.created_at DESC
@@ -155,7 +170,7 @@
 
     <!-- 搜索商品 -->
     <select id="search" resultType="org.web03.pojo.Product.Product">
-        SELECT p.*, s.name AS shop_name, s.score AS shop_score
+        SELECT <include refid="briefColumns"/>
         FROM products p JOIN shops s ON p.shop_id = s.shop_id
         WHERE p.deleted = 0 AND p.on_sale = 1
           AND p.title LIKE CONCAT('%', #{q}, '%')

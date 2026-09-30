@@ -55,12 +55,23 @@ public class TokenFilter implements Filter {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    /** 判断请求路径是否为公开接口（精确匹配白名单或以公开前缀开头） */
-    private boolean isPublicPath(String path) {
+    /** 判断请求是否为公开接口（精确匹配白名单 / 公开前缀 / 店铺公开档案） */
+    private boolean isPublicPath(HttpServletRequest request) {
+        String path = request.getServletPath();
         if (WHITE_LIST.contains(path)) return true;
         /* 商品图片上传（POST /products/image）不在公开浏览范围内：未登录不可上传（避免占用 OSS 配额）；
            排除后再按公开前缀判断，商品列表 /products、详情 /products/{id} 等浏览类请求不受影响 */
         if (path.startsWith("/products/image")) return false;
+        /* 店铺公开档案 GET /shops/{shopId}：店铺主页、商品详情页的店铺栏允许游客浏览。
+           只放行「GET 且 /shops/{id}」这一种形态，其余 /shops 路径仍然必须登录：
+           开店 POST /shops、我的档案 /shops/profile、头像 /shops/avatar、关注写操作 /shops/{id}/follow。 */
+        if ("GET".equalsIgnoreCase(request.getMethod())
+                && path.startsWith("/shops/")
+                && !path.equals("/shops/profile")
+                && !path.equals("/shops/avatar")
+                && !path.endsWith("/follow")) {
+            return true;
+        }
         for (String prefix : WHITE_PREFIXES) {
             if (path.startsWith(prefix)) return true;
         }
@@ -83,7 +94,7 @@ public class TokenFilter implements Filter {
             response.setStatus(HttpServletResponse.SC_OK);
             return;
         }
-        if (isPublicPath(path)) {
+        if (isPublicPath(request)) {
             log.debug("放行无需鉴权请求: {}", path);
             /* 公开接口也尝试识别登录态（首页秒杀要标记「本账号今日已用过秒杀价」、
                商品详情要按资格给价）：令牌缺失或无效一律按未登录放行，不打断浏览 */

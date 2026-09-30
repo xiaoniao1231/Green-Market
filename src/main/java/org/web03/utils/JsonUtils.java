@@ -97,6 +97,20 @@ public class JsonUtils {
         return firstSkuImg(skusJson);
     }
 
+    /** 晒单图 JSON → 地址数组（脏数据 / 空值一律返回空数组） */
+    public static List<String> parseImages(String json) {
+        if (!StringUtils.hasLength(json)) return new ArrayList<>();
+        try {
+            return OM.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.error("评价晒单图解析失败：{}", json, e);
+            return new ArrayList<>();
+        }
+    }
+
+
+
+
     /** obj → JSON 字符串，异常则抛业务异常 */
     public static String toJson(Object obj) {
         if (obj == null) return null;

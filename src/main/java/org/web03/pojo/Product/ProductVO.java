@@ -31,4 +31,7 @@ public class ProductVO {
     private List<Map<String, Object>> detail; // 图文详情段落
     private String desc;                      // 简介
     private Boolean onSale;                   // 是否在售
+
+    private BigDecimal rating;                // 商品评分
+    private Integer reviewCount;              // 评价数
 }

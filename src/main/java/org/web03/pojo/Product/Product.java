@@ -34,4 +34,7 @@ public class Product {
     private LocalDateTime updatedAt;// 更新时间
     private String shopName;        // 店铺名称
     private BigDecimal shopScore;   // 店铺评分
+
+    private BigDecimal rating;      // 商品评分：全部评价的平均分
+    private Integer reviewCount;    // 评价数
 }

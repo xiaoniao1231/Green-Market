@@ -321,6 +321,8 @@ public class ProductServiceImpl implements ProductService {
         vo.setDetail(JsonUtils.parseList(p.getDetail()));
         vo.setDesc(p.getDescription());
         vo.setOnSale(p.getOnSale() != null && p.getOnSale() == 1);
+        vo.setRating(p.getRating());
+        vo.setReviewCount(p.getReviewCount() == null ? 0 : p.getReviewCount());
         return vo;
     }
 

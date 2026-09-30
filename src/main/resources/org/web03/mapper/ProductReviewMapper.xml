@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.ProductReviewMapper">
+
+    <!-- 评价字段 -->
+    <sql id="joinedColumns">
+        r.*,
+        o.order_no,
+        p.title    AS product_title,
+        p.skus     AS product_skus,
+        s.name     AS shop_name,
+        u.nickname AS reviewer_nickname,
+        u.avatar   AS reviewer_avatar
+    </sql>
+
+    <!-- 评价表连接的其他表 -->
+    <sql id="joinedTables">
+        FROM product_reviews r
+                 LEFT JOIN orders   o ON o.id = r.order_id
+                 LEFT JOIN products p ON p.id = r.product_id
+                 LEFT JOIN shops    s ON s.shop_id = r.shop_id
+                 LEFT JOIN users    u ON u.user_id = r.user_id
+    </sql>
+
+    <!-- 评价筛选条件 -->
+    <sql id="productFilter">
+        r.product_id = #{productId}
+        <if test="score != null"> AND r.score = #{score} </if>
+        <if test="sku != null and sku != ''"> AND r.sku = #{sku} </if>
+        <if test="hasImage != null and hasImage">
+            AND r.images IS NOT NULL AND r.images &lt;&gt; '' AND r.images &lt;&gt; '[]'
+        </if>
+    </sql>
+
+
+    <!-- 订单中的商品评价列表（条目 + 是否已评价） -->
+    <select id="listItemsByOrders" resultType="org.web03.pojo.Review.PendingReviewItem">
+        SELECT i.id AS order_item_id, i.order_id, i.product_id, i.title, i.sku, i.qty, i.price, i.art_img,
+        (SELECT COUNT(*) FROM product_reviews r
+        WHERE r.order_item_id = i.id) AS reviewed
+        FROM order_items i
+        WHERE i.order_id IN
+        <foreach collection="orderIds" item="oid" open="(" separator="," close=")">
+            #{oid}
+        </foreach>
+        ORDER BY i.id
+    </select>
+
+    <!-- 新增评价 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO product_reviews (order_id, order_item_id, product_id, shop_id, user_id, score, content, images,
+                                     anonymous, sku, created_at, updated_at)
+        VALUES (#{orderId}, #{orderItemId}, #{productId}, #{shopId}, #{userId}, #{score}, #{content}, #{images},
+                #{anonymous}, #{sku}, now(), now())
+    </insert>
+
+    <!-- 根据ID获取评价详情 -->
+    <select id="findDetailById" resultType="org.web03.pojo.Review.ProductReview">
+        SELECT <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        WHERE r.id = #{id}
+    </select>
+
+    <!-- 重新计算商品评分和评价数量 -->
+    <update id="recalcProductRating">
+        UPDATE products p
+        SET p.rating = (SELECT ROUND(AVG(r.score), 2)
+                        FROM product_reviews r
+                        WHERE r.product_id = p.id),
+            p.review_count = (SELECT COUNT(*)
+                              FROM product_reviews r
+                              WHERE r.product_id = p.id),
+            p.updated_at = now()
+        WHERE p.id = #{productId}
+    </update>
+
+    <!-- 重新计算店铺评分 -->
+    <update id="recalcShopScore">
+        UPDATE shops s
+        SET s.score = (SELECT ROUND(AVG(p.rating), 2)
+                       FROM products p
+                       WHERE p.shop_id = s.shop_id AND p.deleted = 0 AND p.rating IS NOT NULL),
+            s.updated_at = now()
+        WHERE s.shop_id = #{shopId}
+          AND EXISTS (SELECT 1
+                      FROM products p2
+                      WHERE p2.shop_id = #{shopId} AND p2.deleted = 0 AND p2.rating IS NOT NULL)
+    </update>
+
+    <!-- 获取当前用户的所有评价 -->
+    <select id="listMineAll" resultType="org.web03.pojo.Review.ProductReview">
+        SELECT <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        WHERE r.user_id = #{userId}
+        ORDER BY r.id DESC
+        LIMIT 500
+    </select>
+
+    <!-- 根据商品ID获取评价数量 -->
+    <select id="countByProduct" resultType="long">
+        SELECT COUNT(*) FROM product_reviews r WHERE <include refid="productFilter"/>
+    </select>
+
+    <!-- 根据商品ID获取评价列表 -->
+    <select id="listByProduct" resultType="org.web03.pojo.Review.ProductReview">
+        SELECT <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        WHERE <include refid="productFilter"/>
+        <choose>
+            <when test="sort == 'score'">ORDER BY r.score DESC, r.id DESC</when>
+            <otherwise>ORDER BY r.id DESC</otherwise>
+        </choose>
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!-- 本店收到的评价筛选条件（店家视角） -->
+    <sql id="shopFilter">
+        r.shop_id = #{shopId}
+        <if test="productId != null"> AND r.product_id = #{productId} </if>
+        <if test="score != null"> AND r.score = #{score} </if>
+        <if test="replyStatus != null and replyStatus != ''">
+            <choose>
+                <when test="replyStatus == 'unreplied'">
+                    AND (r.reply_content IS NULL OR r.reply_content = '')
+                </when>
+                <when test="replyStatus == 'replied'">
+                    AND r.reply_content IS NOT NULL AND r.reply_content &lt;&gt; ''
+                </when>
+                <when test="replyStatus == 'appended'">
+                    AND r.append_content IS NOT NULL AND r.append_content &lt;&gt; ''
+                </when>
+            </choose>
+        </if>
+    </sql>
+
+    <!-- 本店收到的评价总数（店家视角） -->
+    <select id="countByShop" resultType="long">
+        SELECT COUNT(*) FROM product_reviews r WHERE <include refid="shopFilter"/>
+    </select>
+
+    <!-- 本店收到的评价分页列表（店家视角，按评价时间倒序） -->
+    <select id="listByShop" resultType="org.web03.pojo.Review.ProductReview">
+        SELECT <include refid="joinedColumns"/>
+        <include refid="joinedTables"/>
+        WHERE <include refid="shopFilter"/>
+        ORDER BY r.id DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!-- 本店商品评价统计：按商品分组，返回每个商品的 total / replied / unreplied / withAppend -->
+    <select id="listShopGroupStats" resultType="java.util.Map">
+        SELECT r.product_id     AS productId,
+               p.title          AS productTitle,
+               p.skus           AS productSkus,
+               COUNT(*)         AS total,
+               SUM(CASE WHEN r.reply_content IS NOT NULL AND r.reply_content &lt;&gt; '' THEN 1 ELSE 0 END) AS replied,
+               SUM(CASE WHEN r.reply_content IS NULL OR r.reply_content = '' THEN 1 ELSE 0 END) AS unreplied,
+               SUM(CASE WHEN r.append_content IS NOT NULL AND r.append_content &lt;&gt; '' THEN 1 ELSE 0 END) AS withAppend
+        FROM product_reviews r
+                 LEFT JOIN products p ON p.id = r.product_id
+        WHERE r.shop_id = #{shopId}
+        GROUP BY r.product_id, p.title, p.skus
+        ORDER BY total DESC
+    </select>
+
+    <!-- 获取商品评分，评价数，好评率 -->
+    <select id="selectSummary" resultType="org.web03.pojo.Review.ReviewSummaryVO">
+        SELECT ROUND(AVG(score), 2) AS rating,COUNT(*) AS reviewCount,
+               ROUND(SUM(CASE WHEN score >= 4 THEN 1 ELSE 0 END) * 100 / COUNT(*)) AS goodRate
+        FROM product_reviews
+        WHERE product_id = #{productId}
+    </select>
+
+    <!-- 获取商品评价分布 -->
+    <select id="selectDistribution" resultType="java.util.Map">
+        SELECT score, COUNT(*) AS cnt
+        FROM product_reviews
+        WHERE product_id = #{productId}
+        GROUP BY score
+    </select>
+
+    <!-- 获取商品评价的款式分布 -->
+    <select id="selectSkuDistribution" resultType="java.util.Map">
+        SELECT sku,
+        COUNT(*) AS cnt,ROUND(AVG(score), 2) AS rating
+        FROM product_reviews
+        WHERE product_id = #{productId}
+        GROUP BY sku
+        ORDER BY cnt DESC, sku
+    </select>
+
+    <!-- 获取店铺评分 -->
+    <select id="findShopScore" resultType="java.math.BigDecimal">
+        SELECT score FROM shops WHERE shop_id = #{shopId}
+    </select>
+
+    <!-- 根据ID获取评价详情 -->
+    <select id="findById" resultType="org.web03.pojo.Review.ProductReview">
+        SELECT * FROM product_reviews WHERE id = #{id}
+    </select>
+
+    <!-- 商家回复 -->
+    <update id="updateReply">
+        UPDATE product_reviews
+        SET reply_content = #{content}, reply_time = now(), updated_at = now()
+        WHERE id = #{id} AND shop_id = #{shopId} AND reply_content IS NULL
+    </update>
+
+    <!-- 用户追加评价 -->
+    <update id="updateAppend">
+        UPDATE product_reviews
+        SET append_content = #{content}, append_time = now(), updated_at = now()
+        WHERE id = #{id} AND user_id = #{userId} AND append_content IS NULL
+    </update>
+
+
+</mapper>

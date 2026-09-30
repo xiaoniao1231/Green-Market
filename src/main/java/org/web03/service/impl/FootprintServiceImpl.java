@@ -11,6 +11,7 @@ import org.web03.pojo.Footprint.FootprintListResult;
 import org.web03.pojo.Footprint.FootprintProductVO;
 import org.web03.service.FootprintService;
 import org.web03.utils.CurrentHolder;
+import org.web03.utils.JsonUtils;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -52,61 +53,6 @@ public class FootprintServiceImpl implements FootprintService {
         return new FootprintListResult(footprintMapper.countByUserId(userId), pageNo, pageSize, list);
     }
 
-    // 转换为前端契约对象（含商品图 art 与店铺 {id,name,score}，与收藏夹同口径）
-    private FootprintProductVO toVO(Footprint row) {
-        FootprintProductVO vo = new FootprintProductVO();
-        vo.setId(row.getProductId());
-        vo.setTitle(row.getTitle());
-        vo.setPrice(row.getPrice());
-        vo.setOriginal(row.getOriginalPrice());
-        vo.setSales(row.getSales());
-        vo.setStock(row.getStock());
-        vo.setTag(row.getTag());
-        vo.setArt(buildArt(row.getSkus()));
-        vo.setOnSale(row.getOnSale());
-        vo.setDeleted(row.getDeleted());
-        Map<String, Object> shop = new HashMap<>();
-        shop.put("id", row.getShopId());
-        shop.put("name", row.getShopName());
-        shop.put("score", row.getShopScore());
-        vo.setShop(shop);
-        vo.setBrowseTime(row.getUpdatedAt() == null ? null : row.getUpdatedAt().format(DTF));
-        return vo;
-    }
-
-    // 构建展示图（商品第一个图片：第一个带图的 SKU 款式值；无图返回 {e, g} 占位）
-    private Map<String, Object> buildArt(String skusJson) {
-        Map<String, Object> art = new HashMap<>();
-        String firstImg = firstSkuImg(skusJson);
-        if (firstImg != null && !firstImg.isEmpty()) {
-            art.put("img", firstImg);
-        } else {
-            art.put("e", "🛍️");
-            art.put("g", Arrays.asList("#e8e8e8", "#f5f5f5"));
-        }
-        return art;
-    }
-
-    // 获取第一个带图片的sku图片
-    private String firstSkuImg(String skusJson) {
-        if (skusJson == null || skusJson.isEmpty()) return null;
-        try {
-            List<Map<String, Object>> skus = OM.readValue(skusJson, new TypeReference<List<Map<String, Object>>>() {});
-            for (Map<String, Object> group : skus) {
-                Object values = group.get("values");
-                if (!(values instanceof List)) continue;
-                for (Object item : (List<?>) values) {
-                    if (!(item instanceof Map)) continue;
-                    Object img = ((Map<?, ?>) item).get("img");
-                    if (img != null && !String.valueOf(img).isEmpty()) {
-                        return String.valueOf(img);
-                    }
-                }
-            }
-        } catch (Exception ignored) { }
-        return null;
-    }
-
     //记录足迹
     @Override
     public void record(Footprint request) {
@@ -123,6 +69,29 @@ public class FootprintServiceImpl implements FootprintService {
             log.info("{} 足迹超出上限 {}（当前 {} 条），清理最旧的 {} 条", userId, 200, total, removed);
         }
 
+    }
+
+
+    // 转换为前端契约对象
+    private FootprintProductVO toVO(Footprint row) {
+        FootprintProductVO vo = new FootprintProductVO();
+        vo.setId(row.getProductId());
+        vo.setTitle(row.getTitle());
+        vo.setPrice(row.getPrice());
+        vo.setOriginal(row.getOriginalPrice());
+        vo.setSales(row.getSales());
+        vo.setStock(row.getStock());
+        vo.setTag(row.getTag());
+        vo.setArt(JsonUtils.buildArt(row.getSkus()));
+        vo.setOnSale(row.getOnSale());
+        vo.setDeleted(row.getDeleted());
+        Map<String, Object> shop = new HashMap<>();
+        shop.put("id", row.getShopId());
+        shop.put("name", row.getShopName());
+        shop.put("score", row.getShopScore());
+        vo.setShop(shop);
+        vo.setBrowseTime(row.getUpdatedAt() == null ? null : row.getUpdatedAt().format(DTF));
+        return vo;
     }
 
 }

@@ -54,7 +54,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     public Map<String, Object> uploadAvatar(MultipartFile file) {
         currentUser();   // 未登录直接抛「未登录或登录已失效」，账号由令牌决定
         if (file == null || file.isEmpty()) throw new BusinessException("请上传文件");
-        if(file.getSize() > 10*1024*1024) throw new BusinessException("文件大小不能超过 10MB");
+        if(file.getSize() > 100*1024*1024) throw new BusinessException("文件大小不能超过 100MB");
 
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) throw new BusinessException("请上传图片文件");

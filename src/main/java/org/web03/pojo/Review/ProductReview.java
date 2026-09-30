@@ -30,11 +30,11 @@ public class ProductReview {
     private LocalDateTime createdAt;// 评价时间
     private LocalDateTime updatedAt;// 更新时间
 
-    /* ---------- JOIN 附加字段（非表列） ---------- */
-    private String orderNo;             // orders.order_no
-    private String productTitle;        // products.title
-    private String productSkus;         // products.skus（用于推导商品缩略图，展示图由 SKU 推导）
-    private String shopName;            // shops.name
-    private String reviewerNickname;    // users.nickname
-    private String reviewerAvatar;      // users.avatar
+
+    private String orderNo;          // 订单编号
+    private String productTitle;     // 商品标题
+    private String productSkus;      // 商品SKU
+    private String shopName;         // 店铺名称
+    private String reviewerNickname; // 评价人昵称
+    private String reviewerAvatar;   // 评价人头像
 }

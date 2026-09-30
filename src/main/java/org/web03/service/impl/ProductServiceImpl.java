@@ -248,7 +248,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public String uploadImage(MultipartFile file) {
         if (file == null || file.isEmpty()) throw new BusinessException("请选择要上传的图片");
-        if (file.getSize() > 10 * 1024 * 1024) throw new BusinessException("文件大小不能超过 10MB");
+        if (file.getSize() > 100 * 1024 * 1024) throw new BusinessException("文件大小不能超过 100MB");
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
             throw new BusinessException("请上传图片文件");

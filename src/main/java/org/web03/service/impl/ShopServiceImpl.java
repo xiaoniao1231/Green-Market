@@ -89,7 +89,7 @@ public class ShopServiceImpl implements ShopService {
     //上传店铺头像
     @Override
     public Map<String, Object> uploadAvatar(MultipartFile file) {
-        if (file.getSize() > 10 * 1024 * 1024) throw new BusinessException("图片不能超过 10MB");
+        if (file.getSize() > 100 * 1024 * 1024) throw new BusinessException("图片不能超过 100MB");
         if (file.getContentType() == null || !file.getContentType().startsWith("image/")) {
             throw new BusinessException("请选择 jpg / png 等图片文件");
         }

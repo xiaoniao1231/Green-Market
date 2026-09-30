@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.web03.mapper.AfterSaleMapper">
+
+    <!-- 插入售后单 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into after_sales
+        (after_no, order_id, order_no, order_item_id, user_id, shop_id, product_id,
+         title, sku, art_img, qty, price, refund_amount, type, reason, description,
+         images, status, created_at, updated_at)
+        values
+            (#{afterNo}, #{orderId}, #{orderNo}, #{orderItemId}, #{userId}, #{shopId}, #{productId},
+             #{title}, #{sku}, #{artImg}, #{qty}, #{price}, #{refundAmount}, #{type}, #{reason}, #{description},
+             #{images}, #{status}, now(), now())
+    </insert>
+
+
+    <!-- 批量写入售后商品明细 -->
+    <insert id="insertItems">
+        insert into after_sale_items
+        (after_sale_id, order_item_id, product_id, title, sku, art_img, qty, price, refund_amount)
+        values
+        <foreach collection="list" item="it" separator=",">
+            (#{it.afterSaleId}, #{it.orderItemId}, #{it.productId}, #{it.title}, #{it.sku},
+             #{it.artImg}, #{it.qty}, #{it.price}, #{it.refundAmount})
+        </foreach>
+    </insert>
+
+
+    <!-- 重新申请售后 -->
+    <update id="resetForReapply">
+        update after_sales
+        <set>
+            order_item_id = #{orderItemId},
+            product_id = #{productId},
+            title = #{title},
+            sku = #{sku},
+            art_img = #{artImg},
+            type = #{type},
+            reason = #{reason},
+            description = #{description},
+            images = #{images},
+            qty = #{qty},
+            price = #{price},
+            refund_amount = #{refundAmount},
+            status = 'pending',
+            return_address = null,
+            refuse_reason = null,
+            seller_remark = null,
+            buyer_company = null,
+            buyer_tracking_no = null,
+            buyer_ship_time = null,
+            reship_company = null,
+            reship_no = null,
+            reship_time = null,
+            finish_time = null,
+            updated_at = now(),
+        </set>
+        where id = #{id} and status in ('canceled', 'refused')
+    </update>
+
+
+    <!-- 修改售后单状态 -->
+    <update id="changeStatus">
+        update after_sales
+        <set>
+            status = #{to},
+            updated_at = now(),
+            <if test='finish'> finish_time = now(), </if>
+        </set>
+        where id = #{id}
+        and status = #{from}
+        <if test='userId != null'> and user_id = #{userId} </if>
+    </update>
+
+    <!-- 商家同意：写入寄回地址与备注 -->
+    <update id="updateApproveInfo">
+        update after_sales
+        <set>
+            <if test="address != null"> return_address = #{address}, </if>
+            <if test="remark != null"> seller_remark = #{remark}, </if>
+            updated_at = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <!-- 商家确认收货：写入换货重发物流与备注 -->
+    <update id="updateReceiveInfo">
+        update after_sales
+        <set>
+            <if test="exchange">
+                reship_company = #{company},
+                reship_no = #{no},
+                reship_time = now(),
+            </if>
+            <if test="remark != null"> seller_remark = #{remark}, </if>
+            updated_at = now()
+        </set>
+        where id = #{id}
+    </update>
+
+    <!-- 卖家售后列表 -->
+    <select id="listByShop" resultType="org.web03.pojo.AfterSale.AfterSale">
+        select * from after_sales
+        where shop_id = #{shopId}
+        <if test='status != null'> and status = #{status} </if>
+        <if test='afterNo != null'> and after_no like concat('%', #{afterNo}, '%') </if>
+        order by id desc
+        limit #{offset}, #{size}
+    </select>
+
+    <!-- 卖家售后总数 -->
+    <select id="countByShop" resultType="java.lang.Long">
+        select count(*) from after_sales
+        where shop_id = #{shopId}
+        <if test='status != null'> and status = #{status} </if>
+        <if test='afterNo != null'> and after_no like concat('%', #{afterNo}, '%') </if>
+    </select>
+
+</mapper>

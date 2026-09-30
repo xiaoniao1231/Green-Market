@@ -108,6 +108,27 @@ public class JsonUtils {
         }
     }
 
+    /** 凭证图校验：最多 6 张、每项是 http(s) 地址且不超过 500 字节 */
+    public static List<String> normalizeImages(List<String> images) {
+        List<String> list = new ArrayList<>();
+        if (images == null || images.isEmpty()) return list;
+        for (String raw : images) {
+            String url = trimToNull(raw);
+            if (url == null) continue;
+            if (list.size() >= 6) throw new BusinessException("凭证图最多 6 张");
+            if (!url.startsWith("http") || url.length() > 500) throw new BusinessException("凭证图地址不合法");
+            list.add(url);
+        }
+        return list;
+    }
+
+    /** trim 后为空一律返回 null（便于统一判空） */
+    public static String trimToNull(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
 
 
 

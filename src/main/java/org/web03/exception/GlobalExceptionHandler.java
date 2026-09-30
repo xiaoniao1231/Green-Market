@@ -5,6 +5,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.web03.pojo.Result;
 
@@ -36,6 +37,17 @@ public class GlobalExceptionHandler {
                 : ((MissingServletRequestParameterException) e).getParameterName();
         if ("file".equals(name)) return Result.error("请上传文件");
         return Result.error("请求参数不完整：" + name);
+    }
+
+    /**
+     * 上传接口收到「非 multipart 请求」：`@RequestParam("file") MultipartFile` 在请求头不是
+     * multipart/form-data 时，Spring 抛的是 MultipartException（不是 Part/Parameter 缺失异常），
+     * 例如售后凭证图、商品图、聊天文件接口漏传 file 时。不兜住就是 500 白页。
+     */
+    @ExceptionHandler(MultipartException.class)
+    public Result handleMultipartException(MultipartException e) {
+        log.warn("上传请求格式错误: {}", e.getMessage());
+        return Result.error("请选择要上传的文件");
     }
 
     /** 唯一键冲突：账号已存在、手机号已注册、消息重复提交等 */

@@ -512,13 +512,12 @@ function openGoodsPicker() {
   /* 确认了店铺就只显示本店商品（本店商品不在购物车时提示为空）；识别不出这家店才退回显示全部 */
   const items = mine.length ? mine : (shopId ? [] : all);
   if (!items.length) { toast(`购物车里没有 ${shopName || '这家店'} 的商品`, 'error'); return; }
-  const sub = items.length < all.length
-    ? `只显示 ${shopName || '本店铺'} 的商品`
-    : '选择购物车里的商品发给对方';
+  /* 列表被店铺过滤时提示一次；正常情况下不需要额外说明 */
+  const sub = items.length < all.length ? `只显示 ${shopName || '本店铺'} 的商品` : '';
   const m = modal(`
     <div>
       <h3>发送商品</h3>
-      <p class="modal-sub">${esc(sub)}</p>
+      ${sub ? `<p class="modal-sub">${esc(sub)}</p>` : ''}
       <div class="pick-list">
         ${items.map((it, i) => {
           const art = (it.img && { img: it.img }) || (it.product && it.product.art) || null;
@@ -1158,7 +1157,7 @@ onBeforeUnmount(() => {
     <div class="page-head">
       <div>
         <div class="crumb">首页 / 消息中心</div>
-        <h1>消息中心 <small>QING CHAT</small></h1>
+        <h1>消息中心</h1>
       </div>
     </div>
     <div class="chat-layout">

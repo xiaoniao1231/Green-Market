@@ -10,7 +10,7 @@ import { openPhoneModal, openPasswordModal, maskPhone } from '../core/accountMod
 const { toast, confirmDialog } = QM_UI;
 const router = useRouter();
 
-const AVATAR_MAX_SIZE = 5 * 1024 * 1024;
+const AVATAR_MAX_SIZE = 100 * 1024 * 1024;
 const isAvatarImage = v => typeof v === 'string' && /^(https?:|blob:)/i.test(v.trim());
 
 const me = ref(null);
@@ -101,7 +101,7 @@ function onAvatarChange(e) {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   if (!/^image\//.test(f.type)) return toast('请选择图片文件', 'error');
-  if (f.size > AVATAR_MAX_SIZE) return toast('头像图片不能超过 5MB', 'error');
+  if (f.size > AVATAR_MAX_SIZE) return toast('头像图片不能超过 100MB', 'error');
   releasePreview();
   pickedAvatar.value = f;
   objectUrl = URL.createObjectURL(f);
@@ -234,7 +234,7 @@ async function logout() {
                   </span>
                   <div class="avatar-upload-actions">
                     <button type="button" class="btn btn-plain" @click="pickAvatar">选择图片</button>
-                    <small>支持 jpg / png / webp / gif，不超过 5MB</small>
+                    <small>支持 jpg / png / webp / gif，不超过 100MB</small>
                     <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onAvatarChange" />
                   </div>
                 </div>

@@ -43,7 +43,6 @@ const orderNoKw = ref('');
 /* 「被催发货」= 买家催过 且 订单仍在待发货（发货后状态转 shipped，角标自然消失）。
    后端在订单列表里带出 remindCount / lastRemindTime（LEFT JOIN seller_reminders） */
 const isUrged = o => o.status === 'paid' && Number(o.remindCount || 0) > 0;
-const urgedCount = computed(() => list.value.filter(isUrged).length);
 /* 被催的订单置顶：店家一进页面就知道该先处理谁；同组内按最近催发货时间倒序（催得越急越靠前） */
 const filtered = computed(() => {
   const kw = orderNoKw.value.trim().toLowerCase();
@@ -143,17 +142,12 @@ onBeforeUnmount(() => {
     <div class="page-head">
       <div>
         <div class="crumb">首页 / 我的店铺 / 订单管理</div>
-        <h1>订单管理 <small>ORDERS</small></h1>
+        <h1>订单管理</h1>
       </div>
       <a class="btn btn-plain" href="#/seller">返回我的店铺</a>
     </div>
 
     <template v-if="svc">
-
-      <!-- 催发货汇总：有被催订单时才出现（列表已把被催的置顶） -->
-      <div v-if="urgedCount" class="seller-tip urge">
-        🔔 有 <b>{{ urgedCount }}</b> 笔订单买家已提醒发货，已置顶显示 —— 建议优先处理。
-      </div>
 
       <!-- 状态筛选：从工作台「待发货订单」卡进来时会自动选中对应状态 -->
       <div class="tabs seller-order-tabs">

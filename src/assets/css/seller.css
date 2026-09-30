@@ -195,10 +195,12 @@ a.stat-card:hover b { color: var(--brand); }
 .seller-order-search input:focus { border-color: var(--brand); outline: none; }
 .seller-order-search small { color: var(--text-3); font-size: 12px; }
 
-/* 收入明细页：概览卡 + 明细表 */
-.income-stats { grid-template-columns: repeat(3, 1fr); }
+/* 收入明细页：概览卡（累计到账 / 累计收入 / 已退款 / 已结算订单）+ 明细表 */
+.income-stats { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 900px) { .income-stats { grid-template-columns: repeat(2, 1fr); } }
 .income-panel { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--border); margin-top: 16px; overflow: hidden; }
+/* 收入流水 / 退款记录两个区块的小标题 */
+.income-title { padding: 12px 18px; font-size: 13px; font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); }
 .income-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .income-table th { text-align: left; padding: 12px 18px; background: #fafafa; color: var(--text-2); font-weight: 600; font-size: 12.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .income-table td { padding: 12px 18px; border-bottom: 1px solid #f4f4f4; color: var(--text-2); }
@@ -206,7 +208,9 @@ a.stat-card:hover b { color: var(--brand); }
 .income-table tbody tr:hover { background: var(--fill-hover); }
 .income-table .ta-right { text-align: right; }
 .income-no { color: var(--text); font-variant-numeric: tabular-nums; }
-.income-amount .price { font-size: 14px; font-weight: 700; color: var(--accent-ink); }
+.income-amount { font-size: 14px; font-weight: 700; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+/* 退款金额：负向流水，用强调色与收入区分 */
+.income-refund { font-size: 14px; font-weight: 700; color: var(--accent-ink-2); font-variant-numeric: tabular-nums; }
 .income-time { color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---------- 分区面板（待办 / 快捷管理 / 最近订单） ---------- */

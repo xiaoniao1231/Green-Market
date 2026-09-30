@@ -290,7 +290,7 @@ onBeforeUnmount(() => { timers.forEach(clearInterval); memberOffs.forEach(off =>
           <span class="member-avatar">{{ user ? user.nickname.slice(0, 1) : '语' }}</span>
           <p>
             <strong>{{ user ? user.nickname : '轻语用户' }}</strong>
-            <small>{{ user ? '@' + user.userId : '登录后享受更多服务' }}</small>
+            <small v-if="user">@{{ user.userId }}</small>
           </p>
         </div>
         <div class="member-actions">

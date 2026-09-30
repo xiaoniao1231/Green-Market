@@ -80,7 +80,6 @@ async function couponModal() {
   const m = modal(`
     <div>
       <h3>我的优惠券</h3>
-      <p class="modal-sub">每张券每人只能领一次</p>
       <div id="couponClaim"></div>
       <h4 style="margin:16px 0 8px">我的券</h4>
       <div id="couponList"></div>
@@ -169,19 +168,19 @@ async function couponModal() {
       <div class="service-grid">
         <button data-action="goto-orders" data-id="pending">
           <span v-if="orderCounts.pending" class="s-badge">{{ orderCounts.pending }}</span>
-          <span class="s-icon">◴</span><b>待付款</b><small>及时付款不错过好价</small>
+          <span class="s-icon">◴</span><b>待付款</b>
         </button>
         <button data-action="goto-orders" data-id="paid">
           <span v-if="orderCounts.paid" class="s-badge">{{ orderCounts.paid }}</span>
-          <span class="s-icon">▣</span><b>待发货</b><small>卖家正在准备</small>
+          <span class="s-icon">▣</span><b>待发货</b>
         </button>
         <button data-action="goto-orders" data-id="shipped">
           <span v-if="orderCounts.shipped" class="s-badge">{{ orderCounts.shipped }}</span>
-          <span class="s-icon">▤</span><b>待收货</b><small>物流实时可查</small>
+          <span class="s-icon">▤</span><b>待收货</b>
         </button>
         <button data-action="goto-reviews">
           <span v-if="orderCounts.done" class="s-badge">{{ orderCounts.done }}</span>
-          <span class="s-icon">♧</span><b>评价晒单</b><small>分享你的体验</small>
+          <span class="s-icon">♧</span><b>评价晒单</b>
         </button>
       </div>
     </div>
@@ -191,11 +190,11 @@ async function couponModal() {
         <button data-action="goto-fav"><span class="s-icon">♡</span><b>我的收藏</b><small>{{ favCount }} 件商品</small></button>
         <button data-action="open-addr" @click="addressModal"><span class="s-icon">⌂</span><b>收货地址</b><small>{{ addrCount }} 个地址</small></button>
         <button data-action="open-coupon" @click="couponModal"><span class="s-icon">🎫</span><b>优惠券</b><small>{{ couponCount }} 张可用</small></button>
-        <button data-action="goto-chat"><span class="s-icon">◌</span><b>联系卖家</b><small>从商品详情页发起咨询</small></button>
-        <button data-action="goto-seller"><span class="s-icon">🏪</span><b>我的店铺</b><small>{{ user && user.shopId ? '管理我的店铺' : '一个账号，既能买也能卖' }}</small></button>
-        <button data-action="goto-footprints"><span class="s-icon">👣</span><b>浏览足迹</b><small>最近看过的商品</small></button>
-        <button data-action="goto-account"><span class="s-icon">⚙</span><b>账户设置</b><small>资料编辑 · 手机号 · 密码</small></button>
-        <button data-action="goto-after-sales"><span class="s-icon">📋</span><b>售后服务</b><small>申请 · 退款 · 换货</small></button>
+        <button data-action="goto-chat"><span class="s-icon">◌</span><b>联系卖家</b></button>
+        <button data-action="goto-seller"><span class="s-icon">🏪</span><b>我的店铺</b></button>
+        <button data-action="goto-footprints"><span class="s-icon">👣</span><b>浏览足迹</b></button>
+        <button data-action="goto-account"><span class="s-icon">⚙</span><b>账户设置</b></button>
+        <button data-action="goto-after-sales"><span class="s-icon">📋</span><b>售后服务</b></button>
       </div>
     </div>
   </div>

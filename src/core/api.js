@@ -275,9 +275,37 @@ function noteOnline(online) {
       reply: r.reply ? { content: r.reply.content || '', time: parseTime(r.reply.time) } : null
     });
   }
+  /* 售后商品明细：一条售后单可含该订单的多件商品。
+     后端只下发主表首件快照（迁移前的老数据）时，用主表字段合成一条明细，
+     页面因此只需要认 items 一个口径，不必到处判断有没有明细。 */
+  function afterSaleItemsOf(a) {
+    const raw = Array.isArray(a.items) ? a.items.filter(Boolean) : [];
+    if (raw.length) {
+      return raw.map(it => Object.assign({}, it, {
+        id: it.id !== undefined && it.id !== null ? it.id : null,
+        itemId: it.itemId !== undefined && it.itemId !== null ? it.itemId : null,
+        qty: Number(it.qty) || 1,
+        price: Number(it.price) || 0,
+        refundAmount: Number(it.refundAmount) || 0,
+        art: it.art || null
+      }));
+    }
+    if (a.productId === undefined || a.productId === null) return [];
+    return [{
+      id: null,
+      itemId: a.itemId !== undefined && a.itemId !== null ? a.itemId : null,
+      productId: a.productId,
+      title: a.title || '',
+      sku: a.sku || '默认',
+      art: a.art || null,
+      qty: Number(a.qty) || 1,
+      price: Number(a.price) || 0,
+      refundAmount: Number(a.refundAmount) || 0
+    }];
+  }
   /* 接口售后单 → 页面结构：时间字符串 → millis（页面统一用 fullTime 渲染）；
-     凭证图 / 店铺 / 买家 / 寄回物流 / 协商时间线全部做兜底，避免后端字段缺失时页面报错。
-     件数与退款金额由后端定格（退款金额 = 条目单价 × 件数），前端只读、绝不上报。 */
+     凭证图 / 商品明细 / 店铺 / 买家 / 寄回物流 / 时间线全部做兜底，避免后端字段缺失时页面报错。
+     件数与退款金额由后端定格（退款金额 = 各明细单价 × 件数之和），前端只读、绝不上报。 */
   function afterSaleFromApi(a) {
     if (!a) return null;
     return Object.assign({}, a, {
@@ -287,6 +315,7 @@ function noteOnline(online) {
       qty: Number(a.qty) || 1,
       price: Number(a.price) || 0,
       refundAmount: Number(a.refundAmount) || 0,
+      items: afterSaleItemsOf(a),
       images: Array.isArray(a.images) ? a.images.filter(Boolean) : [],
       art: a.art || null,
       shop: a.shop || { shopId: a.shopId || '', name: '' },
@@ -878,13 +907,17 @@ function noteOnline(online) {
 
     /* ================= 售后服务（strict：售后申请与处理全部以后端为准） =================
        契约要点（详见 docs/售后服务接口文档.md，后端代码见《售后服务后端实现代码与教程.md》）：
-       · GET    /after-sales                      → [售后对象]（**该账号的全部售后商品，一次返回**）
-       · GET    /after-sales/order/{orderId}      → [售后对象]（订单详情页逐条款式判断）
-       · GET    /after-sales/{afterSaleId}        → 售后对象（含 logs 处理时间线）
-       · POST   /after-sales                      → body {orderId,productId,sku,type,reason,description,images,qty}
+       · GET    /after-sales                      → [售后对象]（**该账号的全部售后单，一次返回**）
+       · GET    /after-sales/{afterSaleId}        → 售后对象（含 items 商品明细 + logs 处理时间线）
+       · POST   /after-sales                      → body {orderId,type,reason,description,images,items}
        · POST   /after-sales/image                → multipart 字段 file → {url}（凭证图上传 OSS）
        · POST   /after-sales/{id}/cancel          → 撤销申请（仅 pending）
        · POST   /after-sales/{id}/ship            → body {company,trackingNo}（仅 agreed，非仅退款）
+
+       与订单的关联在前端本地完成（**没有「按订单查售后」的接口**）：
+       · 订单列表 / 订单详情拿 `QM_API.orders.*`（后端 GET /orders 已返回全部订单并支持状态分类），
+         售后侧只拉一次 `afterSales.list()` 全量，再按 orderId 本地筛选；
+       · 这样后端不需要为「某个订单的售后」再开一个查询接口，两边数据源各自单一。
 
        列表口径（**后端不分页、不按状态过滤，分类交给前端**）：
        · GET /after-sales 一次性返回当前账号的全部售后单（数组），
@@ -892,16 +925,18 @@ function noteOnline(online) {
          因此没有 /after-sales/counts，也不存在「切页签重新请求」；
        · 前端列表页对返回值做本地分组，申请 / 撤销 / 寄回成功后 await refresh() 重拉一次即可。
 
-       定位口径（**售后一定针对某个商品的某个款式**）：
-       · 定位键 = orderId + productId + **sku**（款式文本）三者同时匹配订单快照，sku 必填，
-         匹配不到即报「订单中不存在该商品款式」，后端**不做**「按商品退化取第一条」的猜测；
-       · 同一订单、同一商品的不同款式各自独立申请，互不影响（不存在整单 / 整个商品的售后入口）；
-       · 唯一键 uk_order_sku(order_id, product_id, sku) 是「一个订单的一个款式只能有一条
-         售后记录」的硬约束（撤销 / 被拒后可重新申请，复用同一行）。
+       粒度口径（**一条售后单 = 一个订单 = 一个店铺**）：
+       · 下单时已按店铺拆单（一个订单只属于一个店铺），所以「按店铺售后」在本项目里就是
+         「按订单售后」：不再要求买家对订单里的某个商品款式分别申请；
+       · 唯一键 uk_order_id(order_id) 是「一个订单只能有一条售后单」的硬约束
+         （撤销 / 被拒后可重新申请，复用同一行）；
+       · 一条售后单可含该订单的多件商品：明细落在 after_sale_items，接口以 items 数组下发；
+         items 为空 / 不传 = 该订单全部商品一起售后。
 
        金额与件数口径（后端计算，前端只读）：
-       · 退款金额 = 该款式下单单价 × 售后件数（换货为 0），前端**不提交金额**；
-       · 件数上限 = 该款式下单数量（order_items.qty）。
+       · 每件明细退款金额 = 该条目下单单价 × 售后件数（换货为 0），
+         整单退款金额 = 各明细之和，前端**不提交金额**；
+       · 件数上限 = 该订单条目的下单数量（order_items.qty）。
 
        状态机：pending 待商家处理 →（同意）refunded 已退款 / agreed 待买家寄回
                agreed →（买家寄回）returned 待商家收货 →（商家确认）refunded / exchanged
@@ -921,15 +956,6 @@ function noteOnline(online) {
         /* 契约是数组；兼容后端把数组放在 { list } 里的实现 */
         return afterSaleListFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
       },
-      /* 某订单下的全部售后单（订单详情页按「商品 + 款式」判断每条款式的按钮文案） */
-      async byOrder(orderId) {
-        const data = await call(
-          { name: '订单售后', method: 'GET', path: '/after-sales/order/' + encodeURIComponent(orderId), query: {}, token: tokenOf() },
-          null, { strict: true }
-        );
-        /* 契约是数组；兼容后端把数组放在 { list } 里的实现 */
-        return afterSaleListFromApi(Array.isArray(data) ? data : ((data && data.list) || []));
-      },
       /* 售后详情（含处理时间线 logs） */
       async get(afterSaleId) {
         const data = await call(
@@ -938,14 +964,16 @@ function noteOnline(online) {
         );
         return afterSaleFromApi(data);
       },
-      /* 申请售后：payload { orderId, productId, sku, type, reason, description, images, qty }
-         sku（款式）必填 —— 售后定位在款式上；→ 返回新建（或复用后重置）的售后对象，
-         后端在同一事务里写申请日志 */
+      /* 申请售后：payload { orderId, type, reason, description, images }
+         · 粒度 = 一个订单（订单已按店铺拆单，等价于「按店铺售后」），且是**整单售后**：
+           页面不传 items，后端按该订单的全部商品条目建明细（items 仍支持显式指定，供后续扩展）；
+         · 商品标题 / 图片 / 单价 / 退款金额一律由服务端按订单条目快照计算，前端**不传金额**；
+         · 字段长度口径（与 after_sales 表一致）：reason ≤ 100、description ≤ 2000；
+         → 返回新建（或复用后重置）的售后对象，后端在同一事务里写明细与申请日志 */
       async create(payload) {
-        if (!payload || payload.orderId === undefined || payload.productId === undefined) {
-          throw new Error('缺少订单或商品信息，无法申请售后');
+        if (!payload || payload.orderId === undefined || payload.orderId === null) {
+          throw new Error('缺少订单信息，无法申请售后');
         }
-        if (!String(payload.sku || '').trim()) throw new Error('请选择售后款式');
         const data = await call(
           { name: '申请售后', method: 'POST', path: '/after-sales', body: payload, token: tokenOf() },
           null, { strict: true }

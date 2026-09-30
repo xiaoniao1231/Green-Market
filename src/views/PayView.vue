@@ -274,7 +274,7 @@ watch(() => JSON.stringify(route.value.query), () => { init(); });
         <!-- 本批合计 + 支付 -->
         <div class="ck-g-sum pay-batch-foot">
           <div v-if="b.orders.length > 1" class="hint" style="margin:0 0 8px">
-            🧾 本批共 {{ b.orders.length }} 笔订单，点一次「确认支付」一起付清
+            🧾 本批共 {{ b.orders.length }} 笔订单
           </div>
           <div class="checkout-item"><span>商品金额</span><span v-html="price(b.goods)"></span></div>
           <div class="checkout-item">

@@ -187,7 +187,6 @@ let currentLoginModal = null;
         <!-- ===================== 登录窗口 ===================== -->
         <div id="loginWindow">
           <h3 id="loginTitle">账号登录</h3>
-          <p class="modal-sub" id="loginSub">使用账号密码登录，登录后可同步购物车、订单与聊天记录</p>
           <div class="tabs" style="margin-bottom:16px">
             <button type="button" class="active" data-login-mode="acct">账号登录</button>
             <button type="button" data-login-mode="phone">手机登录</button>
@@ -204,7 +203,7 @@ let currentLoginModal = null;
                 <input id="phlSms" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" />
                 <button type="button" class="btn btn-plain" id="phlSend" data-send-code="login" style="flex:none;width:auto;padding:7px 12px;white-space:nowrap">获取验证码</button>
               </div>
-              <div class="hint" id="phlHint">验证码由后端生成并发送（6 位数字，5 分钟内有效）</div>
+              <div class="hint hidden" id="phlHint"></div>
             </div>
             <button type="button" class="btn btn-primary btn-lg" style="width:100%" id="phlSubmit">登 录</button>
           </div>
@@ -214,7 +213,6 @@ let currentLoginModal = null;
         <!-- ===================== 注册窗口 ===================== -->
         <div id="registerWindow" class="hidden">
           <h3 id="regTitle">账号注册</h3>
-          <p class="modal-sub" id="regSub">注册后即可用账号密码登录聊天与购物</p>
           <div class="tabs" style="margin-bottom:16px">
             <button type="button" class="active" data-reg-mode="acct">账号注册</button>
             <button type="button" data-reg-mode="phone">手机注册</button>
@@ -232,7 +230,7 @@ let currentLoginModal = null;
                 <input id="phSmsCode" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" />
                 <button type="button" class="btn btn-plain" id="phSendCode" data-send-code="register" style="flex:none;width:auto;padding:7px 12px;white-space:nowrap">获取验证码</button>
               </div>
-              <div class="hint" id="phSmsHint">验证码由后端生成并发送（6 位数字，5 分钟内有效）</div>
+              <div class="hint hidden" id="phSmsHint"></div>
             </div>
             <div class="form-row"><label>密码</label><input id="phPassword" type="password" maxlength="15" placeholder="最长 15 位，用于账号密码登录" /></div>
             <div class="form-row"><label>昵称</label><input id="phNickname" maxlength="30" placeholder="怎么称呼你" /></div>
@@ -259,23 +257,22 @@ let currentLoginModal = null;
 
     /* ---------- 方式切换：登录 / 注册各自独立的一组子页签 ---------- */
     const LOGIN_MODES = {
-      acct:  { title: '账号登录', sub: '使用账号密码登录，登录后可同步购物车、订单与聊天记录', pane: 'acctLoginPane' },
-      phone: { title: '手机号登录', sub: '使用手机号和短信验证码快捷登录（无需密码），验证码 5 分钟内有效', pane: 'phoneLoginPane' }
+      acct:  { title: '账号登录', pane: 'acctLoginPane' },
+      phone: { title: '手机号登录', pane: 'phoneLoginPane' }
     };
     const REG_MODES = {
-      acct:  { title: '账号注册', sub: '注册后即可用账号密码登录聊天与购物', pane: 'regAcctPane' },
-      phone: { title: '手机号注册', sub: '手机号即登录账号，验证码注册后即可用手机号 + 密码登录', pane: 'regPhonePane' }
+      acct:  { title: '账号注册', pane: 'regAcctPane' },
+      phone: { title: '手机号注册', pane: 'regPhonePane' }
     };
-    function pickMode(sel, dsKey, meta, titleSel, subSel, mode) {
+    function pickMode(sel, dsKey, meta, titleSel, mode) {
       const conf = meta[mode];
       if (!conf) { console.warn('[登录/注册弹窗] 未知的登录/注册方式：', mode); return; }
       root.querySelectorAll(sel).forEach(b => b.classList.toggle('active', b.dataset[dsKey] === mode));
       Object.keys(meta).forEach(k => root.querySelector('#' + meta[k].pane).classList.toggle('hidden', k !== mode));
       root.querySelector(titleSel).textContent = conf.title;
-      root.querySelector(subSel).textContent = conf.sub;
     }
-    function pickLogin(mode) { pickMode('[data-login-mode]', 'loginMode', LOGIN_MODES, '#loginTitle', '#loginSub', mode); }
-    function pickRegister(mode) { pickMode('[data-reg-mode]', 'regMode', REG_MODES, '#regTitle', '#regSub', mode); }
+    function pickLogin(mode) { pickMode('[data-login-mode]', 'loginMode', LOGIN_MODES, '#loginTitle', mode); }
+    function pickRegister(mode) { pickMode('[data-reg-mode]', 'regMode', REG_MODES, '#regTitle', mode); }
 
     /* ---------- 登录成功公共处理：校验密令并把整份 data（用户信息 + 密令）写入登录态，不拆开 ---------- */
     async function commitLogin(data) {
@@ -396,6 +393,7 @@ let currentLoginModal = null;
       btn.textContent = '发送中…';
       try {
         const data = await QM_API.auth.smsCode(phone, cfg.scene); // 后端生成 6 位数字验证码
+        hintEl.classList.remove('hidden');   // 提示默认隐藏，有内容时才出现
         hintEl.textContent = `验证码已发送至 ${phone}（6 位数字），5 分钟内有效`;
         let left = 60;
         btn.textContent = `重新发送(${left}s)`;
@@ -514,7 +512,7 @@ let currentLoginModal = null;
       const file = input.files && input.files[0];
       input.value = '';
       if (!file) return;
-      if (file.size > 10 * 1024 * 1024) return toast('图片不能超过 10MB', 'error');
+      if (file.size > 100 * 1024 * 1024) return toast('图片不能超过 100MB', 'error');
       if (!/^image\//.test(file.type)) return toast('请选择 jpg / png 等图片文件', 'error');
       try {
         toast('正在上传店铺头像…');

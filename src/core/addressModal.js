@@ -18,7 +18,6 @@ export default async function openAddressModal({ onSaved } = {}) {
   const m = modal(`
     <div>
       <h3>收货地址</h3>
-      <p class="modal-sub">新增、编辑、删除与设置默认地址</p>
       <div id="addrList"></div>
       <div id="addrForm" class="hidden" style="border-top:1px dashed var(--border);padding-top:14px;margin-top:10px">
         <div class="form-row"><label>收货人</label><input id="afName" maxlength="20" placeholder="姓名" /></div>
@@ -30,7 +29,7 @@ export default async function openAddressModal({ onSaved } = {}) {
             <select id="afCity" disabled><option value="">城市</option></select>
             <select id="afDist" disabled><option value="">区县</option></select>
           </div>
-          <p class="hint" id="afRegionHint">省 / 市 / 区三级联动；台湾各县市暂无区级数据，选到市级即可</p>
+          <p class="hint" id="afRegionHint"></p>
         </div>
         <div class="form-row"><label>详细地址</label><input id="afDetail" maxlength="60" placeholder="街道、楼牌号等" /></div>
         <div class="form-row">
@@ -42,7 +41,6 @@ export default async function openAddressModal({ onSaved } = {}) {
             <button type="button" class="tag-chip" data-tag="其他">其他</button>
           </div>
           <input id="afTagCustom" class="hidden" maxlength="6" placeholder="自定义标签（最多 6 个字）" style="margin-top:8px" />
-          <p class="hint">选填；选中标签后会在地址列表里显示，再点一次可取消</p>
         </div>
         <div class="form-row"><label><input type="checkbox" id="afDefault" style="width:auto;height:auto;margin-right:6px" />设为默认地址</label></div>
         <div class="modal-actions" style="margin-top:0">

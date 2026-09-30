@@ -483,6 +483,8 @@
 .order-foot .of-extra.of-discount { color: var(--accent-ink-2); }
 .order-foot .of-total .price { font-size: 20px; margin-left: 4px; }
 .order-foot .o-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 售后卡片底部只剩操作按钮（编号 / 状态文案已按需求移除）：按钮靠右对齐 */
+.order-foot .o-actions:only-child { margin-left: auto; }
 /* ---------- 订单详情页（#/order/:id，复用订单卡片的头尾样式） ---------- */
 .order-detail-card { padding-bottom: 0; }
 .od-hint { margin: 14px 18px 0; font-size: 13px; color: var(--brand-ink); background: var(--brand-softer); border: 1px solid var(--brand-soft); border-radius: var(--radius); padding: 9px 12px; }
@@ -544,13 +546,22 @@
 .as-info .as-status { color: var(--brand-ink); font-weight: 600; }
 /* 凭证图（沿用评价晒单的 .review-img 缩略图样式，只调外边距） */
 .as-imgs { margin: 8px 0 4px; }
-/* 只带订单号进入售后页时，先选一件商品 */
+/* 只带订单号进入售后页时，先选一个订单（一个订单 = 一个店铺） */
 .as-pick { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .as-pick-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; cursor: pointer; transition: all var(--dur) var(--ease); }
 .as-pick-row:hover { border-color: var(--brand); background: var(--brand-softer); }
 .as-pick-info { flex: 1; min-width: 0; }
 .as-pick-info b { display: block; font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.as-pick-info small { font-size: 12px; color: var(--text-3); }
+.as-pick-info small { font-size: 12px; color: var(--text-3); display: block; }
+
+/* 售后商品明细（整单售后：申请弹窗 / 进度弹窗 / 店家端都只读展示） */
+.as-items { display: flex; flex-direction: column; gap: 8px; }
+.as-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+.as-item-info { flex: 1; min-width: 0; }
+.as-item-info b { display: block; font-size: 13px; font-weight: 500; color: var(--text); }
+.as-item-info small { font-size: 12px; color: var(--text-3); }
+/* 申请弹窗 / 进度弹窗的只读列表：底色略浅，与可点区域区分开 */
+.as-items.static .as-item { background: #fafafa; }
 
 /* 物流时间线 */
 .logistics { padding: 8px 4px; }

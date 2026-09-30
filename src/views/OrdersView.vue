@@ -49,23 +49,18 @@ const AS_STATUS_TEXT = {
 /* 可申请售后的订单状态（与后端硬校验口径一致：待付款没有钱可退，已取消不成立） */
 const AS_APPLICABLE = ['paid', 'shipped', 'done'];
 /* 售后单映射：orderId → 售后单（GET /after-sales 一次拉全后本地建索引，与售后页共用同一份契约）。
-   售后**按商品款式申请**，一笔订单可能有多条记录（不同款式各一条），这里只保留一条用于决定按钮文案
-   （优先仍「进行中」的那条）；接口失败时静默降级为「所有可售后订单都显示『售后服务』」，
-   不打扰买家浏览订单 —— 真正点击时再由售后页如实报错 */
+   售后**按订单（= 店铺）申请**：下单已按店铺拆单，一个订单至多一条售后单，直接按 orderId 建索引，
+   用来决定入口文案（「售后服务」还是「售后进度」）；接口失败时静默降级为
+   「所有可售后订单都显示『售后服务』」，不打扰买家浏览订单 —— 真正点击时再由售后页如实报错 */
 const afterSalesByOrder = ref({});
 const isAfterSalesProcessing = a => ['pending', 'agreed', 'returned'].includes(a.status);
 const afterSaleOf = o => afterSalesByOrder.value[String(o.id)] || null;
 async function loadAfterSales() {
   try {
-    /* 后端一次返回本账号的全部售后商品（不分页 / 不筛选），这里本地建 orderId 索引 */
+    /* 后端一次返回本账号的全部售后单（不分页 / 不筛选），这里本地建 orderId 索引 */
     const all = await QM_API.afterSales.list();
     const map = {};
-    all.forEach(a => {
-      const key = String(a.orderId);
-      const cur = map[key];
-      /* 同一订单可能有多条（不同款式各申请一次）：优先展示仍「进行中」的那条 */
-      if (!cur || (isAfterSalesProcessing(a) && !isAfterSalesProcessing(cur))) map[key] = a;
-    });
+    all.forEach(a => { map[String(a.orderId)] = a; });   // 一个订单至多一条售后单
     afterSalesByOrder.value = map;
   } catch (e) {
     afterSalesByOrder.value = {};
@@ -82,7 +77,7 @@ const btn = (action, id, text, kind) =>
  * · 待发货：提醒发货 / 售后服务
  * · 待收货：查看物流 / 售后服务 / 确认收货（店家发货后状态转 shipped，按钮自动从「提醒发货」变「查看物流」）
  * · 已完成：售后服务 / 评价晒单 / 再次购买
- * 已提交过售后（任意款式）的订单，入口变成「售后进度」；点进去可在售后页按款式查看 / 继续申请。
+ * 已提交过售后的订单，入口变成「售后进度」；点进去可在售后页查看 / 继续该订单的售后。
  */
 function orderActions(o) {
   const a = [];
@@ -176,7 +171,8 @@ function logisticsModal(o, list) {
 
 /* 售后服务不再有本页弹窗：申请 / 进度 / 撤销 / 寄回物流全部在独立售后页完成
    （#/after-sales，契约见 docs/售后服务接口文档.md）——本页只保留入口按钮，
-   点击时带上 orderId 跳过去，由售后页自动打开该订单的申请弹窗或进度弹窗。
+   点击时带上 orderId 跳过去：该订单还没有售后记录时由售后页直接弹出申请窗口，
+   已有记录则不弹窗，由买家在售后列表里点「查看进度」。
    旧实现把申请写进浏览器存储（提示「本机演示」），店家看不到、后端也没有记录，已删除。 */
 
 /* 当前激活页签：以 URL 的 ?status= 为唯一来源，初始值取自 query.status。
@@ -267,8 +263,7 @@ async function onListClick(e) {
     case 'order-after-sales':
     case 'order-after-sales-detail':
       /* 售后服务统一在独立售后页完成（#/after-sales，契约见 docs/售后服务接口文档.md）：
-         带上订单号跳过去，售后页会自动打开该订单的「申请售后」弹窗
-         （已有售后记录时则打开该条的进度弹窗） */
+         带上订单号跳过去：没有售后记录时售后页直接弹出申请窗口，已有记录则不弹窗 */
       router.push('/after-sales?orderId=' + encodeURIComponent(id));
       break;
     case 'goto-reviews':

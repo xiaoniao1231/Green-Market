@@ -20,7 +20,10 @@
    strict 策略：接口失败如实报错并显示错误提示 + 空态，绝不把评价写进浏览器存储
    冒充「已评价」——那样数据库里没有记录、刷新即消失、评分也永远不会变。
    入口：我的订单「已完成」→ 评价晒单、个人中心「评价晒单」、订单详情的
-   「评价晒单」按钮（带 ?orderId= 时自动打开该订单的评价弹窗）。
+   「评价晒单」按钮（均可带 ?orderId= 进入本页）。
+   ⚠ **进页面不自动弹窗**：入口参数只解析成顶部一张入口卡片（entry），
+   评价 / 追评弹窗都必须由用户点按钮触发 —— 点入口卡片的「去评价」，
+   或点列表里对应的「评价晒单」/「追加评价」。
    ========================================================= */
 import { computed, onMounted, ref } from 'vue';
 import QM_UI from '../core/ui.js';
@@ -33,7 +36,7 @@ const route = useRouteCompat();
 /* 评分档位文案（与星级一一对应，0 不用） */
 const STAR_TEXT = ['', '差评', '较差', '一般', '较好', '好评'];
 const IMAGE_MAX = 6;
-const IMAGE_MAX_SIZE = 10 * 1024 * 1024;
+const IMAGE_MAX_SIZE = 100 * 1024 * 1024;
 
 /* 点击商品图 / 商品名 → 跳商品详情并预选该订单条目对应的款式（详情页按 ?sku= 解析选中；
    与商品详情页 skuText() 的「 / 」连接口径一致，见 DetailView.vue） */
@@ -103,7 +106,8 @@ async function refresh() {
   try {
     await Promise.all([loadPending(), loadMine()]);
     phase.value = 'ready';
-    openFromQuery();
+    /* 入口参数只解析成顶部入口卡片，**不在这里弹任何弹窗**（弹窗必须用户点击触发） */
+    readEntry();
   } catch (e) {
     pendingOrders.value = [];
     mineList.value = [];
@@ -112,18 +116,28 @@ async function refresh() {
   }
 }
 
-/* 从 #/reviews?orderId=xxx 进入（订单列表 / 订单详情的「评价晒单」）时，
-   自动打开该订单待评价条目的评价弹窗；同一订单只自动打开一次 */
-let autoOpened = false;
-function openFromQuery() {
-  if (autoOpened) return;
+/* ---------- 订单入口参数：只解析成入口卡片，绝不自动弹窗 ----------
+   入口形如 #/reviews?orderId=123（订单列表 / 订单详情 / 个人中心跳转过来）。
+   旧实现是进页面就自动弹该订单待评价条目的评价弹窗，把整页盖住；
+   现在只把订单号挂到 entry 上，由模板渲染一张入口卡片，必须点按钮才走 openEntry()。 */
+const entry = ref(null);   // { orderId } | null
+
+/* 只读 query、只赋值，不弹窗 */
+function readEntry() {
   const oid = route.value.query.orderId;
-  if (!oid) return;
-  const order = pendingOrders.value.find(o => String(o.id) === String(oid));
-  if (!order) return;
+  entry.value = oid ? { orderId: String(oid) } : null;
+}
+
+/* 用户点入口卡片「去评价」后才执行：在该订单里找未评价条目并弹出评价弹窗 */
+function openEntry() {
+  const e = entry.value;
+  if (!e) return;
+  const order = pendingOrders.value.find(o => String(o.id) === String(e.orderId));
+  if (!order) { toast('该订单暂无可评价的商品', 'error'); return; }
   const item = (order.items || []).find(it => !it.reviewed);
-  autoOpened = true;
-  if (item) reviewModal(order, item);
+  if (!item) { toast('该订单的商品都评价过了', 'error'); return; }
+  tab.value = 'pending';   // 待评价条目在「待评价」页签，切过去让用户看到点的是哪一条
+  reviewModal(order, item);
 }
 
 /* ---------- 评价弹窗（星级 + 内容 + 晒单图 + 匿名） ---------- */
@@ -154,7 +168,7 @@ function reviewModal(order, item) {
           <div class="review-imgs" id="rvImgs"></div>
           <div class="review-upload-actions">
             <button type="button" class="btn btn-plain" id="rvPick">选择图片</button>
-            <small>最多 ${IMAGE_MAX} 张，单张不超过 10MB</small>
+            <small>最多 ${IMAGE_MAX} 张，单张不超过 100MB</small>
           </div>
           <input type="file" id="rvFile" accept="image/*" multiple class="hidden" />
         </div>
@@ -206,7 +220,7 @@ function reviewModal(order, item) {
     fileEl.value = '';   // 允许再次选择同一文件
     for (const f of files) {
       if (images.length >= IMAGE_MAX) { toast(`晒单图最多 ${IMAGE_MAX} 张`, 'error'); break; }
-      if (f.size > IMAGE_MAX_SIZE) { toast('单张图片不能超过 10MB', 'error'); continue; }
+      if (f.size > IMAGE_MAX_SIZE) { toast('单张图片不能超过 100MB', 'error'); continue; }
       try {
         const r = await QM_API.reviews.uploadImage(f);
         if (r && r.url) { images.push(r.url); renderImgs(); }
@@ -256,7 +270,7 @@ function appendModal(r) {
   const m = modal(`
     <div>
       <h3>追加评价</h3>
-      <p class="modal-sub">${esc((r.product && r.product.title) || '')}<br><small>追评不改变已发布的评分</small></p>
+      <p class="modal-sub">${esc((r.product && r.product.title) || '')}</p>
       <div class="form-row">
         <label>追评内容</label>
         <textarea id="apContent" rows="4" maxlength="500" placeholder="用了一段时间后的感受（最多 500 字）"></textarea>
@@ -336,6 +350,24 @@ onMounted(refresh);
     </div>
 
     <template v-else>
+      <!-- 从订单入口进来（带 ?orderId=…）：只渲染一张入口卡片，
+           **不自动弹窗** —— 必须点「去评价」才走 openEntry() -->
+      <div v-if="entry" class="order-card">
+        <div class="order-head">
+          <div class="oh-left">
+            <span class="oh-no">订单 #{{ entry.orderId }}</span>
+          </div>
+          <span class="o-status done">待评价</span>
+        </div>
+        <div class="order-foot">
+          <div class="of-sum"></div>
+          <div class="o-actions">
+            <button class="btn btn-primary btn-sm" @click="openEntry">去评价</button>
+            <button class="btn btn-plain btn-sm" @click="entry = null">忽略</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== 待评价 ===== -->
       <div v-if="tab === 'pending'">
         <div v-for="o in pendingOrders" :key="o.id" class="order-card">

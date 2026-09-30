@@ -132,7 +132,7 @@ function pickImage(fileInput, done) {
   const file = fileInput && fileInput.files && fileInput.files[0];
   if (!file) return;
   if (!/^image\//.test(file.type)) return toast('请选择图片文件（jpg / png / webp）', 'error');
-  if (file.size > 10 * 1024 * 1024) return toast('图片不能超过 10MB', 'error');
+  if (file.size > 100 * 1024 * 1024) return toast('图片不能超过 100MB', 'error');
   QM_API.products.uploadImage(file).then(res => {
     const url = res && res.url;
     if (!url) return toast('上传未返回图片地址', 'error');
@@ -212,7 +212,6 @@ function openEditor(p) {
 
   const m = modal(`
     <h3>${isNew ? '新增商品' : '编辑商品'}</h3>
-    <p class="modal-sub">${isNew ? '填写商品信息后上架，买家即可在店铺主页看到' : '修改任意字段后保存，买家端立即生效'}</p>
 
     <h4 class="editor-sec">基础信息</h4>
     <div class="form-row"><label>商品标题 *</label><input id="f_title" maxlength="80" placeholder="简洁描述商品卖点，建议 10-40 字" value="${esc(base.title || '')}" /></div>
@@ -227,11 +226,11 @@ function openEditor(p) {
       <div class="form-row"><label>子类</label><select id="f_sub">${subs}</select></div>
     </div>
 
-    <h4 class="editor-sec">规格 SKU <small>每个款式可单独配图与定价；款式价留空 = 沿用商品售价</small></h4>
+    <h4 class="editor-sec">规格 SKU</h4>
     <div id="skuRows">${skuGroups}</div>
     <button type="button" class="btn btn-plain btn-sm" data-add-sku>＋ 添加规格组</button>
 
-    <h4 class="editor-sec">规格参数 <small>如 品牌 / 材质 / 尺寸</small></h4>
+    <h4 class="editor-sec">规格参数</h4>
     <div id="paramRows">${paramRows}</div>
     <button type="button" class="btn btn-plain btn-sm" data-add-param>＋ 添加参数</button>
 
@@ -432,7 +431,6 @@ function renderDetail(p) {
 
   const m = modal(`
     <h3>图文详情</h3>
-    <p class="modal-sub">按顺序展示在商品详情页「图文详情」Tab：文字与图片可穿插、排序（先写文字再插图片即可）</p>
 
     <div id="detailRows">${blocks.map(detailRowHtml).join('')}</div>
     <div class="detail-add-actions">
@@ -440,7 +438,7 @@ function renderDetail(p) {
       <button type="button" class="btn btn-plain btn-sm" data-add-detail-img>＋ 添加图片</button>
     </div>
 
-    <h4 class="editor-sec">商品简介 <small>详情页首段展示，留空时自动取第一段文字</small></h4>
+    <h4 class="editor-sec">商品简介</h4>
     <div class="form-row"><textarea id="f_desc" rows="2" maxlength="200" placeholder="一句话简介">${esc(desc)}</textarea></div>
 
     <div class="modal-actions">
@@ -528,7 +526,7 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
     <div class="page-head">
       <div>
         <div class="crumb">首页 / 我的店铺 / 商品管理</div>
-        <h1>商品管理 <small>PRODUCTS</small></h1>
+        <h1>商品管理</h1>
       </div>
       <div class="page-head-actions">
         <button v-if="svc" class="btn btn-primary" @click="addNew">＋ 新增商品</button>

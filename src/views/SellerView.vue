@@ -51,6 +51,37 @@ async function loadOrders() {
   }
 }
 
+/* ---------- 待办统计：待处理售后 / 待回复评价 ----------
+   两项都只在确有需要处理时进「待办事项」；接口失败静默降级为 0，不打扰工作台浏览 */
+const pendingAfterSales = ref(0);
+const unrepliedReviews = ref(0);
+/* 已完成退款金额：工作台「累计到账」要扣掉它（换货不退款，金额为 0） */
+const refundedAmount = ref(0);
+async function loadTodoStats() {
+  if (!shopId.value) { pendingAfterSales.value = 0; unrepliedReviews.value = 0; refundedAmount.value = 0; return; }
+  /* 待处理售后：后端按 status=pending 过滤并返回总数，这里只要 total（size 取 1 足矣） */
+  try {
+    const d = await QM_API.seller.afterSales({ page: 1, size: 1, status: 'pending' });
+    pendingAfterSales.value = Number(d && d.total) || 0;
+  } catch (e) {
+    pendingAfterSales.value = 0;
+  }
+  /* 已退款金额：售后单终态 refunded 的 refundAmount 合计，用于累计到账扣减 */
+  try {
+    const d = await QM_API.seller.afterSales({ page: 1, size: 200, status: 'refunded' });
+    refundedAmount.value = ((d && d.list) || []).reduce((s, a) => s + Number(a.refundAmount || 0), 0);
+  } catch (e) {
+    refundedAmount.value = 0;
+  }
+  /* 待回复评价：本店评价分组统计里已带 unreplied，一次求和即可 */
+  try {
+    const groups = await QM_API.reviews.shopGroups();
+    unrepliedReviews.value = (groups || []).reduce((sum, g) => sum + (Number(g.unreplied) || 0), 0);
+  } catch (e) {
+    unrepliedReviews.value = 0;
+  }
+}
+
 /* ---------- 店铺档案：接口优先（GET /shops/profile），接口未实现时沿用本地档案 ---------- */
 async function loadShopProfile() {
   if (!shopId.value) return;
@@ -62,7 +93,7 @@ async function loadShopProfile() {
   }
 }
 
-function loadAll() { loadShopProfile(); loadProducts(); loadOrders(); }
+function loadAll() { loadShopProfile(); loadProducts(); loadOrders(); loadTodoStats(); }
 onMounted(loadAll);
 onActivated(loadAll);
 
@@ -95,9 +126,11 @@ const pendingPay = computed(() => orderList.value.filter(o => o.status === 'pend
    工作台把它从普通待发货里拎出来单独提示 —— 这是买家已经表达过不满的订单，优先级最高 */
 const urgedOrders = computed(() => orderList.value.filter(o => o.status === 'paid' && Number(o.remindCount || 0) > 0));
 /* 累计收入：排除已取消与未付款的订单 */
-const revenue = computed(() => orderList.value
+const grossRevenue = computed(() => orderList.value
   .filter(o => o.status !== 'canceled' && o.status !== 'pending')
   .reduce((sum, o) => sum + Number(o.total || 0), 0));
+/* 累计到账：累计收入 − 已完成退款（退款金额以售后单为凭据） */
+const revenue = computed(() => Math.max(0, grossRevenue.value - refundedAmount.value));
 
 const recentOrders = computed(() => orderList.value
   .slice()
@@ -110,10 +143,13 @@ const STATUS_TEXT = { pending: '待付款', paid: '待发货', shipped: '待收�
 const todos = computed(() => {
   const list = [];
   /* 催发货排在最前：买家已经主动催过，比「有单待发」更紧急 */
-  if (urgedOrders.value.length) list.push({ icon: '🔔', text: `${urgedOrders.value.length} 笔订单买家已催发货`, hint: '被催订单已在订单页置顶，建议优先处理', href: '#/seller/orders?status=paid', action: '去发货' });
-  if (pendingShip.value) list.push({ icon: '▣', text: `${pendingShip.value} 笔订单等待发货`, hint: '及时发货能提升买家体验', href: '#/seller/orders', action: '去发货' });
-  if (offSale.value) list.push({ icon: '◈', text: `${offSale.value} 件商品已下架`, hint: '重新上架后买家才能看到', href: '#/seller/products', action: '去上架' });
-  if (pendingPay.value) list.push({ icon: '◴', text: `${pendingPay.value} 笔订单买家还未付款`, hint: '付款后即可安排发货', href: '#/seller/orders', action: '查看' });
+  if (urgedOrders.value.length) list.push({ icon: '🔔', text: `${urgedOrders.value.length} 笔订单买家已催发货`, href: '#/seller/orders?status=paid', action: '去发货' });
+  if (pendingShip.value) list.push({ icon: '▣', text: `${pendingShip.value} 笔订单等待发货`, href: '#/seller/orders', action: '去发货' });
+  /* 售后与评价：买家在等处理 / 等回复，比「已下架商品」「未付款订单」更需要马上处理 */
+  if (pendingAfterSales.value) list.push({ icon: '📋', text: `${pendingAfterSales.value} 笔售后等待处理`, href: '#/seller/after-sales?status=pending', action: '去处理' });
+  if (unrepliedReviews.value) list.push({ icon: '★', text: `${unrepliedReviews.value} 条评价等待回复`, href: '#/seller/reviews', action: '去回复' });
+  if (offSale.value) list.push({ icon: '◈', text: `${offSale.value} 件商品已下架`, href: '#/seller/products', action: '去上架' });
+  if (pendingPay.value) list.push({ icon: '◴', text: `${pendingPay.value} 笔订单买家还未付款`, href: '#/seller/orders', action: '查看' });
   return list;
 });
 
@@ -161,7 +197,7 @@ function openShopEdit() {
       </div>
       <div class="se-avatar-actions">
         <button class="btn btn-plain btn-sm" id="sePick">更换头像</button>
-        <span class="se-tip">jpg / png，≤10MB</span>
+        <span class="se-tip">jpg / png，≤100MB</span>
       </div>
       <label class="se-label" for="seName">店铺名称</label>
       <input id="seName" class="se-name" maxlength="20" placeholder="2-20 个字，修改后全站同步显示" value="${esc(editName.value)}" />
@@ -196,7 +232,7 @@ async function pickAvatar(input) {
   const file = input.files && input.files[0];
   input.value = '';
   if (!file) return;
-  if (file.size > 10 * 1024 * 1024) { toast('图片不能超过 10MB', 'error'); return; }
+  if (file.size > 100 * 1024 * 1024) { toast('图片不能超过 100MB', 'error'); return; }
   if (!/^image\//.test(file.type)) { toast('请选择 jpg / png 等图片文件', 'error'); return; }
   try {
     toast('正在上传头像…');
@@ -251,7 +287,7 @@ function nameConflict(name) {
     <div class="page-head">
       <div>
         <div class="crumb">首页 / 我的店铺</div>
-        <h1>我的店铺 <small>MY SHOP</small></h1>
+        <h1>我的店铺</h1>
       </div>
       <a class="btn btn-plain" href="#/home">返回商城</a>
     </div>
@@ -287,8 +323,8 @@ function nameConflict(name) {
         <a class="stat-card" href="#/seller/orders" title="查看全部订单">
           <b>{{ orderTotal }}</b><span>全部订单</span>
         </a>
-        <a class="stat-card" href="#/seller/income" title="查看收入明细">
-          <b>¥{{ money(revenue) }}</b><span>累计收入</span>
+        <a class="stat-card" href="#/seller/income" title="累计收入扣除已完成退款后的到账金额">
+          <b>¥{{ money(revenue) }}</b><span>累计到账</span>
         </a>
       </div>
 
@@ -302,11 +338,11 @@ function nameConflict(name) {
           <ul v-if="todos.length" class="todo-list">
             <li v-for="t in todos" :key="t.text">
               <span class="todo-icon">{{ t.icon }}</span>
-              <span class="todo-text"><b>{{ t.text }}</b><small>{{ t.hint }}</small></span>
+              <span class="todo-text"><b>{{ t.text }}</b></span>
               <a class="todo-btn" :href="t.href">{{ t.action }} ›</a>
             </li>
           </ul>
-          <div v-else class="seller-blank">🎉 没有待处理的订单或商品，一切都很顺利</div>
+          <div v-else class="seller-blank">🎉 没有待处理的订单、售后或评价，一切都很顺利</div>
         </section>
 
         <section class="seller-panel">
@@ -315,15 +351,15 @@ function nameConflict(name) {
             <small>常用操作</small>
           </header>
           <div class="seller-nav-grid">
-            <a class="seller-nav-card" href="#/seller/products"><span class="s-icon">◈</span><b>商品管理</b><small>上架 · 编辑 · 新增</small></a>
-            <a class="seller-nav-card" href="#/seller/orders"><span class="s-icon">▣</span><b>订单管理</b><small>查看订单 · 发货</small></a>
+            <a class="seller-nav-card" href="#/seller/products"><span class="s-icon">◈</span><b>商品管理</b></a>
+            <a class="seller-nav-card" href="#/seller/orders"><span class="s-icon">▣</span><b>订单管理</b></a>
             <!-- 售后管理：买家申请后在这里同意 / 拒绝 / 确认收货并退款或换货
                  （契约见 docs/售后服务接口文档.md 第 3 章） -->
-            <a class="seller-nav-card" href="#/seller/after-sales"><span class="s-icon">📋</span><b>售后管理</b><small>退款 · 退货 · 换货</small></a>
+            <a class="seller-nav-card" href="#/seller/after-sales"><span class="s-icon">📋</span><b>售后管理</b></a>
             <!-- 评价管理：查看本店收到的评价并回复（GET /reviews/shop，POST /reviews/{id}/reply） -->
-            <a class="seller-nav-card" href="#/seller/reviews"><span class="s-icon">★</span><b>评价管理</b><small>查看评价 · 回复买家</small></a>
-            <a class="seller-nav-card" :href="shopHref"><span class="s-icon">🏪</span><b>店铺主页</b><small>买家看到的样子</small></a>
-            <a class="seller-nav-card" href="#/chat"><span class="s-icon">◌</span><b>买家咨询</b><small>在消息中心回复</small></a>
+            <a class="seller-nav-card" href="#/seller/reviews"><span class="s-icon">★</span><b>评价管理</b></a>
+            <a class="seller-nav-card" :href="shopHref"><span class="s-icon">🏪</span><b>店铺主页</b></a>
+            <a class="seller-nav-card" href="#/chat"><span class="s-icon">◌</span><b>买家咨询</b></a>
           </div>
         </section>
       </div>

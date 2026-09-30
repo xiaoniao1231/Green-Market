@@ -628,7 +628,6 @@ onBeforeUnmount(() => {
               </span>
               <button class="shop-mini-meta" title="点击查看店铺信息" @click="openShopInfo">
                 <b class="ellipsis">{{ shopInfo.shopName }}</b>
-                <small>点击查看店铺信息</small>
               </button>
             </div>
             <div class="shop-stats">

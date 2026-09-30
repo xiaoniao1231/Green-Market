@@ -55,7 +55,6 @@ export function openPhoneModal({ current, onSaved } = {}) {
   const m = modal(`
     <div>
       <h3>${bound ? '修改手机号' : '绑定手机号'}</h3>
-      <p class="modal-sub">一个手机号只能绑定一个账号</p>
       ${bound ? `
       <div class="as-info" style="padding-top:0">
         <div><span>当前手机号</span><b>${esc(maskPhone(currentPhone))}</b></div>
@@ -70,13 +69,12 @@ export function openPhoneModal({ current, onSaved } = {}) {
           <input id="apSms" maxlength="6" inputmode="numeric" placeholder="6 位数字验证码" />
           <button type="button" class="btn btn-plain sms-btn" id="apSend">获取验证码</button>
         </div>
-        <p class="hint" id="apHint">验证码发送到「新手机号」，5 分钟内有效</p>
+        <p class="hint hidden" id="apHint"></p>
       </div>
       ${bound ? `
       <div class="form-row">
         <label>当前登录密码</label>
         <input id="apPwd" type="password" maxlength="15" placeholder="请输入当前密码" />
-        <p class="hint">修改手机号需验证当前登录密码</p>
       </div>` : ''}
       <div class="modal-actions" style="margin-top:0">
         <button class="btn btn-plain" data-close id="apCancel">取消</button>
@@ -124,7 +122,6 @@ export function openPasswordModal({ onSaved } = {}) {
   const m = modal(`
     <div>
       <h3>修改密码</h3>
-      <p class="modal-sub">修改后其它设备需重新登录</p>
       <div class="form-row">
         <label>当前密码</label>
         <input id="pwOld" type="password" maxlength="15" placeholder="请输入当前密码" autocomplete="current-password" />

@@ -7,8 +7,10 @@
    · PUT  /seller/after-sales/{id}/refuse   拒绝（必须写原因，买家端会原样看到）
    · PUT  /seller/after-sales/{id}/receive  确认收货（退货退款 → 已退款；换货 → 换货完成，需重发物流）
 
-   售后按「商品款式」申请：每笔售后都带商品 + 款式（sku）+ 件数 + 退款金额，
-   店家按款式核实与处理；本页不提供文字沟通入口（需要商量时买家走消息中心联系卖家）。
+   售后按「订单（= 店铺）」申请：下单已按店铺拆单，一个订单只属于一个店铺，
+   所以一笔售后 = 一个订单，可含该订单的多件商品（items 明细，逐件带件数与退款金额），
+   店家按明细核实、整单处理（同意 / 拒绝 / 确认收货）；
+   本页不提供文字沟通入口（需要商量时买家走消息中心联系卖家）。
    店铺身份由后端按 shops.owner_user_id 解析，前端不传 shopId；
    页签计数在已拉取的列表上本地统计（与订单管理页同一做法）。
    后端未实现（404）/ 不可达时提示失败 + 空态，不回退本地假数据。
@@ -95,10 +97,6 @@ function setFilter(key) { filter.value = key; }
 function searchByAfterNo() { refresh(); }
 function clearAfterNo() { if (!afterNoKw.value) return; afterNoKw.value = ''; refresh(); }
 
-/* 待处理 / 待收货数量：店家端顶部提示与工作台待办用得到 */
-const pendingCount = computed(() => list.value.filter(a => a.status === 'pending').length);
-const returnedCount = computed(() => list.value.filter(a => a.status === 'returned').length);
-
 async function refresh() {
   if (!shopId.value) { list.value = []; return; }
   loading.value = true;
@@ -124,15 +122,15 @@ function approveModal(a) {
         <br><small>${esc(a.title)} · ${esc(a.sku || '默认')} ×${a.qty}${isRefund ? '' : ' · 退款金额 ' + price(a.refundAmount)}</small>
       </p>
       ${isRefund
-        ? '<p class="seller-tip">仅退款：同意后本单直接进入「已退款」，无需买家寄回。</p>'
+        ? ''
         : `<div class="form-row">
              <label>退货寄回地址</label>
              <input id="saAddr" maxlength="200" value="${esc('浙江省杭州市余杭区青集市仓储中心 售后组 0571-88888888')}" />
-             <small class="form-tip">买家会看到该地址，按此寄回商品</small>
+             <small class="form-tip">最多 200 字</small>
            </div>`}
       <div class="form-row">
         <label>处理备注</label>
-        <textarea id="saRemark" rows="2" maxlength="200" placeholder="选填，买家可见（最多 200 字）"></textarea>
+        <textarea id="saRemark" rows="2" maxlength="1000" placeholder="选填，买家可见（最多 1000 字）"></textarea>
       </div>
       <div class="modal-actions">
         <button class="btn btn-plain" data-close>取消</button>
@@ -172,11 +170,11 @@ function refuseModal(a) {
   const m = modal(`
     <div>
       <h3>拒绝售后</h3>
-      <p class="modal-sub">售后单号 ${esc(a.afterNo || a.id)} · 拒绝原因会展示给买家</p>
+      <p class="modal-sub">售后单号 ${esc(a.afterNo || a.id)}</p>
       <div class="form-row">
         <label>拒绝原因</label>
-        <textarea id="srReason" rows="3" maxlength="200" placeholder="如：商品已使用超过 7 天，且检测无质量问题"></textarea>
-        <small class="form-tip" id="srCount">0 / 200</small>
+        <textarea id="srReason" rows="3" maxlength="2000" placeholder="如：商品已使用超过 7 天，且检测无质量问题（最多 2000 字）"></textarea>
+        <small class="form-tip" id="srCount">0 / 2000</small>
       </div>
       <div class="modal-actions">
         <button class="btn btn-plain" data-close>取消</button>
@@ -185,7 +183,7 @@ function refuseModal(a) {
     </div>`, { wide: true });
 
   const reasonEl = m.root.querySelector('#srReason');
-  reasonEl.oninput = () => { m.root.querySelector('#srCount').textContent = reasonEl.value.length + ' / 200'; };
+  reasonEl.oninput = () => { m.root.querySelector('#srCount').textContent = reasonEl.value.length + ' / 2000'; };
 
   const btn = m.root.querySelector('#srSubmit');
   btn.onclick = async () => {
@@ -220,14 +218,16 @@ function receiveModal(a) {
         <div class="form-row">
           <label>换货快递公司</label>
           <input id="scCompany" maxlength="50" placeholder="如：圆通速递" />
+          <small class="form-tip">最多 50 字</small>
         </div>
         <div class="form-row">
           <label>换货运单号</label>
           <input id="scNo" maxlength="50" placeholder="仅字母、数字与连字符" />
-        </div>` : `<p class="seller-tip">确认收货后，本单进入「已退款」，退款金额 ${price(a.refundAmount)}。</p>`}
+          <small class="form-tip">最多 50 字，仅字母、数字与连字符</small>
+        </div>` : `<p class="seller-tip">退款金额 ${price(a.refundAmount)}</p>`}
       <div class="form-row">
         <label>处理备注</label>
-        <textarea id="scRemark" rows="2" maxlength="200" placeholder="选填，买家可见（最多 200 字）"></textarea>
+        <textarea id="scRemark" rows="2" maxlength="1000" placeholder="选填，买家可见（最多 1000 字）"></textarea>
       </div>
       <div class="modal-actions">
         <button class="btn btn-plain" data-close>取消</button>
@@ -270,11 +270,21 @@ function detailModal(a) {
       <h3>售后详情</h3>
       <p class="modal-sub">
         售后单号 ${esc(a.afterNo || a.id)} · 订单号 ${esc(a.orderNo)}
-        <br><small>${esc(a.title)} · 款式：${esc(a.sku || '默认')} ×${a.qty}</small>
+        <br><small>${a.items.length} 件商品 · 共 ${a.qty} 件</small>
       </p>
+      <div class="as-items static">
+        ${a.items.map(it => `
+          <div class="as-item">
+            <span class="oi-art" style="${artStyle(it.art)}">${artHtml(it.art)}</span>
+            <span class="as-item-info">
+              <b class="ellipsis" title="${esc(it.title)}">${esc(it.title)}</b>
+              <small>${esc(it.sku || '默认')} · ×${it.qty}${it.refundAmount ? ' · 退款 ' + price(it.refundAmount) : ''}</small>
+            </span>
+          </div>`).join('') || '<p class="hint">该售后单没有商品明细</p>'}
+      </div>
       <div class="as-detail">
         <div><span>申请人</span><b>${esc((a.buyer && a.buyer.nickname) || a.userId || '—')}（${esc((a.buyer && a.buyer.userId) || a.userId || '')}）</b></div>
-        <div><span>售后款式</span><b>${esc(a.sku || '默认')}</b></div>
+        <div><span>商品件数</span><b>${a.items.length} 件商品 · 共 ${a.qty} 件</b></div>
         <div><span>售后类型</span><b>${esc(typeOf(a).label)}</b></div>
         <div><span>处理状态</span><b class="as-status">${esc(stOf(a).text)}</b></div>
         <div><span>售后原因</span><b>${esc(a.reason)}</b></div>
@@ -325,20 +335,12 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
     <div class="page-head">
       <div>
         <div class="crumb">首页 / 我的店铺 / 售后管理</div>
-        <h1>售后管理 <small>AFTER-SALES</small></h1>
+        <h1>售后管理</h1>
       </div>
       <a class="btn btn-plain" href="#/seller">返回我的店铺</a>
     </div>
 
     <template v-if="svc">
-      <div v-if="pendingCount || returnedCount" class="seller-tip urge">
-        🔔
-        <template v-if="pendingCount">有 <b>{{ pendingCount }}</b> 笔售后待处理</template>
-        <template v-if="pendingCount && returnedCount">，</template>
-        <template v-if="returnedCount">有 <b>{{ returnedCount }}</b> 笔退货已寄回待收货</template>
-        —— 建议优先处理。
-      </div>
-
       <!-- 状态筛选：从工作台「待处理售后」卡进来时会自动选中 -->
       <div class="tabs seller-order-tabs">
         <button v-for="f in FILTERS" :key="f.key" :class="{ active: filter === f.key }" @click="setFilter(f.key)">
@@ -382,17 +384,18 @@ onBeforeUnmount(() => { if (offShopProfile) { offShopProfile(); offShopProfile =
             </div>
 
             <div class="so-items">
-              <div class="so-item">
-                <span class="so-art" :style="artStyle(a.art)"><span v-html="artHtml(a.art)"></span></span>
+              <div v-for="(it, i) in a.items" :key="i" class="so-item">
+                <span class="so-art" :style="artStyle(it.art)"><span v-html="artHtml(it.art)"></span></span>
                 <div class="so-item-info">
-                  <h4>{{ a.title }}</h4>
-                  <small>款式：{{ a.sku || '默认' }}</small>
+                  <h4>{{ it.title }}</h4>
+                  <small>款式：{{ it.sku || '默认' }}</small>
                 </div>
                 <div class="so-item-price">
-                  <span v-html="price(a.price)"></span>
-                  <small>×{{ a.qty }}</small>
+                  <span v-html="price(it.price)"></span>
+                  <small>×{{ it.qty }}</small>
                 </div>
               </div>
+              <div v-if="!a.items.length" class="hint">该售后单没有商品明细</div>
             </div>
 
             <div v-if="a.images && a.images.length" class="review-imgs static as-imgs">

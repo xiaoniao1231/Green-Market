@@ -234,7 +234,7 @@ function openReply(r) {
     <div class="page-head">
       <div>
         <div class="crumb">首页 / 我的店铺 / 评价管理</div>
-        <h1>评价管理 <small>REVIEWS</small></h1>
+        <h1>评价管理</h1>
       </div>
       <a v-if="current" class="btn btn-plain" @click="backToGroups()">← 返回商品分组</a>
       <a v-else class="btn btn-plain" href="#/seller">← 返回店铺工作台</a>

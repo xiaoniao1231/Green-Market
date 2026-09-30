@@ -70,10 +70,10 @@ public interface ProductReviewMapper {
     //按商品查询评价列表
     List<ProductReview> listByProduct(ReviewCheck check);
 
-    //本店收到的评价总数（店家视角，支持 productId / score / replyStatus 筛选）
+    //本店收到的评价总数
     long countByShop(ReviewCheck check);
 
-    //本店收到的评价分页列表（店家视角，支持 productId / score / replyStatus 筛选）
+    //本店收到的评价分页列表
     List<ProductReview> listByShop(ReviewCheck check);
 
     //本店商品评价统计：按商品分组，返回每个商品的 total / replied / unreplied / withAppend

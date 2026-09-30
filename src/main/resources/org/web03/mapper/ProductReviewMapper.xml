@@ -149,7 +149,7 @@
         LIMIT #{size} OFFSET #{offset}
     </select>
 
-    <!-- 本店商品评价统计：按商品分组，返回每个商品的 total / replied / unreplied / withAppend -->
+    <!-- 本店商品评价统计：按商品分组 -->
     <select id="listShopGroupStats" resultType="java.util.Map">
         SELECT r.product_id     AS productId,
                p.title          AS productTitle,

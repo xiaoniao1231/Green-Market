@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/ChatView.vue —— 消息中心（完整聊天功能页）
+   玉子市场 · views/ChatView.vue —— 消息中心（完整聊天功能页）
    移植自 mall-web/js/pages/chat.js（页面结构 / 交互逻辑不变）
    · 登录 + 后端在线：对接真实接口（/users/online
      /messages/history /messages/private + WebSocket /ws 实时推送）

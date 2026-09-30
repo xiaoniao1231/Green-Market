@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/SellerReviewsView.vue —— 我的店铺 · 评价管理
+   玉子市场 · views/SellerReviewsView.vue —— 我的店铺 · 评价管理
    两层结构：
    · 第一层「商品分组」：GET /reviews/shop/groups 返回本店每个商品的
      total / replied / unreplied / withAppend 统计，一张商品卡一行；

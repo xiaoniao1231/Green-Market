@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/SellerOrdersView.vue —— 我的店铺 · 订单管理
+   玉子市场 · views/SellerOrdersView.vue —— 我的店铺 · 订单管理
    订单数据全部来自后端接口（strict，契约见 docs/店家中心商品管理接口文档.md 2.12 / 2.13）：
    · GET  /seller/orders               本店铺订单列表（含买家、明细、金额、状态）
    · PUT  /seller/orders/{id}/ship     发货（物流轨迹由后端生成）

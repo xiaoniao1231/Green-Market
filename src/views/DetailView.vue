@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/DetailView.vue —— 商品详情页
+   玉子市场 · views/DetailView.vue —— 商品详情页
    移植自 mall-web/js/pages/detail.js（页面结构 / 交互逻辑不变）
    要点：
    · 原版 render() 先输出“加载中”骨架，mount() 里 await 商品后整块替换

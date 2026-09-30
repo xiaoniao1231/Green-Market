@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/CategoryView.vue —— 商品分类页
+   玉子市场 · views/CategoryView.vue —— 商品分类页
    移植自 mall-web/js/pages/category.js（页面结构 / 交互逻辑不变）
    ========================================================= */
 import { computed, onMounted, ref, watch } from 'vue';
@@ -131,7 +131,7 @@ onMounted(load);
       </aside>
       <div class="cat-main">
         <div class="cat-banner">
-          <p>青集市 · 发现日常的美好</p>
+          <p>玉子市场 · 发现日常的美好</p>
           <h1>{{ cat ? cat.id : '全部好物' }}</h1>
           <span>{{ cat ? cat.subs.join(' · ') : '精选品质商品，每一天都有新发现' }}</span>
         </div>

@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/FootprintsView.vue —— 我的浏览足迹（#/footprints）
+   玉子市场 · views/FootprintsView.vue —— 我的浏览足迹（#/footprints）
    数据来源：QM_API.footprints.list()（严格走后端，不做本地离线回退）；
    写入由商品详情页加载成功后调用 POST /footprints 上报（见 DetailView.vue），本页只负责「看」。
 

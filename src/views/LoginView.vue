@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/LoginView.vue —— 独立登录/注册页
+   玉子市场 · views/LoginView.vue —— 独立登录/注册页
    只包含登录与注册相关内容：
    · 登录窗口：账号登录 | 手机号验证码登录
    · 注册窗口：账号注册 | 手机号注册
@@ -261,8 +261,8 @@ onBeforeUnmount(() => { stopSmsTimer('login'); stopSmsTimer('register'); stopSms
     <div class="login-card">
       <!-- 品牌区 -->
       <div class="login-brand">
-        <span class="logo-mark">青</span>
-        <h1>青集市</h1>
+        <span class="logo-mark"><img src="/tamako.svg" alt="" /></span>
+        <h1>玉子市场</h1>
         <p>登录后继续你的发现之旅</p>
       </div>
 

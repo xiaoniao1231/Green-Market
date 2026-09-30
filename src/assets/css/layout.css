@@ -1,5 +1,5 @@
 /* =========================================================
-   青集市 · layout.css —— 顶部横条 / 头部搜索 / 主导航 / 分类浮层 / 页脚
+   玉子市场 · layout.css —— 顶部横条 / 头部搜索 / 主导航 / 分类浮层 / 页脚
    —— 2026-09 视觉升级：提升顶栏与页脚文字对比度与点击热区、导航选中态动效。
       改版：移除搜索框下方的热门搜索词，头部高度收紧，分类浮层偏移同步上移。
    ========================================================= */
@@ -39,6 +39,8 @@
   font-size: 26px; font-weight: 700;
   box-shadow: var(--shadow-brand);
 }
+/* 品牌图标：SVG 来自 public/tamako.svg（吉祥物白鸟），撑满方块并跟随其圆角 */
+.logo-mark img { display: block; width: 100%; height: 100%; border-radius: inherit; }
 .logo-text { font-size: 23px; font-weight: 800; letter-spacing: .5px; line-height: 1.12; }
 .logo-text small { display: block; font-size: 10px; font-weight: 600; letter-spacing: 3px; color: var(--brand-ink); }
 

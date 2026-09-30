@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/SellerAfterSalesView.vue —— 我的店铺 · 售后管理
+   玉子市场 · views/SellerAfterSalesView.vue —— 我的店铺 · 售后管理
    数据来源：QM_API.seller.afterSales*（后端接口，strict）：
    · GET  /seller/after-sales?status=&afterNo=&page=&size=   本店售后列表
    · PUT  /seller/after-sales/{id}/approve  同意（仅退款 → 已退款；退货 / 换货 → 待买家寄回）
@@ -125,7 +125,7 @@ function approveModal(a) {
         ? ''
         : `<div class="form-row">
              <label>退货寄回地址</label>
-             <input id="saAddr" maxlength="200" value="${esc('浙江省杭州市余杭区青集市仓储中心 售后组 0571-88888888')}" />
+             <input id="saAddr" maxlength="200" value="${esc('浙江省杭州市余杭区玉子市场仓储中心 售后组 0571-88888888')}" />
              <small class="form-tip">最多 200 字</small>
            </div>`}
       <div class="form-row">

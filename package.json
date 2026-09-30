@@ -2,7 +2,7 @@
   "name": "mall-web-vue",
   "private": true,
   "version": "1.0.0",
-  "description": "青集市前端（Vue3 + Vite + Element Plus 版，与 mall-web 页面一致，前后端分离：/api 由 nginx 反代到 Spring Boot 8080）",
+  "description": "玉子市场前端（Vue3 + Vite + Element Plus 版，与 mall-web 页面一致，前后端分离：/api 由 nginx 反代到 Spring Boot 8080）",
   "type": "module",
   "scripts": {
     "dev": "vite",

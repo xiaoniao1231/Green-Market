@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/HomeView.vue —— 首页
+   玉子市场 · views/HomeView.vue —— 首页
    移植自 mall-web/js/pages/home.js（页面结构 / 交互逻辑不变）
    ========================================================= */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';

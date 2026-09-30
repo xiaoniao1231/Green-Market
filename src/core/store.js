@@ -1,5 +1,5 @@
 /* =========================================================
-   青集市 · store.js —— 状态管理与本地持久化
+   玉子市场 · store.js —— 状态管理与本地持久化
    本地只保存「用户自己的数据」与「后端下发的快照」：
    购物车（后端缓存）/ 订单 / 收藏 / 地址 / 优惠券 / 聊天记录 / 店铺档案。
    商品库、店铺库、演示账号等静态演示数据已全部移除，
@@ -348,7 +348,7 @@ try { localStorage.removeItem(KEY); } catch (e) { /* 忽略 */ }
         const o = QM_STORE.orders.get(id);
         if (!o || o.status !== 'shipped') return;
         o.status = 'done'; o.finishTime = Date.now();
-        o.logistics.unshift({ text: '包裹已签收，感谢您使用青集市', time: Date.now() });
+        o.logistics.unshift({ text: '包裹已签收，感谢您使用玉子市场', time: Date.now() });
         save(); emit('orders');
       }
     },

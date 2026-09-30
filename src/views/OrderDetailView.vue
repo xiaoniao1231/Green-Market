@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/OrderDetailView.vue —— 订单详情页（#/order/:id）
+   玉子市场 · views/OrderDetailView.vue —— 订单详情页（#/order/:id）
    数据来源：QM_API.orders.get(id)（GET /orders/{id}）；物流优先取订单内嵌轨迹，
    为空时再调 GET /orders/{id}/logistics。取消 / 提醒发货 / 确认收货 / 再次购买
    与订单列表页同一套接口，成功后重新拉取本页数据；未付款订单的「立即支付」

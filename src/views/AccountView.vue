@@ -199,7 +199,7 @@ async function logout() {
             <img v-if="isAvatarImage(account.avatar)" :src="account.avatar" alt="头像" />
             <template v-else>{{ account.avatar || (account.nickname || '语').slice(0, 1) }}</template>
           </span>
-          <h3>{{ account.nickname || '青集市用户' }}</h3>
+          <h3>{{ account.nickname || '玉子市场用户' }}</h3>
           <p class="acct-account">账号 @{{ account.userId || '—' }}</p>
           <p class="acct-sign">{{ account.signature || '还没有个性签名' }}</p>
           <div class="acct-tags">

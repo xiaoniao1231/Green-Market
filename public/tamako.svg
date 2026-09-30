@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!--
+    玉子市场 · 品牌图标（吉祥物：会说话的白鸟德拉 / Dela Mochimazzi）
+    · 手绘简笔演绎，非官方美术素材；
+    · 圆角底色与站点品牌渐变保持一致（ff7a18 → ff5000）；
+    · 用途：页面 logo（App.vue 头部与页脚、LoginView.vue）与 favicon；
+    · 44px 为实际显示尺寸，改动图形后请在 32/44px 下确认仍可辨识。
+    · 注意：XML 注释内不能出现连续两个短横线，改注释时请留意。
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff7a18"/>
+      <stop offset="1" stop-color="#ff5000"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="48" height="48" rx="13" fill="url(#bg)"/>
+
+  <!-- 头顶粉色冠毛（三根） -->
+  <path d="M24 13.5 C23.7 11.2 24.3 9.4 25 7.6" stroke="#f7a2b8" stroke-width="2.3" fill="none" stroke-linecap="round"/>
+  <path d="M22.3 14 C21.6 12 20.7 10.5 19.4 9.2" stroke="#f7a2b8" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+  <path d="M25.7 14 C26.4 12 27.3 10.5 28.6 9.2" stroke="#f7a2b8" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+
+  <!-- 蛋形身体 -->
+  <ellipse cx="24" cy="27" rx="16" ry="16" fill="#fdfbf9"/>
+
+  <!-- 腮红 -->
+  <circle cx="15" cy="29.5" r="2.9" fill="#f9a3b6" opacity="0.82"/>
+  <circle cx="33" cy="29.5" r="2.9" fill="#f9a3b6" opacity="0.82"/>
+
+  <!-- 眼睛 -->
+  <circle cx="19.2" cy="25.5" r="1.9" fill="#33302e"/>
+  <circle cx="28.8" cy="25.5" r="1.9" fill="#33302e"/>
+  <circle cx="18.5" cy="24.7" r="0.6" fill="#ffffff"/>
+  <circle cx="28.1" cy="24.7" r="0.6" fill="#ffffff"/>
+
+  <!-- 黄色小嘴 -->
+  <path d="M21.4 29.3 L26.6 29.3 L24 33.1 Z" fill="#f5c04e"/>
+
+  <!-- 腿与爪 -->
+  <path d="M20 42 L20 44.8" stroke="#e9a83f" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M28 42 L28 44.8" stroke="#e9a83f" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M18.7 45.1 L21.3 45.1" stroke="#e9a83f" stroke-width="1" stroke-linecap="round"/>
+  <path d="M26.7 45.1 L29.3 45.1" stroke="#e9a83f" stroke-width="1" stroke-linecap="round"/>
+</svg>

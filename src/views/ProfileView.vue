@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/ProfileView.vue —— 个人中心页
+   玉子市场 · views/ProfileView.vue —— 个人中心页
    移植自 mall-web/js/pages/profile.js（页面结构 / 交互逻辑不变）
    含：登录入口（data-action=open-login/logout 由 App.vue 全局代理处理）、
    地址管理弹窗（新增 / 编辑 / 删除 / 设默认，接口见 docs/地址簿接口文档.md）、
@@ -144,7 +144,7 @@ async function couponModal() {
 
 <template>
   <div>
-    <div class="page-head"><div><div class="crumb">首页 / 个人中心</div><h1>我的青集市</h1></div></div>
+    <div class="page-head"><div><div class="crumb">首页 / 个人中心</div><h1>我的玉子市场</h1></div></div>
     <div class="profile-cover">
       <span class="member-avatar big"><img v-if="user && isAvatarImage(user.avatar)" :src="user.avatar" alt="头像" /><template v-else>{{ user ? ((user.avatar && user.avatar.trim()) ? user.avatar : user.nickname.slice(0, 1)) : '语' }}</template></span>
       <div>

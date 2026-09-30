@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/AfterSalesView.vue —— 售后服务（#/after-sales）
+   玉子市场 · views/AfterSalesView.vue —— 售后服务（#/after-sales）
    数据来源：QM_API.afterSales.*（后端接口）：
    · GET  /after-sales                      我的全部售后单（一次返回，不分页 / 不筛选）
    · POST /after-sales                      申请售后（orderId + items 明细，一个订单一条售后单）

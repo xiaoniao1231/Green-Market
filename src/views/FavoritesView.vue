@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/FavoritesView.vue —— 我的收藏
+   玉子市场 · views/FavoritesView.vue —— 我的收藏
    移植自 mall-web/js/pages/favorites.js（页面结构 / 交互逻辑不变）
    数据来源：QM_API.favorites.list()（严格走后端，不做本地离线回退）。
    商品卡由 productCard() 生成（data-action 走 App.vue 全局代理），

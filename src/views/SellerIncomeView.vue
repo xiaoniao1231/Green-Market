@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/SellerIncomeView.vue —— 我的店铺 · 收入明细（#/seller/income）
+   玉子市场 · views/SellerIncomeView.vue —— 我的店铺 · 收入明细（#/seller/income）
    数据：GET /seller/orders（本店订单）+ GET /seller/after-sales?status=refunded（本店已完成退款的售后单），
    在前端按工作台同口径汇总：
    · 累计收入 = 已结算订单金额（paid / shipped / done，排除待付款与已取消）；

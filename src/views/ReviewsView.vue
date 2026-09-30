@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/ReviewsView.vue —— 评价晒单（#/reviews）
+   玉子市场 · views/ReviewsView.vue —— 评价晒单（#/reviews）
    两个页签：
    · 待评价：GET /reviews/pending 返回「已完成」订单及其**商品条目**——每个条目就是
      一个具体款式（同一商品的不同款式各占一行），条目带 reviewed 标记（已评价的置灰）；

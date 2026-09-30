@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · App.vue —— 应用外壳（原 index.html 骨架 + app.js 启动逻辑）
+   玉子市场 · App.vue —— 应用外壳（原 index.html 骨架 + app.js 启动逻辑）
    页面骨架、全局事件代理、导航状态、角标、后端状态胶囊、登录态守卫。
    ========================================================= */
 import { onBeforeUnmount, onMounted, ref } from 'vue';
@@ -434,7 +434,7 @@ onBeforeUnmount(() => {
   <!-- ===== 顶部横条 ===== -->
   <div class="top-strip">
     <div class="shell top-inner">
-      <span class="welcome">您好，欢迎来到青集市！</span>
+      <span class="welcome">您好，欢迎来到玉子市场！</span>
       <span id="topUser" class="top-user" :class="{ hidden: !user }">Hi，<b id="topNickname">{{ user ? user.nickname : '' }}</b></span>
       <a id="topLogin" href="#/login" :class="{ hidden: !!user }">请登录</a>
       <i class="top-sep"></i>
@@ -450,8 +450,8 @@ onBeforeUnmount(() => {
   <!-- ===== 头部：logo + 搜索 + 购物车 ===== -->
   <header class="main-header shell">
     <a class="logo" href="#/home">
-      <span class="logo-mark">青</span>
-      <span class="logo-text">青集市<small>QING MARKET</small></span>
+      <span class="logo-mark"><img src="/tamako.svg" alt="" /></span>
+      <span class="logo-text">玉子市场<small>TAMAKO MARKET</small></span>
     </a>
     <form id="searchForm" class="search-box" @submit="onSearchSubmit">
       <input id="searchInput" placeholder="搜索好物 / 店铺 / 分类" autocomplete="off" maxlength="30" />
@@ -486,13 +486,13 @@ onBeforeUnmount(() => {
   <footer class="site-footer">
     <div class="shell footer-inner">
       <div class="footer-brand">
-        <span class="logo-mark">青</span>
-        <div><b>青集市</b><p>发现值得买的日常</p></div>
+        <span class="logo-mark"><img src="/tamako.svg" alt="" /></span>
+        <div><b>玉子市场</b><p>发现值得买的日常</p></div>
       </div>
       <div class="footer-col"><b>服务支持</b><a href="#/chat">联系卖家</a><a href="#/account">账号设置</a><a href="#/after-sales">售后服务</a></div>
       <div class="footer-col"><b>关于我们</b><a href="#/placeholder/平台介绍">平台介绍</a><a href="#/seller">卖家入驻</a><a href="#/chat">联系我们</a></div>
     </div>
-    <p class="copyright">© 2026 青集市 · 课程演示项目</p>
+    <p class="copyright">© 2026 玉子市场 · 课程演示项目</p>
   </footer>
 
   <div id="modalRoot"></div>

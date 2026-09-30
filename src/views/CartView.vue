@@ -1,6 +1,6 @@
 <script setup>
 /* =========================================================
-   青集市 · views/CartView.vue —— 购物车 + 结算下单（演示）
+   玉子市场 · views/CartView.vue —— 购物车 + 结算下单（演示）
    移植自 mall-web/js/pages/cart.js（页面结构 / 交互逻辑不变）
    ========================================================= */
 import { onBeforeUnmount, onMounted, ref } from 'vue';

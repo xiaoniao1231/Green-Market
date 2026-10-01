@@ -7,12 +7,12 @@
 
 前后端用**同一个远程仓库的两个分支**承载：
 
-| 分支 | 对应目录 | 内容 |
+| 分支 | 对应工程 | 内容 |
 | --- | --- | --- |
-| `main` | `mall-web-vue/` | 前端：Vue 3 + Vite 单页应用（**当前分支**） |
-| `backend` | `web03/` | 后端：Spring Boot + MyBatis 服务 |
+| `main` | 前端 | Vue 3 + Vite 单页应用（分支根目录即工程根目录） |
+| `backend` | 后端 | Spring Boot + MyBatis 服务（分支根目录即工程根目录） |
 
-> 你正在看的是 `main`（前端）。后端代码请切换到 `backend` 分支。
+> 两个分支各有一份本说明。前端代码在 `main`，后端代码在 `backend`。
 
 ## 技术栈
 
@@ -85,7 +85,9 @@ mysql -uroot -p --default-character-set=utf8mb4 < 网页通信_建库脚本.sql
 
 ```bash
 cd web03
-# 按需修改 src/main/resources/application.yml 中的数据库账号密码
+# 仓库中的 application.yml 已把数据库与 OSS 配置全部置空，运行前必须填写：
+#   spring.datasource.url / username / password
+#   aliyun.oss.endpoint / bucketName / region / accessKeyId / accessKeySecret
 mvn spring-boot:run          # 默认监听 8080
 ```
 
@@ -109,15 +111,19 @@ npm run build                # 产物在 dist/，交给 nginx 托管
 
 | 文档 | 位置 | 内容 |
 | --- | --- | --- |
-| 前端接口文档 | 本分支根目录 | 前后端 HTTP / WebSocket 接口契约、鉴权与响应码约定、各模块接口明细与实现状态 |
-| 前端页面说明 | 本分支根目录 | 逐页说明：路由、视图文件、是否需要登录、数据来源与主要区块 |
+| 前端接口文档 | `main` 分支根目录 | 前后端 HTTP / WebSocket 接口契约、鉴权与响应码约定、各模块接口明细与实现状态 |
+| 前端页面说明 | `main` 分支根目录 | 逐页说明：路由、视图文件、是否需要登录、数据来源与主要区块 |
 | 建库脚本 | `backend` 分支根目录 | MySQL 8.0 建库建表脚本（21 张业务表，含索引与字段注释） |
 
 ## 部署与安全说明
 
-- **JWT 密钥**：前端 `src/core/config.js` 中的密钥仅用于开发环境做本地自校验，
-  生产部署请置空该配置，签名校验完全交给后端。
-- **OSS 凭证**：通过环境变量 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` 注入，**不入库**；
-  缺失时上传接口会返回明确提示。
+- **不含任何真实凭据**：`application.yml` 中的数据库连接与阿里云 OSS 字段全部为空，
+  前端 `src/core/config.js` 的 `JWT_SECRET` 也已置空，仓库里没有可直接使用的密钥。
+- **JWT 密钥**：前端不持有签名密钥 —— 令牌签名校验完全由后端完成，前端只校验令牌结构与有效期。
+  后端签名密钥优先读取环境变量 `JWT_SECRET`，未设置时使用内置开发默认值，**部署环境请务必注入自己的密钥**。
+- **数据库配置**：除直接写入 `application.yml` 外，也可用 Spring Boot 标准环境变量注入（优先级更高）：
+  `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`。
+- **OSS 凭证**：需在 `application.yml` 的 `aliyun.oss.accessKeyId` / `accessKeySecret` 中填写；
+  缺失时上传接口会返回明确提示，而不是 SDK 的空指针异常。
 - **上传限制**：单文件上限 1 GB（`application.yml` 配置），经 nginx 时还需同步调整
   `client_max_body_size`。

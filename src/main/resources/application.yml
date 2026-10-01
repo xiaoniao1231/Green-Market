@@ -3,15 +3,12 @@ spring:
   application:
     name: 玉子市场
 
+  # 数据库配置
   datasource:
-    url: jdbc:mysql://localhost:3306/网页通信?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: 123456
-    hikari:
-      # 默认 10 条会先于 CPU 成为瓶颈：压测实测 10→50 只读 QPS +61%、延迟 -38%（docs/压测报告.md）
-      maximum-pool-size: 50
-      minimum-idle: 10
+    url:
+    driver-class-name:
+    username:
+    password:
 
   data:
     redis:
@@ -32,8 +29,6 @@ spring:
 #mybatis配置
 mybatis:
   configuration:
-    # StdOutImpl 会把每条 SQL 打到 stdout，是压测/生产的主要 I/O 噪声；排查 SQL 时再临时换回
-    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
     #驼峰映射
     map-underscore-to-camel-case: true
   #自定义存放路径
@@ -49,14 +44,14 @@ logging:
 # 阿里云OSS
 aliyun:
   oss:
-    endpoint: https://oss-cn-beijing.aliyuncs.com
-    bucketName: java---web-ai
-    region: cn-beijing
+    endpoint:
+    bucketName:
+    region:
     # 访问凭证：默认从环境变量读取（不要把真实 AK/SK 提交到仓库）。
     # 也可在此直接填写，或在 IDEA 运行配置里以环境变量注入 —— 两者取其一即可；
     # 都缺失时上传接口会返回明确提示，而不是 SDK 的 "Access key id should not be null or empty."。
-    accessKeyId: ${OSS_ACCESS_KEY_ID:}
-    accessKeySecret: ${OSS_ACCESS_KEY_SECRET:}
+    accessKeyId:
+    accessKeySecret:
 
 # 在线状态：两个独立计时 —— 心跳只证明「页面还开着」（决定连接是否断开），
 # 离开看的是用户操作 ACTIVE 帧（决定在线 / 离开），所以挂机时不会被判离线

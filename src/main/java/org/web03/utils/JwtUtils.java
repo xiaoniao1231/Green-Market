@@ -14,8 +14,21 @@ import java.util.Map;
 
 public class JwtUtils {
 
-    private static final String SECRET_KEY = "aXRoZWltYQ=="; // 秘钥
+    /**
+     * JWT 签名密钥（Base64 字符串）。
+     * 优先从环境变量 JWT_SECRET 读取；未设置时回退到内置开发默认值，便于本地直接运行。
+     * 部署环境请通过环境变量注入自己的密钥，不要依赖代码里的默认值。
+     */
+    private static final String SECRET_KEY = resolveSecretKey();
     private static final long EXPIRATION_TIME = 24 * 60 * 60 * 1000; // 24小时
+
+    private static String resolveSecretKey() {
+        String env = System.getenv("JWT_SECRET");
+        if (env != null && !env.trim().isEmpty()) {
+            return env.trim();
+        }
+        return "aXRoZWltYQ==";
+    }
 
     /**
      * 生成JWT令牌

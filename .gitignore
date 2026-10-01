@@ -19,3 +19,6 @@ backup_pre_fix_20260908/
 *.sql
 *.pdf
 docs/
+
+# 例外：仓库首页说明文件
+!README.md
